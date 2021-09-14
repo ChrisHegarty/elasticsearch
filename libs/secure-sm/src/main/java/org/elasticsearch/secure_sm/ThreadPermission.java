@@ -18,6 +18,16 @@ import java.security.BasicPermission;
  * {@code RuntimePermission("modifyThread")} or {@code RuntimePermission("modifyThreadGroup")}
  * are only allowed to modify their current thread group or an ancestor of that group.
  * <p>
+ * There are two possible {@code ThreadPermission} target names:
+ * <ul>
+ *   <li>{@code modifyInnocuousThread}</li>
+ *   <li>{@code modifyArbitraryThread}</li>
+ * </ul>
+ * <p>
+ * The {@code modifyInnocuousThread} target is used to allow the creation of
+ * JDK InnocuousThreads. InnocuousThreads are used as the default threads
+ * when an explicit thread factory is not provided to a {@link java.lang.ref.Cleaner}.
+ * <p>
  * In some cases (e.g. test runners), code needs to manipulate arbitrary threads,
  * so this Permission provides for that: the targets {@code modifyArbitraryThread} and
  * {@code modifyArbitraryThreadGroup} allow a thread blanket access to any group.

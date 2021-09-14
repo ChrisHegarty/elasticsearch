@@ -13,6 +13,7 @@ import org.elasticsearch.core.PathUtils;
 import org.elasticsearch.core.internal.io.IOUtils;
 import org.elasticsearch.plugins.PluginInfo;
 import org.elasticsearch.script.ClassPermission;
+import org.elasticsearch.secure_sm.ThreadPermission;
 
 import javax.management.MBeanPermission;
 import javax.management.MBeanServerPermission;
@@ -157,6 +158,7 @@ public class PolicyUtil {
             ServicePermission.class, ALLOW_ALL_NAMES,
             PrivateCredentialPermission.class, ALLOW_ALL_NAMES,
             SQLPermission.class, List.of("callAbort", "setNetworkTimeout"),
+            ThreadPermission.class, List.of("modifyInnocuousThread"),
             ClassPermission.class, ALLOW_ALL_NAMES
         ).entrySet().stream().collect(Collectors.toMap(e -> e.getKey().getCanonicalName(), Map.Entry::getValue));
         PermissionCollection pluginPermissionCollection = new Permissions();

@@ -45,3 +45,16 @@ grant codeBase "${codebase.netty-transport}" {
    // the bug says it only happened rarely, and that its fixed, but apparently it still happens rarely!
    permission java.util.PropertyPermission "sun.nio.ch.bugLevel", "write";
 };
+
+// Required to allow creation of the java.lang.ref.Cleaner innocuous threads
+grant codeBase "${codebase.x-pack-security}" {
+  permission org.elasticsearch.secure_sm.ThreadPermission "modifyInnocuousThread";
+};
+
+grant codeBase "${codebase.opensaml-xmlsec-impl}" {
+  permission org.elasticsearch.secure_sm.ThreadPermission "modifyInnocuousThread";
+};
+
+grant codeBase "${codebase.java-support}" {
+  permission org.elasticsearch.secure_sm.ThreadPermission "modifyInnocuousThread";
+};
