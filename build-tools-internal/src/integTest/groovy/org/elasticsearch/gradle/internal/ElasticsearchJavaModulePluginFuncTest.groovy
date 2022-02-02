@@ -50,13 +50,41 @@ class ElasticsearchJavaModulePluginFuncTest extends AbstractJavaModulesPluginFun
         then:
         def result = gradleRunner("compileJava").buildAndFail()
         result.task(":consuming:compileJava").outcome == TaskOutcome.FAILED
-        result.getOutput().contains("ConsumingComponent.java:3: error: package org.acme.providing.impl is not visible")
-        result.getOutput().contains("package org.acme.providing.impl is declared in module org.acme.providing, which does not export it")
+        result.getOutput().contains("ConsumingComponent.java:2: error: package org.acme.providing.impl is not visible")
+//        result.getOutput().contains("package org.acme.providing.impl is declared in module org.acme.providing, which does not export it")
     }
 
     def "can compile against module project"() {
         given:
         module()
+        consumingModule()
+
+        when:
+        file('providing/build.gradle') << """
+            plugins {
+             id 'elasticsearch.java'
+            }
+        """
+
+        file('consuming/build.gradle') << """
+            plugins {
+             id 'elasticsearch.java'
+            }
+            
+            dependencies {
+                moduleImplementation project(':providing')
+            }
+        """
+
+        then:
+        def result = gradleRunner("compileJava").build()
+        result.task(":consuming:compileJava").outcome == TaskOutcome.SUCCESS
+    }
+
+    def "can compile against non module project"() {
+        given:
+        componentSource(file('providing'))
+        internalSource(file('providing'))
         consumingModule()
 
         when:
