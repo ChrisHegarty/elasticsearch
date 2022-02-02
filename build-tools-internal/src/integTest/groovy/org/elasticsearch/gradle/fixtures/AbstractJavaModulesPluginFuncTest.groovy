@@ -22,15 +22,7 @@ module org.acme.${name} {
     void module(File root = new File(testProjectDir.root, 'providing'), String moduleName = root.name) {
         String component = componentName(moduleName);
         moduleInfo(root)
-        file(root, "src/main/java/org/acme/${moduleName}/impl/SomethingInternal.java") << """package org.acme.${moduleName}.impl;
-
-public class SomethingInternal {
-
-    public void doSomething() {
-        System.out.println("Something internal");
-    }
-}
-"""
+        internalSource(root, moduleName)
 
         file(root, "src/main/java/org/acme/${moduleName}/api/${component}.java") << """package org.acme.${moduleName}.api;
 import org.acme.${moduleName}.impl.SomethingInternal;
@@ -47,7 +39,6 @@ public class ${component} {
 """
     }
 
-
     void consumingModule(File root = new File(testProjectDir.root, 'consuming'), String consumingModule = root.name, String providingModule = 'providing') {
         String component = componentName(consumingModule);
         String providingComponent = componentName(providingModule)
@@ -62,7 +53,8 @@ public class ${component} {
     }
     
     public void doSomething() {
-        new ${providingComponent}().doSomething();
+        $providingComponent c = new ${providingComponent}();
+        c.doSomething();
     }
 
 }
@@ -92,16 +84,27 @@ public class $componentName {
         def componentName = "Consuming${providingModuleName.capitalize()}"
         def providingComponentName = componentName(providingModuleName)
         file(root, "src/main/java/org/${name}/" + componentName + ".java") << """package org.${name};
-
 import org.acme.${providingModuleName}.api.${providingComponentName};
 
 public class $componentName {
-    $providingComponentName c = new ${providingComponentName}();
     
     public void run() {
+       $providingComponentName c = new ${providingComponentName}();
        c.doSomething();
     }
 
+}
+"""
+    }
+
+    private File internalSource(File root, String moduleName) {
+        file(root, "src/main/java/org/acme/${moduleName}/impl/SomethingInternal.java") << """package org.acme.${moduleName}.impl;
+
+public class SomethingInternal {
+
+    public void doSomething() {
+        System.out.println("Something internal");
+    }
 }
 """
     }
