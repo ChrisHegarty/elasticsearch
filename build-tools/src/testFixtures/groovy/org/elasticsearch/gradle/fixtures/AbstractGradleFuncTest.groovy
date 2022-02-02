@@ -36,7 +36,7 @@ abstract class AbstractGradleFuncTest extends Specification {
         buildFile = testProjectDir.newFile('build.gradle')
         propertiesFile = testProjectDir.newFile('gradle.properties')
         propertiesFile <<
-            "org.gradle.java.installations.fromEnv=JAVA_HOME,RUNTIME_JAVA_HOME,JAVA15_HOME,JAVA14_HOME,JAVA13_HOME,JAVA12_HOME,JAVA11_HOME,JAVA8_HOME"
+                "org.gradle.java.installations.fromEnv=JAVA_HOME,RUNTIME_JAVA_HOME,JAVA15_HOME,JAVA14_HOME,JAVA13_HOME,JAVA12_HOME,JAVA11_HOME,JAVA8_HOME"
     }
 
     File addSubProject(String subProjectPath) {
@@ -46,19 +46,27 @@ abstract class AbstractGradleFuncTest extends Specification {
     }
 
     GradleRunner gradleRunner(String... arguments) {
+
         return gradleRunner(testProjectDir.root, arguments)
     }
 
     GradleRunner gradleRunner(File projectDir, String... arguments) {
+        if(arguments.contains('--scan')) {
+            settingsFile << """
+            gradleEnterprise {
+                server = "https://gradle-enterprise.elastic.co"
+            }
+            """
+        }
         return new NormalizeOutputGradleRunner(
-            new InternalAwareGradleRunner(
-                GradleRunner.create()
-                    .withDebug(ManagementFactory.getRuntimeMXBean().getInputArguments().toString().indexOf("-agentlib:jdwp") > 0)
-                    .withProjectDir(projectDir)
-                    .withPluginClasspath()
-                    .forwardOutput()
-            ),
-            projectDir
+                new InternalAwareGradleRunner(
+                        GradleRunner.create()
+                                .withDebug(ManagementFactory.getRuntimeMXBean().getInputArguments().toString().indexOf("-agentlib:jdwp") > 0)
+                                .withProjectDir(projectDir)
+                                .withPluginClasspath()
+                                .forwardOutput()
+                ),
+                projectDir
         ).withArguments(arguments)
     }
 
@@ -82,6 +90,19 @@ abstract class AbstractGradleFuncTest extends Specification {
         newFile
     }
 
+    File file(File parent, String path) {
+        File newFile = new File(parent, path)
+        newFile.getParentFile().mkdirs()
+        newFile
+    }
+
+    File file(File parent, String path, String content) {
+        File newFile = new File(parent, path)
+        newFile.getParentFile().mkdirs()
+        newFile << content
+        newFile
+    }
+
     File someJar(String fileName = 'some.jar') {
         File jarFolder = new File(testProjectDir.root, "jars");
         jarFolder.mkdirs()
@@ -99,13 +120,13 @@ abstract class AbstractGradleFuncTest extends Specification {
     }
 
     File internalBuild(
-        File buildScript = buildFile,
-        String bugfix = "7.15.2",
-        String bugfixLucene = "8.9.0",
-        String staged = "7.16.0",
-        String stagedLucene = "8.10.0",
-        String minor = "8.0.0",
-        String minorLucene = "9.0.0"
+            File buildScript = buildFile,
+            String bugfix = "7.15.2",
+            String bugfixLucene = "8.9.0",
+            String staged = "7.16.0",
+            String stagedLucene = "8.10.0",
+            String minor = "8.0.0",
+            String minorLucene = "9.0.0"
     ) {
         buildScript << """plugins {
           id 'elasticsearch.global-build-info'
