@@ -149,7 +149,7 @@ public class ElasticsearchJavaModulePlugin implements Plugin<Project> {
         // ####
         // If we modify the classpath here, IntelliJ no longer sees the dependencies as compile-time
         // dependencies, don't know why.
-//        if (System.getProperty("idea.active") == null) {
+        if (System.getProperty("idea.active") == null) {
             // Modify the default classpath by removing anything already placed on module path.
             // This could be done in a fancier way but a set difference is just fine for us here. Use a lazy
             // provider to delay computation of the actual path.
@@ -159,7 +159,7 @@ public class ElasticsearchJavaModulePlugin implements Plugin<Project> {
             // logger.info("Class path for %s:\n%s".formatted(compileTask.getPath(), fileCollectionPathString(trimmedClasspath)));
             // }
             compileTask.setClasspath(project.files(trimmedClasspath));
-//        }
+        }
         // Closure closure = new Closure<FileCollection>(compileTask) {
         // @Override
         // public FileCollection call(Object... names) {

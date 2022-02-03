@@ -11,6 +11,7 @@ package org.elasticsearch.gradle.internal
 
 import org.elasticsearch.gradle.fixtures.AbstractJavaModulesPluginFuncTest
 import org.gradle.testkit.runner.TaskOutcome
+import spock.lang.IgnoreRest
 import spock.util.environment.RestoreSystemProperties
 
 @RestoreSystemProperties
@@ -54,7 +55,7 @@ class ElasticsearchJavaModulePluginFuncTest extends AbstractJavaModulesPluginFun
 //        result.getOutput().contains("package org.acme.providing.impl is declared in module org.acme.providing, which does not export it")
     }
 
-    def "can compile against module project"() {
+    def "can compile module against module project"() {
         given:
         module()
         consumingModule()
@@ -81,10 +82,10 @@ class ElasticsearchJavaModulePluginFuncTest extends AbstractJavaModulesPluginFun
         result.task(":consuming:compileJava").outcome == TaskOutcome.SUCCESS
     }
 
-    def "can compile against non module project"() {
+    def "can compile module against project"() {
         given:
-        componentSource(file('providing'))
-        internalSource(file('providing'))
+        componentSource(file("providing"))
+        internalSource(file("providing"))
         consumingModule()
 
         when:
@@ -102,11 +103,17 @@ class ElasticsearchJavaModulePluginFuncTest extends AbstractJavaModulesPluginFun
             dependencies {
                 moduleImplementation project(':providing')
             }
+            
+            // disable fail on warning
+            tasks.named('compileJava').configure { t ->
+                t.options.compilerArgs = t.options.compilerArgs.findAll { it.equals('-Werror') == false }
+            }
         """
 
         then:
         def result = gradleRunner("compileJava").build()
         result.task(":consuming:compileJava").outcome == TaskOutcome.SUCCESS
+        result.output.contains("consuming/src/main/java/module-info.java:3: warning: requires directive for an automatic module")
     }
 
 }

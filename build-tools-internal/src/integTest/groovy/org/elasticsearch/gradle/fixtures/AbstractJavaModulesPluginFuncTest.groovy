@@ -12,7 +12,7 @@ abstract class AbstractJavaModulesPluginFuncTest extends AbstractGradleFuncTest 
 
     File moduleInfo(File root = testProjectDir.root, String name = root.name, List<String> requires = []) {
         file(root, 'src/main/java/module-info.java', """
-module org.acme.${name} {
+module ${name} {
     ${requires.collect { "requires ${it};" }.join('\n')}
     exports org.acme.${name}.api;
     uses org.acme.${name}.api.${componentName(name)};}
@@ -26,12 +26,12 @@ module org.acme.${name} {
     }
 
     void consumingModule(File root = new File(testProjectDir.root, 'consuming'), String module = root.name, String providingModule = 'providing') {
-        moduleInfo(root, module, ["org.acme.$providingModule"])
+        moduleInfo(root, module, [providingModule])
         componentSource(root, module, "org.acme.${providingModule}.api.${componentName(providingModule)}")
     }
 
     void consumingInternalsModule(File root = new File(testProjectDir.root, 'consuming'), String module = root.name, String providingModule = 'providing') {
-        moduleInfo(root, module, ["org.acme.$providingModule"])
+        moduleInfo(root, module, [providingModule])
         componentSource(root, module, "org.acme.${providingModule}.impl.SomethingInternal")
     }
 
@@ -53,10 +53,10 @@ public class $componentName {
 """
     }
 
-    File componentSource(File root, String module, String usedClazz = "org.acme.${module}.impl.SomethingInternal") {
+    File componentSource(File projectDir, String module = projectDir.name, String usedClazz = "org.acme.${module}.impl.SomethingInternal") {
         String component = componentName(module)
         String simpleUsedClazz = usedClazz.substring(usedClazz.lastIndexOf('.') + 1)
-        file(root, "src/main/java/org/acme/${module}/api/${component}.java", """package org.acme.${module}.api;
+        file(projectDir, "src/main/java/org/acme/${module}/api/${component}.java", """package org.acme.${module}.api;
 import $usedClazz;
 public class ${component} {
 
@@ -72,11 +72,10 @@ public class ${component} {
 """)
     }
 
-    File internalSource(File root, String moduleName) {
-        file(root, "src/main/java/org/acme/${moduleName}/impl/SomethingInternal.java") << """package org.acme.${moduleName}.impl;
+    File internalSource(File projectDir, String moduleName = projectDir.name) {
+        file(projectDir, "src/main/java/org/acme/${moduleName}/impl/SomethingInternal.java") << """package org.acme.${moduleName}.impl;
 
 public class SomethingInternal {
-
     public void doSomething() {
         System.out.println("Something internal");
     }
