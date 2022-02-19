@@ -127,8 +127,28 @@ final class ESPolicy extends Policy {
         }
 
         // otherwise defer to template + dynamic file permissions
+        // if (template.implies(domain, permission)) {
+        // //System.out.println("template implies:" + permission + ", for loc:" + location);
+        // return true;
+        // } else if (dynamic.implies(permission)) {
+        // //System.out.println("dynamic implies:" + permission + ", for loc:" + location);
+        // return true;
+        // } else if (system.implies(domain, permission)) {
+        // //System.out.println("system implies:" + permission + ", for loc:" + location);
+        // return true;
+        // }
+        // if (recurse.get() == false) {
+        // try {
+        // recurse.set(true);
+        // System.out.println("no implies for:" + permission + ", for loc:" + location);
+        // } finally {
+        // recurse.set(false);
+        // }
+        // }
         return template.implies(domain, permission) || dynamic.implies(permission) || system.implies(domain, permission);
     }
+
+    private final ThreadLocal<Boolean> recurse = ThreadLocal.withInitial(() -> false);
 
     /**
      * Classy puzzler to rethrow any checked exception as an unchecked one.

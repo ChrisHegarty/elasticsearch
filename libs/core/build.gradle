@@ -7,10 +7,23 @@
  */
 
 apply plugin: 'elasticsearch.publish'
+apply plugin: "de.jjohannes.extra-java-module-info"
+
+java {
+  modularity.inferModulePath = true
+}
+
+tasks.named('compileJava') {
+  modularity.inferModulePath = true
+}
+
+extraJavaModuleInfo {
+  automaticModule('jsr305-3.0.2.jar', 'jsr305')
+}
 
 dependencies {
   // This dependency is used only by :libs:core for null-checking interop with other tools
-  moduleCompileOnly "com.google.code.findbugs:jsr305:3.0.2"
+  compileOnly "com.google.code.findbugs:jsr305:3.0.2"
 
   testImplementation "com.carrotsearch.randomizedtesting:randomizedtesting-runner:${versions.randomizedrunner}"
   testImplementation "junit:junit:${versions.junit}"
