@@ -15,6 +15,14 @@ import java.util.stream.Collectors
 apply plugin: 'elasticsearch.build'
 apply plugin: 'elasticsearch.publish'
 
+java {
+  modularity.inferModulePath = true
+}
+
+tasks.named('compileJava') {
+  modularity.inferModulePath = true
+}
+
 configurations {
   providerImpl {
     attributes.attribute(ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE, ArtifactTypeDefinition.DIRECTORY_TYPE)
@@ -32,7 +40,7 @@ dependencies {
 
   })
 
-  moduleApi project(':libs:elasticsearch-core')
+  api project(':libs:elasticsearch-core')
 
   providerImpl project(':libs:elasticsearch-x-content:impl')
 
