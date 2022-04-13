@@ -7,9 +7,6 @@
  */
 package org.elasticsearch.datastreams;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.ClusterStateTaskExecutor;
 import org.elasticsearch.cluster.ClusterStateUpdateTask;
@@ -26,6 +23,9 @@ import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexMode;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 
@@ -142,7 +142,7 @@ public class UpdateTimeSeriesRangeService extends AbstractLifecycleComponent imp
                     dataStream.validate(mBuilder::get);
                 } catch (Exception e) {
                     LOGGER.error(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "unable to update [{}] for data stream [{}] and backing index [{}]",
                             IndexSettings.TIME_SERIES_END_TIME.getKey(),
                             dataStream.getName(),

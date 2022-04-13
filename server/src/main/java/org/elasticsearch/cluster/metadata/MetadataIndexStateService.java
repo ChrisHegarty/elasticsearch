@@ -8,9 +8,6 @@
 
 package org.elasticsearch.cluster.metadata;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -64,6 +61,9 @@ import org.elasticsearch.index.shard.IndexLongFieldRange;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.indices.ShardLimitValidator;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.snapshots.RestoreService;
 import org.elasticsearch.snapshots.SnapshotInProgressException;
@@ -364,7 +364,7 @@ public class MetadataIndexStateService {
         }
 
         logger.info(
-            () -> new ParameterizedMessage(
+            () -> Message.createParameterizedMessage(
                 "closing indices {}",
                 blockedIndices.keySet().stream().map(Object::toString).collect(Collectors.joining(","))
             )
@@ -1153,7 +1153,7 @@ public class MetadataIndexStateService {
                     512,
                     indexNames
                 );
-                return new ParameterizedMessage("opening indices [{}]", indexNames);
+                return Message.createParameterizedMessage("opening indices [{}]", indexNames);
             });
 
             final Metadata.Builder metadata = Metadata.builder(currentState.metadata());

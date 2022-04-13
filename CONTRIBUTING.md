@@ -435,7 +435,7 @@ do by declaring a static field of the class. For example:
 
 In rare situations you may want to configure your `Logger` slightly
 differently, perhaps specifying a different class or maybe using one of the
-methods on `org.elasticsearch.common.logging.Loggers` instead.
+methods on `org.elasticsearch.common.logging.org.elasticsearch.logging.impl.Loggers` instead.
 
 If the log message includes values from your code then you must use use
 placeholders rather than constructing the string yourself using simple
@@ -461,7 +461,7 @@ expensive messages that will usually be discarded:
 
 Logging is an important behaviour of the system and sometimes deserves its own
 unit tests, especially if there is complex logic for computing what is logged
-and when to log it. You can use a `org.elasticsearch.test.MockLogAppender` to
+and when to log it. You can use a `MockLogAppender` to
 make assertions about the logs that are being emitted.
 
 Logging is a powerful diagnostic technique but it is not the only possibility.

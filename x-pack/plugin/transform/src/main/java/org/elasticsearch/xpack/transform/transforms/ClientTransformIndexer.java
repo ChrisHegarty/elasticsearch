@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.transform.transforms;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.refresh.RefreshAction;
@@ -27,7 +24,6 @@ import org.elasticsearch.action.search.SearchAction;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.internal.Client;
-import org.elasticsearch.common.logging.LoggerMessageFormat;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
@@ -37,6 +33,10 @@ import org.elasticsearch.index.mapper.MapperParsingException;
 import org.elasticsearch.index.reindex.BulkByScrollResponse;
 import org.elasticsearch.index.reindex.DeleteByQueryAction;
 import org.elasticsearch.index.reindex.DeleteByQueryRequest;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.LoggerMessageFormat;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.SearchContextMissingException;
 import org.elasticsearch.search.builder.PointInTimeBuilder;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -314,7 +314,7 @@ class ClientTransformIndexer extends TransformIndexer {
                     // seqNoPrimaryTermAndIndex
                     // - for tests fail(assert), so we can debug the problem
                     logger.error(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "[{}] updating stats of transform failed, unexpected version conflict of internal state, resetting to recover.",
                             transformConfig.getId()
                         ),
@@ -327,7 +327,10 @@ class ClientTransformIndexer extends TransformIndexer {
                     );
                     assert false : "[" + getJobId() + "] updating stats of transform failed, unexpected version conflict of internal state";
                 } else {
-                    logger.error(new ParameterizedMessage("[{}] updating stats of transform failed.", transformConfig.getId()), statsExc);
+                    logger.error(
+                        Message.createParameterizedMessage("[{}] updating stats of transform failed.", transformConfig.getId()),
+                        statsExc
+                    );
                     auditor.warning(getJobId(), "Failure updating stats of transform: " + statsExc.getMessage());
                 }
                 listener.onFailure(statsExc);
@@ -337,7 +340,7 @@ class ClientTransformIndexer extends TransformIndexer {
 
     void updateSeqNoPrimaryTermAndIndex(SeqNoPrimaryTermAndIndex expectedValue, SeqNoPrimaryTermAndIndex newValue) {
         logger.debug(
-            () -> new ParameterizedMessage(
+            () -> Message.createParameterizedMessage(
                 "[{}] Updated state document from [{}] to [{}]",
                 transformConfig.getId(),
                 expectedValue,
@@ -399,7 +402,7 @@ class ClientTransformIndexer extends TransformIndexer {
             closePitRequest,
             ActionListener.wrap(response -> { logger.trace("[{}] closed pit search context [{}]", getJobId(), oldPit); }, e -> {
                 // note: closing the pit should never throw, even if the pit is invalid
-                logger.error(new ParameterizedMessage("[{}] Failed to close point in time reader", getJobId()), e);
+                logger.error(Message.createParameterizedMessage("[{}] Failed to close point in time reader", getJobId()), e);
             })
         );
     }
@@ -458,7 +461,7 @@ class ClientTransformIndexer extends TransformIndexer {
                     disablePit = true;
                 } else {
                     logger.warn(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "[{}] Failed to create a point in time reader, falling back to normal search.",
                             getJobId()
                         ),
@@ -504,7 +507,7 @@ class ClientTransformIndexer extends TransformIndexer {
                 Throwable unwrappedException = ExceptionsHelper.findSearchExceptionRootCause(e);
                 if (unwrappedException instanceof SearchContextMissingException) {
                     logger.warn(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "[{}] Search context missing, falling back to normal search; request [{}]",
                             getJobId(),
                             name

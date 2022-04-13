@@ -58,42 +58,7 @@ public class OpenIdConnectAuthIT extends C2IdOpTestCase {
      */
     @BeforeClass
     public static void registerClients() throws Exception {
-        String codeClient = """
-            {
-              "grant_types": [ "authorization_code" ],
-              "response_types": [ "code" ],
-              "preferred_client_id": "https://my.elasticsearch.org/rp",
-              "preferred_client_secret": "%s",
-              "redirect_uris": [ "https://my.fantastic.rp/cb" ],
-              "token_endpoint_auth_method": "client_secret_basic"
-            }""".formatted(CLIENT_SECRET);
-        String implicitClient = """
-            {
-              "grant_types": [ "implicit" ],
-              "response_types": [ "token id_token" ],
-              "preferred_client_id": "elasticsearch-rp",
-              "preferred_client_secret": "%s",
-              "redirect_uris": [ "https://my.fantastic.rp/cb" ]
-            }""".formatted(CLIENT_SECRET);
-        String postClient = """
-            {
-              "grant_types": [ "authorization_code" ],
-              "response_types": [ "code" ],
-              "preferred_client_id": "elasticsearch-post",
-              "preferred_client_secret": "%s",
-              "redirect_uris": [ "https://my.fantastic.rp/cb" ],
-              "token_endpoint_auth_method": "client_secret_post"
-            }""".formatted(CLIENT_SECRET);
-        String jwtClient = """
-            {
-              "grant_types": [ "authorization_code" ],
-              "response_types": [ "code" ],
-              "preferred_client_id": "elasticsearch-post-jwt",
-              "preferred_client_secret": "%s",
-              "redirect_uris": [ "https://my.fantastic.rp/cb" ],
-              "token_endpoint_auth_method": "client_secret_jwt"
-            }""".formatted(CLIENT_SECRET);
-        registerClients(codeClient, implicitClient, postClient, jwtClient);
+
     }
 
     public void testAuthenticateWithCodeFlow() throws Exception {

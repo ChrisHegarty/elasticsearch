@@ -7,9 +7,6 @@
  */
 package org.elasticsearch.index.shard;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexFormatTooNewException;
@@ -52,7 +49,6 @@ import org.elasticsearch.common.UUIDs;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.io.stream.StreamInput;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.IndexScopedSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.AbstractRunnable;
@@ -107,13 +103,17 @@ import org.elasticsearch.indices.breaker.NoneCircuitBreakerService;
 import org.elasticsearch.indices.fielddata.cache.IndicesFieldDataCache;
 import org.elasticsearch.indices.recovery.RecoveryState;
 import org.elasticsearch.indices.recovery.RecoveryTarget;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.repositories.IndexId;
 import org.elasticsearch.snapshots.Snapshot;
 import org.elasticsearch.snapshots.SnapshotId;
 import org.elasticsearch.test.CorruptionUtils;
 import org.elasticsearch.test.DummyShardLock;
 import org.elasticsearch.test.FieldMaskingReader;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.store.MockFSDirectoryFactory;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
@@ -3400,10 +3400,10 @@ public class IndexShardTests extends IndexShardTestCase {
 
         final MockLogAppender appender = new MockLogAppender();
         appender.start();
-        Loggers.addAppender(LogManager.getLogger(IndexShard.class), appender);
+        AppenderSupport.provider().addAppender(LogManager.getLogger(IndexShard.class), appender);
         try {
             appender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "expensive checks warning",
                     "org.elasticsearch.index.shard.IndexShard",
                     Level.WARN,
@@ -3413,7 +3413,7 @@ public class IndexShardTests extends IndexShardTestCase {
             );
 
             appender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "failure message",
                     "org.elasticsearch.index.shard.IndexShard",
                     Level.WARN,
@@ -3429,7 +3429,7 @@ public class IndexShardTests extends IndexShardTestCase {
 
             appender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(LogManager.getLogger(IndexShard.class), appender);
+            AppenderSupport.provider().removeAppender(LogManager.getLogger(IndexShard.class), appender);
             appender.stop();
         }
 

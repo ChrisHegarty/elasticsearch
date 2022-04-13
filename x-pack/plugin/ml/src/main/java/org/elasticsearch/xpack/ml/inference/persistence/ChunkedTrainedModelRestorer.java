@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.ml.inference.persistence;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.search.SearchAction;
@@ -20,6 +17,9 @@ import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
 import org.elasticsearch.core.CheckedFunction;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
@@ -161,7 +161,7 @@ public class ChunkedTrainedModelRestorer {
                     }
 
                 } catch (IOException e) {
-                    logger.error(new ParameterizedMessage("[{}] error writing model definition", modelId), e);
+                    logger.error(Message.createParameterizedMessage("[{}] error writing model definition", modelId), e);
                     errorConsumer.accept(e);
                     return;
                 }
@@ -228,7 +228,7 @@ public class ChunkedTrainedModelRestorer {
         ) {
             return TrainedModelDefinitionDoc.fromXContent(parser, true).build();
         } catch (IOException e) {
-            logger.error(new ParameterizedMessage("[{}] failed to parse model definition", modelId), e);
+            logger.error(Message.createParameterizedMessage("[{}] failed to parse model definition", modelId), e);
             throw e;
         }
     }

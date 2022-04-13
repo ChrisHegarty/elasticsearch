@@ -8,9 +8,6 @@
 
 package org.elasticsearch.snapshots;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionFuture;
 import org.elasticsearch.action.admin.cluster.snapshots.restore.RestoreSnapshotResponse;
@@ -21,16 +18,19 @@ import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.block.ClusterBlocks;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.MappingMetadata;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.indices.InvalidIndexNameException;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.repositories.RepositoriesService;
 import org.elasticsearch.repositories.blobstore.FileRestoreContext;
 import org.elasticsearch.repositories.fs.FsRepository;
 import org.elasticsearch.rest.RestStatus;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.xcontent.XContentFactory;
 
 import java.nio.file.Path;
@@ -894,11 +894,11 @@ public class RestoreSnapshotIT extends AbstractSnapshotIntegTestCase {
         assertAcked(admin().indices().prepareClose(indexName).get());
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.addExpectation(
-            new MockLogAppender.UnseenEventExpectation("no warnings", FileRestoreContext.class.getCanonicalName(), Level.WARN, "*")
+            MockLogAppender.createUnseenEventExpectation("no warnings", FileRestoreContext.class.getCanonicalName(), Level.WARN, "*")
         );
         mockAppender.start();
         final Logger logger = LogManager.getLogger(FileRestoreContext.class);
-        Loggers.addAppender(logger, mockAppender);
+        AppenderSupport.provider().addAppender(logger, mockAppender);
         try {
             final RestoreSnapshotResponse restoreSnapshotResponse = clusterAdmin().prepareRestoreSnapshot(repoName, snapshotName)
                 .setIndices(indexName)
@@ -908,7 +908,7 @@ public class RestoreSnapshotIT extends AbstractSnapshotIntegTestCase {
             assertEquals(0, restoreSnapshotResponse.getRestoreInfo().failedShards());
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(logger, mockAppender);
+            AppenderSupport.provider().removeAppender(logger, mockAppender);
             mockAppender.stop();
         }
     }

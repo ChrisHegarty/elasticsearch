@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.searchablesnapshots.cache.common;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.PlainActionFuture;
@@ -18,6 +15,9 @@ import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Releasable;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.core.internal.io.IOUtils;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -113,7 +113,7 @@ public class CacheFile {
                 fileChannel.close();
             } catch (IOException e) {
                 // nothing to do but log failures here since closeInternal could be called from anywhere and must not throw
-                logger.warn(() -> new ParameterizedMessage("Failed to close [{}]", file), e);
+                logger.warn(() -> Message.createParameterizedMessage("Failed to close [{}]", file), e);
             } finally {
                 decrementRefCount();
             }
@@ -530,7 +530,7 @@ public class CacheFile {
             Files.deleteIfExists(file);
         } catch (IOException e) {
             // nothing to do but log failures here since closeInternal could be called from anywhere and must not throw
-            logger.warn(() -> new ParameterizedMessage("Failed to delete [{}]", file), e);
+            logger.warn(() -> Message.createParameterizedMessage("Failed to delete [{}]", file), e);
         } finally {
             listener.onCacheFileDelete(CacheFile.this);
         }

@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.core.ml.job.persistence;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -23,6 +20,9 @@ import org.elasticsearch.common.CheckedSupplier;
 import org.elasticsearch.common.collect.ImmutableOpenMap;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.plugins.MapperPlugin;
 import org.elasticsearch.xcontent.XContentType;
 
@@ -133,7 +133,7 @@ public class ElasticsearchMappings {
                         continue;
                     }
                 } catch (Exception e) {
-                    logger.error(new ParameterizedMessage("Failed to retrieve mapping version for [{}], recreating", index), e);
+                    logger.error(Message.createParameterizedMessage("Failed to retrieve mapping version for [{}], recreating", index), e);
                     indicesToUpdate.add(index);
                     continue;
                 }

@@ -7,13 +7,7 @@
  */
 package org.elasticsearch.common.settings;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.LogEvent;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
-import org.elasticsearch.common.logging.DeprecationLogger;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.AbstractScopedSettings.SettingUpdater;
 import org.elasticsearch.common.settings.Setting.Property;
 import org.elasticsearch.common.unit.ByteSizeUnit;
@@ -21,9 +15,15 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.logging.DeprecationLogger;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.LogEvent;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.monitor.jvm.JvmInfo;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 
 import java.util.Arrays;
@@ -1344,21 +1344,21 @@ public class SettingTests extends ESTestCase {
             ) {
                 @Override
                 public boolean innerMatch(LogEvent event) {
-                    return event.getMarker().getName().equals(" [index1]");
+                    return event.getMarkerName().equals(" [index1]");
                 }
             }
         );
         mockLogAppender.start();
         final Logger logger = LogManager.getLogger(IndexScopedSettings.class);
         try {
-            Loggers.addAppender(logger, mockLogAppender);
+            AppenderSupport.provider().addAppender(logger, mockLogAppender);
             settings.updateIndexMetadata(
                 newIndexMeta("index1", Settings.builder().put(IndexSettings.INDEX_REFRESH_INTERVAL_SETTING.getKey(), "10s").build())
             );
 
             mockLogAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(logger, mockLogAppender);
+            AppenderSupport.provider().removeAppender(logger, mockLogAppender);
             mockLogAppender.stop();
         }
     }
@@ -1410,7 +1410,7 @@ public class SettingTests extends ESTestCase {
             .put(settingName, settingValue)
             .putList("deprecation.skip_deprecated_settings", settingName)
             .build();
-        DeprecationLogger.initialize(settingsWithSkipDeprecationSetting);
+        DeprecationLogger.initialize(settingsWithSkipDeprecationSetting.getAsList("deprecation.skip_deprecated_settings"));
         deprecatedSetting.checkDeprecation(settingsWithSkipDeprecationSetting);
         ensureNoWarnings();
     }

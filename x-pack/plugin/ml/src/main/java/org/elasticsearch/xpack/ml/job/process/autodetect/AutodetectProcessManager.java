@@ -8,9 +8,6 @@ package org.elasticsearch.xpack.ml.job.process.autodetect;
 
 import joptsimple.internal.Strings;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
@@ -32,6 +29,9 @@ import org.elasticsearch.core.Tuple;
 import org.elasticsearch.core.internal.io.IOUtils;
 import org.elasticsearch.index.analysis.AnalysisRegistry;
 import org.elasticsearch.indices.InvalidAliasNameException;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
@@ -189,7 +189,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
 
     public void killProcess(JobTask jobTask, boolean awaitCompletion, String reason) {
         logger.trace(
-            () -> new ParameterizedMessage(
+            () -> Message.createParameterizedMessage(
                 "[{}] Killing process: awaitCompletion = [{}]; reason = [{}]",
                 jobTask.getJobId(),
                 awaitCompletion,
@@ -214,7 +214,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
             // as it is cleaned up already. The third is that the kill has been
             // received before the process has even started. In all cases, we still
             // need to remove the task from the TaskManager (which is what the kill would do)
-            logger.trace(() -> new ParameterizedMessage("[{}] Marking job task as completed", jobTask.getJobId()));
+            logger.trace(() -> Message.createParameterizedMessage("[{}] Marking job task as completed", jobTask.getJobId()));
             jobTask.markAsCompleted();
         }
     }
@@ -482,7 +482,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
                 }
                 if (resetInProgress) {
                     logger.trace(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "Aborted upgrading snapshot [{}] for job [{}] as ML feature is being reset",
                             snapshotId,
                             jobId
@@ -502,7 +502,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
                     protected void doRun() {
                         if (nodeDying) {
                             logger.info(
-                                () -> new ParameterizedMessage(
+                                () -> Message.createParameterizedMessage(
                                     "Aborted upgrading snapshot [{}] for job [{}] as node is dying",
                                     snapshotId,
                                     jobId
@@ -513,7 +513,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
                         }
                         if (resetInProgress) {
                             logger.trace(
-                                () -> new ParameterizedMessage(
+                                () -> Message.createParameterizedMessage(
                                     "Aborted upgrading snapshot [{}] for job [{}] as ML feature is being reset",
                                     snapshotId,
                                     jobId
@@ -527,7 +527,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
                 });
             }, e1 -> {
                 logger.warn(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "[{}] [{}] Failed to gather information required to upgrade snapshot job",
                         jobId,
                         snapshotId
@@ -537,7 +537,10 @@ public class AutodetectProcessManager implements ClusterStateListener {
                 task.updatePersistentTaskState(
                     failureBuilder.apply(e1.getMessage()),
                     ActionListener.wrap(t -> closeHandler.accept(e1), e2 -> {
-                        logger.warn(() -> new ParameterizedMessage("[{}] [{}] failed to set task to failed", jobId, snapshotId), e2);
+                        logger.warn(
+                            () -> Message.createParameterizedMessage("[{}] [{}] failed to set task to failed", jobId, snapshotId),
+                            e2
+                        );
                         closeHandler.accept(e1);
                     })
                 );
@@ -570,7 +573,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
                     String msg = "Detected a problem with your setup of machine learning, the state index alias ["
                         + AnomalyDetectorsIndex.jobStateIndexWriteAlias()
                         + "] exists as index but must be an alias.";
-                    logger.error(new ParameterizedMessage("[{}] {}", jobId, msg), e);
+                    logger.error(Message.createParameterizedMessage("[{}] {}", jobId, msg), e);
                     // The close handler is responsible for auditing this and setting the job state to failed
                     closeHandler.accept(new IllegalStateException(msg, e), true);
                 } else {
@@ -589,7 +592,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
                 stateAliasHandler
             ),
             e -> {
-                logger.error(new ParameterizedMessage("[{}] ML state index alias could not be updated", jobId), e);
+                logger.error(Message.createParameterizedMessage("[{}] ML state index alias could not be updated", jobId), e);
                 closeHandler.accept(e, true);
             }
         );
@@ -607,7 +610,10 @@ public class AutodetectProcessManager implements ClusterStateListener {
             e -> {
                 // Due to a bug in 7.9.0 it's possible that the annotations index already has incorrect mappings
                 // and it would cause more harm than good to block jobs from opening in subsequent releases
-                logger.warn(new ParameterizedMessage("[{}] ML annotations index could not be updated with latest mappings", jobId), e);
+                logger.warn(
+                    Message.createParameterizedMessage("[{}] ML annotations index could not be updated with latest mappings", jobId),
+                    e
+                );
                 ElasticsearchMappings.addDocMappingIfMissing(
                     AnomalyDetectorsIndex.jobResultsAliasedName(jobId),
                     AnomalyDetectorsIndex::wrappedResultsMapping,
@@ -882,7 +888,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
             try {
                 nativeStorageProvider.cleanupLocalTmpStorage(jobTask.getDescription());
             } catch (IOException e) {
-                logger.error(new ParameterizedMessage("[{}] Failed to delete temporary files", jobTask.getJobId()), e);
+                logger.error(Message.createParameterizedMessage("[{}] Failed to delete temporary files", jobTask.getJobId()), e);
             }
         };
     }
@@ -964,7 +970,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
         try {
             nativeStorageProvider.cleanupLocalTmpStorage(jobTask.getDescription());
         } catch (IOException e) {
-            logger.error(new ParameterizedMessage("[{}] Failed to delete temporary files", jobId), e);
+            logger.error(Message.createParameterizedMessage("[{}] Failed to delete temporary files", jobId), e);
         }
     }
 
@@ -1039,7 +1045,7 @@ public class AutodetectProcessManager implements ClusterStateListener {
         if (ExceptionsHelper.unwrapCause(e) instanceof ResourceNotFoundException) {
             logger.debug("Could not set job state to [{}] for job [{}] as it has been closed", state, jobId);
         } else {
-            logger.error(() -> new ParameterizedMessage("Could not set job state to [{}] for job [{}]", state, jobId), e);
+            logger.error(() -> Message.createParameterizedMessage("Could not set job state to [{}] for job [{}]", state, jobId), e);
         }
     }
 

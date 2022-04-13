@@ -8,7 +8,6 @@
 
 package org.elasticsearch.cluster.routing;
 
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.util.CollectionUtil;
 import org.elasticsearch.Assertions;
 import org.elasticsearch.cluster.ClusterState;
@@ -24,6 +23,7 @@ import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.logging.Logger;
 
 import java.util.AbstractCollection;
 import java.util.ArrayDeque;

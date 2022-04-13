@@ -6,10 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.inference.loadingservice;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.MessageSupplier;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
@@ -31,6 +27,9 @@ import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.ingest.IngestMetadata;
 import org.elasticsearch.license.License;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.core.ml.action.GetTrainedModelsAction;
@@ -60,6 +59,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import static org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper.unwrapCause;
 import static org.elasticsearch.xpack.ml.MachineLearning.ML_MODEL_INFERENCE_FEATURE;
@@ -264,13 +264,13 @@ public class ModelLoadingService implements ClusterStateListener {
                 return;
             }
             modelActionListener.onResponse(cachedModel.model);
-            logger.trace(() -> new ParameterizedMessage("[{}] (model_alias [{}]) loaded from cache", modelId, modelIdOrAlias));
+            logger.trace(() -> Message.createParameterizedMessage("[{}] (model_alias [{}]) loaded from cache", modelId, modelIdOrAlias));
             return;
         }
 
         if (loadModelIfNecessary(modelIdOrAlias, consumer, modelActionListener)) {
             logger.trace(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "[{}] (model_alias [{}]) is loading or loaded, added new listener to queue",
                     modelId,
                     modelIdOrAlias
@@ -321,7 +321,7 @@ public class ModelLoadingService implements ClusterStateListener {
                 // The model is requested by a pipeline but not referenced by any ingest pipelines.
                 // This means it is a simulate call and the model should not be cached
                 logger.trace(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "[{}] (model_alias [{}]) not actively loading, eager loading without cache",
                         modelId,
                         modelIdOrAlias
@@ -330,7 +330,11 @@ public class ModelLoadingService implements ClusterStateListener {
                 loadWithoutCaching(modelId, consumer, modelActionListener);
             } else {
                 logger.trace(
-                    () -> new ParameterizedMessage("[{}] (model_alias [{}]) attempting to load and cache", modelId, modelIdOrAlias)
+                    () -> Message.createParameterizedMessage(
+                        "[{}] (model_alias [{}]) attempting to load and cache",
+                        modelId,
+                        modelIdOrAlias
+                    )
                 );
                 loadingListeners.put(modelId, addFluently(new ArrayDeque<>(), modelActionListener));
                 loadModel(modelId, consumer);
@@ -377,11 +381,11 @@ public class ModelLoadingService implements ClusterStateListener {
             }, failure -> {
                 // We failed to get the definition, remove the initial estimation.
                 trainedModelCircuitBreaker.addWithoutBreaking(-trainedModelConfig.getModelSize());
-                logger.warn(new ParameterizedMessage("[{}] failed to load model definition", modelId), failure);
+                logger.warn(Message.createParameterizedMessage("[{}] failed to load model definition", modelId), failure);
                 handleLoadFailure(modelId, failure);
             }));
         }, failure -> {
-            logger.warn(new ParameterizedMessage("[{}] failed to load model configuration", modelId), failure);
+            logger.warn(Message.createParameterizedMessage("[{}] failed to load model configuration", modelId), failure);
             handleLoadFailure(modelId, failure);
         }));
     }
@@ -520,7 +524,7 @@ public class ModelLoadingService implements ClusterStateListener {
                         ML_MODEL_INFERENCE_FEATURE.startTracking(licenseState, modelId);
                     }
                 } catch (ExecutionException ee) {
-                    logger.warn(() -> new ParameterizedMessage("[{}] threw when attempting add to cache", modelId), ee);
+                    logger.warn(() -> Message.createParameterizedMessage("[{}] threw when attempting add to cache", modelId), ee);
                 }
                 shouldNotAudit.remove(modelId);
             }
@@ -565,7 +569,7 @@ public class ModelLoadingService implements ClusterStateListener {
         Set<String> newModelAliases = modelIdToUpdatedModelAliases.remove(modelId);
         if (newModelAliases != null && newModelAliases.isEmpty() == false) {
             logger.trace(
-                () -> new ParameterizedMessage("[{}] model is now loaded, setting new model_aliases {}", modelId, newModelAliases)
+                () -> Message.createParameterizedMessage("[{}] model is now loaded, setting new model_aliases {}", modelId, newModelAliases)
             );
             for (String modelAlias : newModelAliases) {
                 modelAliasToId.put(modelAlias, modelId);
@@ -576,7 +580,7 @@ public class ModelLoadingService implements ClusterStateListener {
     private void cacheEvictionListener(RemovalNotification<String, ModelAndConsumer> notification) {
         try {
             if (notification.getRemovalReason() == RemovalNotification.RemovalReason.EVICTED) {
-                MessageSupplier msg = () -> new ParameterizedMessage(
+                Supplier<Message> msg = () -> Message.createParameterizedMessage(
                     "model cache entry evicted."
                         + "current cache [{}] current max [{}] model size [{}]. "
                         + "If this is undesired, consider updating setting [{}] or [{}].",
@@ -590,7 +594,7 @@ public class ModelLoadingService implements ClusterStateListener {
             }
             String modelId = modelAliasToId.getOrDefault(notification.getKey(), notification.getKey());
             logger.trace(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "Persisting stats for evicted model [{}] (model_aliases {})",
                     modelId,
                     modelIdToModelAliases.getOrDefault(modelId, new HashSet<>())
@@ -792,9 +796,9 @@ public class ModelLoadingService implements ClusterStateListener {
         return changedAliases;
     }
 
-    private void auditIfNecessary(String modelId, MessageSupplier msg) {
+    private void auditIfNecessary(String modelId, Supplier<Message> msg) {
         if (shouldNotAudit.contains(modelId)) {
-            logger.trace(() -> new ParameterizedMessage("[{}] {}", modelId, msg.get().getFormattedMessage()));
+            logger.trace(() -> Message.createParameterizedMessage("[{}] {}", modelId, msg.get().getFormattedMessage()));
             return;
         }
         auditor.info(modelId, msg.get().getFormattedMessage());

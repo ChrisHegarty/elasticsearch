@@ -7,15 +7,15 @@
 
 package org.elasticsearch.xpack.security.operator;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.ValidationException;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.env.Environment;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.watcher.FileChangesListener;
 import org.elasticsearch.watcher.FileWatcher;
 import org.elasticsearch.watcher.ResourceWatcherService;
@@ -225,7 +225,7 @@ public class FileOperatorUsersStore {
                 logger.debug("operator user descriptor: [{}]", operatorUsersDescriptor);
                 return operatorUsersDescriptor;
             } catch (IOException | RuntimeException e) {
-                logger.error(new ParameterizedMessage("Failed to parse operator users file [{}].", file), e);
+                logger.error(Message.createParameterizedMessage("Failed to parse operator users file [{}].", file), e);
                 throw new ElasticsearchParseException("Error parsing operator users file [{}]", e, file.toAbsolutePath());
             }
         }

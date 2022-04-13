@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.security.authz;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.Operations;
 import org.elasticsearch.action.ActionListener;
@@ -35,6 +32,9 @@ import org.elasticsearch.common.regex.Regex;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.set.Sets;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.transport.TransportActionProxy;
 import org.elasticsearch.transport.TransportRequest;
 import org.elasticsearch.xpack.core.async.DeleteAsyncResultAction;
@@ -521,7 +521,7 @@ public class RBACEngine implements AuthorizationEngine {
         }
         final Role userRole = ((RBACAuthorizationInfo) authorizationInfo).getRole();
         logger.trace(
-            () -> new ParameterizedMessage(
+            () -> Message.createParameterizedMessage(
                 "Check whether role [{}] has privileges cluster=[{}] index=[{}] application=[{}]",
                 Strings.arrayToCommaDelimitedString(userRole.names()),
                 Strings.arrayToCommaDelimitedString(request.clusterPrivileges()),
@@ -597,7 +597,9 @@ public class RBACEngine implements AuthorizationEngine {
     }
 
     static GetUserPrivilegesResponse buildUserPrivilegesResponseObject(Role userRole) {
-        logger.trace(() -> new ParameterizedMessage("List privileges for role [{}]", arrayToCommaDelimitedString(userRole.names())));
+        logger.trace(
+            () -> Message.createParameterizedMessage("List privileges for role [{}]", arrayToCommaDelimitedString(userRole.names()))
+        );
 
         // We use sorted sets for Strings because they will typically be small, and having a predictable order allows for simpler testing
         final Set<String> cluster = new TreeSet<>();

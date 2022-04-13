@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.transform.transforms.pivot;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.fieldcaps.FieldCapabilitiesAction;
 import org.elasticsearch.action.fieldcaps.FieldCapabilitiesRequest;
@@ -18,6 +15,9 @@ import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.mapper.KeywordFieldMapper;
 import org.elasticsearch.index.mapper.NumberFieldMapper;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.aggregations.AggregationBuilder;
 import org.elasticsearch.search.aggregations.PipelineAggregationBuilder;
 import org.elasticsearch.xpack.core.ClientHelper;
@@ -200,7 +200,7 @@ public final class SchemaUtil {
             String destinationMapping = TransformAggregations.resolveTargetMapping(aggregationName, sourceMapping);
 
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "Deduced mapping for: [{}], agg type [{}] to [{}]",
                     targetFieldName,
                     aggregationName,
@@ -210,7 +210,7 @@ public final class SchemaUtil {
 
             if (TransformAggregations.isDynamicMapping(destinationMapping)) {
                 logger.debug(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "Dynamic target mapping set for field [{}] and aggregation [{}]",
                         targetFieldName,
                         aggregationName
@@ -229,7 +229,9 @@ public final class SchemaUtil {
 
         fieldNamesForGrouping.forEach((targetFieldName, sourceFieldName) -> {
             String destinationMapping = fieldTypesForGrouping.computeIfAbsent(targetFieldName, (s) -> sourceMappings.get(sourceFieldName));
-            logger.debug(() -> new ParameterizedMessage("Deduced mapping for: [{}] to [{}]", targetFieldName, destinationMapping));
+            logger.debug(
+                () -> Message.createParameterizedMessage("Deduced mapping for: [{}] to [{}]", targetFieldName, destinationMapping)
+            );
             if (destinationMapping != null) {
                 targetMapping.put(targetFieldName, destinationMapping);
             } else {

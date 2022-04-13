@@ -8,9 +8,6 @@
 
 package org.elasticsearch.snapshots;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.index.IndexCommit;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -40,6 +37,9 @@ import org.elasticsearch.index.snapshots.IndexShardSnapshotFailedException;
 import org.elasticsearch.index.snapshots.IndexShardSnapshotStatus;
 import org.elasticsearch.index.snapshots.IndexShardSnapshotStatus.Stage;
 import org.elasticsearch.indices.IndicesService;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.repositories.IndexId;
 import org.elasticsearch.repositories.RepositoriesService;
 import org.elasticsearch.repositories.Repository;
@@ -287,10 +287,13 @@ public class SnapshotShardsService extends AbstractLifecycleComponent implements
                         final String failure;
                         if (e instanceof AbortedSnapshotException) {
                             failure = "aborted";
-                            logger.debug(() -> new ParameterizedMessage("[{}][{}] aborted shard snapshot", shardId, snapshot), e);
+                            logger.debug(() -> Message.createParameterizedMessage("[{}][{}] aborted shard snapshot", shardId, snapshot), e);
                         } else {
                             failure = summarizeFailure(e);
-                            logger.warn(() -> new ParameterizedMessage("[{}][{}] failed to snapshot shard", shardId, snapshot), e);
+                            logger.warn(
+                                () -> Message.createParameterizedMessage("[{}][{}] failed to snapshot shard", shardId, snapshot),
+                                e
+                            );
                         }
                         snapshotStatus.moveToFailed(threadPool.absoluteTimeInMillis(), failure);
                         notifyFailedSnapshotShard(snapshot, shardId, failure, snapshotStatus.generation());
@@ -490,7 +493,12 @@ public class SnapshotShardsService extends AbstractLifecycleComponent implements
                 @Override
                 public void onFailure(Exception e) {
                     logger.warn(
-                        () -> new ParameterizedMessage("[{}][{}] failed to update snapshot state to [{}]", shardId, snapshot, status),
+                        () -> Message.createParameterizedMessage(
+                            "[{}][{}] failed to update snapshot state to [{}]",
+                            shardId,
+                            snapshot,
+                            status
+                        ),
                         e
                     );
                 }

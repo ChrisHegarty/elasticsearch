@@ -8,13 +8,7 @@
 
 package org.elasticsearch.index;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.util.StringBuilders;
 import org.elasticsearch.common.Strings;
-import org.elasticsearch.common.logging.ESLogMessage;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Setting.Property;
 import org.elasticsearch.common.xcontent.XContentHelper;
@@ -24,6 +18,8 @@ import org.elasticsearch.index.engine.Engine;
 import org.elasticsearch.index.mapper.ParsedDocument;
 import org.elasticsearch.index.shard.IndexingOperationListener;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.logging.SlowLogger;
+import org.elasticsearch.logging.spi.StringBuildersSupport;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -69,7 +65,7 @@ public final class IndexingSlowLog implements IndexingOperationListener {
         Property.IndexScope
     );
 
-    private final Logger indexLogger;
+    private final SlowLogger indexLogger;
     private final Index index;
 
     private boolean reformat;
@@ -104,8 +100,7 @@ public final class IndexingSlowLog implements IndexingOperationListener {
     );
 
     IndexingSlowLog(IndexSettings indexSettings) {
-        this.indexLogger = LogManager.getLogger(INDEX_INDEXING_SLOWLOG_PREFIX + ".index");
-        Loggers.setLevel(this.indexLogger, Level.TRACE);
+        this.indexLogger = SlowLogger.getLogger(INDEX_INDEXING_SLOWLOG_PREFIX + ".index");
         this.index = indexSettings.getIndex();
 
         indexSettings.getScopedSettings().addSettingsUpdateConsumer(INDEX_INDEXING_SLOWLOG_REFORMAT_SETTING, this::setReformat);
@@ -170,10 +165,10 @@ public final class IndexingSlowLog implements IndexingOperationListener {
 
     static final class IndexingSlowLogMessage {
 
-        public static ESLogMessage of(Index index, ParsedDocument doc, long tookInNanos, boolean reformat, int maxSourceCharsToLog) {
-
+        // TODO PG cleanup
+        public static Map<String, Object> of(Index index, ParsedDocument doc, long tookInNanos, boolean reformat, int maxSourceCharsToLog) {
             Map<String, Object> jsonFields = prepareMap(index, doc, tookInNanos, reformat, maxSourceCharsToLog);
-            return new ESLogMessage().withFields(jsonFields);
+            return jsonFields;
         }
 
         private static Map<String, Object> prepareMap(
@@ -199,11 +194,11 @@ public final class IndexingSlowLog implements IndexingOperationListener {
                 String source = XContentHelper.convertToJson(doc.source(), reformat, doc.getXContentType());
                 String trim = Strings.cleanTruncate(source, maxSourceCharsToLog).trim();
                 StringBuilder sb = new StringBuilder(trim);
-                StringBuilders.escapeJson(sb, 0);
+                StringBuildersSupport.escapeJson(sb, 0);
                 map.put("elasticsearch.slowlog.source", sb.toString());
             } catch (IOException e) {
                 StringBuilder sb = new StringBuilder("_failed_to_convert_[" + e.getMessage() + "]");
-                StringBuilders.escapeJson(sb, 0);
+                StringBuildersSupport.escapeJson(sb, 0);
                 map.put("elasticsearch.slowlog.source", sb.toString());
                 /*
                  * We choose to fail to write to the slow log and instead let this percolate up to the post index listener loop where this

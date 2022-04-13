@@ -34,7 +34,7 @@ dependencies {
   api "org.apache.httpcomponents:httpclient:${versions.httpclient}"
   api "org.apache.httpcomponents:httpcore:${versions.httpcore}"
   api "commons-logging:commons-logging:${versions.commonslogging}"
-  api "org.apache.logging.log4j:log4j-1.2-api:${versions.log4j}"
+
   api "commons-codec:commons-codec:${versions.commonscodec}"
   api "com.fasterxml.jackson.core:jackson-core:${versions.jackson}"
   api "com.fasterxml.jackson.core:jackson-databind:${versions.jackson}"
@@ -341,7 +341,6 @@ tasks.named("thirdPartyAudit").configure {
           'org.apache.avalon.framework.logger.Logger',
           'org.apache.log.Hierarchy',
           'org.apache.log.Logger',
-          'javax.jms.Message',
           'software.amazon.ion.IonReader',
           'software.amazon.ion.IonSystem',
           'software.amazon.ion.IonType',
@@ -360,6 +359,12 @@ tasks.named("thirdPartyAudit").configure {
           'com.amazonaws.services.kms.model.EncryptResult',
           'com.amazonaws.services.kms.model.GenerateDataKeyRequest',
           'com.amazonaws.services.kms.model.GenerateDataKeyResult',
-          'javax.activation.DataHandler'
+          'javax.activation.DataHandler',
+      'org.apache.log4j.Category',
+      'org.apache.log4j.Level',
+      'org.apache.log4j.Logger',
+      'org.apache.log4j.Priority'
+
+
   )
 }

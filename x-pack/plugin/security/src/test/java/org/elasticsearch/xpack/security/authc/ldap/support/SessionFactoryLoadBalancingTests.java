@@ -11,7 +11,6 @@ import com.unboundid.ldap.sdk.LDAPConnection;
 import com.unboundid.ldap.sdk.LDAPException;
 import com.unboundid.ldap.sdk.SimpleBindRequest;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.common.network.NetworkUtils;
 import org.elasticsearch.common.settings.SecureString;
@@ -20,6 +19,7 @@ import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.SuppressForbidden;
 import org.elasticsearch.core.internal.io.IOUtils;
 import org.elasticsearch.env.TestEnvironment;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.mocksocket.MockServerSocket;
 import org.elasticsearch.mocksocket.MockSocket;
 import org.elasticsearch.threadpool.TestThreadPool;
@@ -421,7 +421,7 @@ public class SessionFactoryLoadBalancingTests extends LdapTestCase {
                                 openedSockets.add(socket);
                                 logger.debug("opened socket [{}]", socket);
                             } catch (NoRouteToHostException | ConnectException e) {
-                                logger.debug(new ParameterizedMessage("marking address [{}] as failed due to:", localAddress), e);
+                                logger.debug(Message.createParameterizedMessage("marking address [{}] as failed due to:", localAddress), e);
                                 failedAddresses.add(localAddress);
                             }
                         }
@@ -431,7 +431,7 @@ public class SessionFactoryLoadBalancingTests extends LdapTestCase {
                         }
                         return true;
                     } catch (IOException e) {
-                        logger.debug(new ParameterizedMessage("caught exception while opening socket on [{}]", portToBind), e);
+                        logger.debug(Message.createParameterizedMessage("caught exception while opening socket on [{}]", portToBind), e);
                         return false;
                     }
                 });
@@ -446,7 +446,7 @@ public class SessionFactoryLoadBalancingTests extends LdapTestCase {
                     return;
                 }
             } catch (InterruptedException e) {
-                logger.debug(new ParameterizedMessage("interrupted while trying to open sockets on [{}]", portToBind), e);
+                logger.debug(Message.createParameterizedMessage("interrupted while trying to open sockets on [{}]", portToBind), e);
                 Thread.currentThread().interrupt();
             }
 

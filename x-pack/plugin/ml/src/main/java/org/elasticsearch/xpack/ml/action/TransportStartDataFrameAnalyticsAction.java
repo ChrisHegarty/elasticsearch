@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.action;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.ResourceAlreadyExistsException;
@@ -35,6 +32,9 @@ import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.license.License;
 import org.elasticsearch.license.LicenseUtils;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.persistent.AllocatedPersistentTask;
 import org.elasticsearch.persistent.PersistentTaskParams;
 import org.elasticsearch.persistent.PersistentTaskState;
@@ -170,7 +170,7 @@ public class TransportStartDataFrameAnalyticsAction extends TransportMasterNodeA
         ClusterState state,
         ActionListener<NodeAcknowledgedResponse> listener
     ) {
-        logger.debug(() -> new ParameterizedMessage("[{}] received start request", request.getId()));
+        logger.debug(() -> Message.createParameterizedMessage("[{}] received start request", request.getId()));
         if (MachineLearningField.ML_API_FEATURE.check(licenseState) == false) {
             listener.onFailure(LicenseUtils.newComplianceException(XPackField.MACHINE_LEARNING));
             return;
@@ -487,7 +487,7 @@ public class TransportStartDataFrameAnalyticsAction extends TransportMasterNodeA
                 @Override
                 public void onTimeout(TimeValue timeout) {
                     logger.error(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "[{}] timed out when starting task after [{}]. Assignment explanation [{}]",
                             task.getParams().getId(),
                             timeout,
@@ -619,7 +619,7 @@ public class TransportStartDataFrameAnalyticsAction extends TransportMasterNodeA
                 @Override
                 public void onFailure(Exception e) {
                     logger.error(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "[{}] Failed to cancel persistent task that could not be assigned due to [{}]",
                             persistentTask.getParams().getId(),
                             exception.getMessage()
@@ -768,7 +768,7 @@ public class TransportStartDataFrameAnalyticsAction extends TransportMasterNodeA
                 error -> {
                     Throwable cause = ExceptionsHelper.unwrapCause(error);
                     logger.error(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "[{}] failed to create internal index [{}]",
                             params.getId(),
                             InferenceIndexConstants.LATEST_INDEX_NAME

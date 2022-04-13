@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.security.profile;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.search.TotalHits;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
@@ -41,6 +38,9 @@ import org.elasticsearch.index.engine.VersionConflictEngineException;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.sort.SortOrder;
@@ -289,7 +289,7 @@ public class ProfileService {
                 }
             } else {
                 logger.debug(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "searching existing profile document for user [{}] from any of the realms [{}] under domain [{}]",
                         subject.getUser().principal(),
                         Strings.collectionToCommaDelimitedString(subject.getRealm().getDomain().realms()),
@@ -331,7 +331,7 @@ public class ProfileService {
                             if (subject.canAccessResourcesOf(profileDocument.subject())) {
                                 listener.onResponse(new VersionedDocument(profileDocument, hit.getPrimaryTerm(), hit.getSeqNo()));
                             } else {
-                                final ParameterizedMessage errorMessage = new ParameterizedMessage(
+                                final Message errorMessage = Message.createParameterizedMessage(
                                     "profile [{}] matches search criteria but is not accessible to "
                                         + "the current subject with username [{}] and realm name [{}]",
                                     profileDocument.uid(),
@@ -343,7 +343,7 @@ public class ProfileService {
                                 listener.onFailure(new ElasticsearchException(errorMessage.getFormattedMessage()));
                             }
                         } else {
-                            final ParameterizedMessage errorMessage = new ParameterizedMessage(
+                            final Message errorMessage = Message.createParameterizedMessage(
                                 "multiple [{}] profiles [{}] found for user [{}] from realm [{}]{}",
                                 hits.length,
                                 Arrays.stream(hits)

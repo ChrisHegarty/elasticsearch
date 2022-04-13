@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.ilm.history;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.bulk.BackoffPolicy;
@@ -24,6 +21,9 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
@@ -73,7 +73,7 @@ public class ILMHistoryStore implements Closeable {
                 if (clusterService.state().getMetadata().templatesV2().containsKey(ILM_TEMPLATE_NAME) == false) {
                     ElasticsearchException e = new ElasticsearchException("no ILM history template");
                     logger.warn(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "unable to index the following ILM history items:\n{}",
                             request.requests()
                                 .stream()
@@ -126,7 +126,7 @@ public class ILMHistoryStore implements Closeable {
             @Override
             public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
                 long items = request.numberOfActions();
-                logger.error(new ParameterizedMessage("failed to index {} items into ILM history index", items), failure);
+                logger.error(Message.createParameterizedMessage("failed to index {} items into ILM history index", items), failure);
             }
         }, "ilm-history-store")
             .setBulkActions(-1)
@@ -161,7 +161,7 @@ public class ILMHistoryStore implements Closeable {
                     processor.add(request);
                 } catch (Exception e) {
                     logger.error(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "failed add ILM history item to queue for index [{}]: [{}]",
                             ILM_HISTORY_DATA_STREAM,
                             item
@@ -172,7 +172,7 @@ public class ILMHistoryStore implements Closeable {
             });
         } catch (IOException exception) {
             logger.error(
-                new ParameterizedMessage("failed to queue ILM history item in index [{}]: [{}]", ILM_HISTORY_DATA_STREAM, item),
+                Message.createParameterizedMessage("failed to queue ILM history item in index [{}]: [{}]", ILM_HISTORY_DATA_STREAM, item),
                 exception
             );
         }

@@ -10,7 +10,6 @@ package org.elasticsearch.legacygeo.parsers;
 import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.common.geo.GeoPoint;
 import org.elasticsearch.common.geo.Orientation;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.index.mapper.AbstractShapeGeometryFieldMapper;
 import org.elasticsearch.legacygeo.GeoShapeType;
 import org.elasticsearch.legacygeo.builders.CoordinatesBuilder;
@@ -39,7 +38,7 @@ import java.util.List;
  */
 public class GeoWKTParser {
     public static final String EMPTY = "EMPTY";
-    public static final String SPACE = Loggers.SPACE;
+    public static final String SPACE = " ";// TODO PG - very odd usage of logger.
     public static final String LPAREN = "(";
     public static final String RPAREN = ")";
     public static final String COMMA = ",";

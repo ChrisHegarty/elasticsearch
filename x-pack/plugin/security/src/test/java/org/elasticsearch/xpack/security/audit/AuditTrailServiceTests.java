@@ -6,15 +6,15 @@
  */
 package org.elasticsearch.xpack.security.audit;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.license.License;
 import org.elasticsearch.license.MockLicenseState;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.transport.TransportRequest;
 import org.elasticsearch.xpack.core.security.authc.Authentication;
 import org.elasticsearch.xpack.core.security.authc.Authentication.RealmRef;
@@ -70,11 +70,11 @@ public class AuditTrailServiceTests extends ESTestCase {
         MockLogAppender mockLogAppender = new MockLogAppender();
         mockLogAppender.start();
         Logger auditTrailServiceLogger = LogManager.getLogger(AuditTrailService.class);
-        Loggers.addAppender(auditTrailServiceLogger, mockLogAppender);
+        AppenderSupport.provider().addAppender(auditTrailServiceLogger, mockLogAppender);
         when(licenseState.getOperationMode()).thenReturn(randomFrom(License.OperationMode.values()));
         if (isAuditingAllowed) {
             mockLogAppender.addExpectation(
-                new MockLogAppender.UnseenEventExpectation(
+                MockLogAppender.createUnseenEventExpectation(
                     "audit disabled because of license",
                     AuditTrailService.class.getName(),
                     Level.WARN,
@@ -85,7 +85,7 @@ public class AuditTrailServiceTests extends ESTestCase {
             );
         } else {
             mockLogAppender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "audit disabled because of license",
                     AuditTrailService.class.getName(),
                     Level.WARN,
@@ -99,17 +99,17 @@ public class AuditTrailServiceTests extends ESTestCase {
             service.get();
         }
         mockLogAppender.assertAllExpectationsMatched();
-        Loggers.removeAppender(auditTrailServiceLogger, mockLogAppender);
+        AppenderSupport.provider().removeAppender(auditTrailServiceLogger, mockLogAppender);
     }
 
     public void testNoLogRecentlyWhenLicenseProhibitsAuditing() throws Exception {
         MockLogAppender mockLogAppender = new MockLogAppender();
         mockLogAppender.start();
         Logger auditTrailServiceLogger = LogManager.getLogger(AuditTrailService.class);
-        Loggers.addAppender(auditTrailServiceLogger, mockLogAppender);
+        AppenderSupport.provider().addAppender(auditTrailServiceLogger, mockLogAppender);
         service.nextLogInstantAtomic.set(randomFrom(Instant.now().minus(Duration.ofMinutes(5)), Instant.now()));
         mockLogAppender.addExpectation(
-            new MockLogAppender.UnseenEventExpectation(
+            MockLogAppender.createUnseenEventExpectation(
                 "audit disabled because of license",
                 AuditTrailService.class.getName(),
                 Level.WARN,
@@ -120,7 +120,7 @@ public class AuditTrailServiceTests extends ESTestCase {
             service.get();
         }
         mockLogAppender.assertAllExpectationsMatched();
-        Loggers.removeAppender(auditTrailServiceLogger, mockLogAppender);
+        AppenderSupport.provider().removeAppender(auditTrailServiceLogger, mockLogAppender);
     }
 
     public void testAuthenticationFailed() throws Exception {

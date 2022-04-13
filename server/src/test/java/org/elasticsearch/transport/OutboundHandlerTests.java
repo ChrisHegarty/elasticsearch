@@ -8,9 +8,6 @@
 
 package org.elasticsearch.transport;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -22,7 +19,6 @@ import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.bytes.ReleasableBytesReference;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.network.HandlingTimeTracker;
 import org.elasticsearch.common.network.NetworkAddress;
 import org.elasticsearch.common.transport.TransportAddress;
@@ -31,8 +27,12 @@ import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.core.internal.io.Streams;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.threadpool.TestThreadPool;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.junit.After;
@@ -316,7 +316,7 @@ public class OutboundHandlerTests extends ESTestCase {
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         mockAppender.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "expected message",
                 OutboundHandler.class.getCanonicalName(),
                 Level.WARN,
@@ -324,7 +324,7 @@ public class OutboundHandlerTests extends ESTestCase {
             )
         );
         final Logger outboundHandlerLogger = LogManager.getLogger(OutboundHandler.class);
-        Loggers.addAppender(outboundHandlerLogger, mockAppender);
+        AppenderSupport.provider().addAppender(outboundHandlerLogger, mockAppender);
         handler.setSlowLogThreshold(TimeValue.timeValueMillis(5L));
 
         try {
@@ -344,7 +344,7 @@ public class OutboundHandlerTests extends ESTestCase {
             f.get();
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(outboundHandlerLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(outboundHandlerLogger, mockAppender);
             mockAppender.stop();
         }
     }

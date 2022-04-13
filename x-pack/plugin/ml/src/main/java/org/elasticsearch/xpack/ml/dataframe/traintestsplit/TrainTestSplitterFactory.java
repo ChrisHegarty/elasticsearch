@@ -6,14 +6,14 @@
  */
 package org.elasticsearch.xpack.ml.dataframe.traintestsplit;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.search.SearchRequestBuilder;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.Aggregations;
 import org.elasticsearch.search.aggregations.bucket.terms.Terms;
@@ -73,7 +73,7 @@ public class TrainTestSplitterFactory {
                 searchResponse.getHits().getTotalHits().value
             );
         } catch (Exception e) {
-            ParameterizedMessage msg = new ParameterizedMessage("[{}] Error searching total number of training docs", config.getId());
+            Message msg = Message.createParameterizedMessage("[{}] Error searching total number of training docs", config.getId());
             LOGGER.error(msg, e);
             throw new ElasticsearchException(msg.getFormattedMessage(), e);
         }
@@ -112,7 +112,7 @@ public class TrainTestSplitterFactory {
                 classification.getRandomizeSeed()
             );
         } catch (Exception e) {
-            ParameterizedMessage msg = new ParameterizedMessage("[{}] Dependent variable terms search failed", config.getId());
+            Message msg = Message.createParameterizedMessage("[{}] Dependent variable terms search failed", config.getId());
             LOGGER.error(msg, e);
             throw new ElasticsearchException(msg.getFormattedMessage(), e);
         }

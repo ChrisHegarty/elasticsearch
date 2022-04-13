@@ -7,10 +7,6 @@
  */
 package org.elasticsearch.cluster.coordination;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.LogEvent;
 import org.apache.lucene.util.Constants;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
@@ -30,7 +26,6 @@ import org.elasticsearch.cluster.service.ClusterStateUpdateStats;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.io.stream.NamedWriteableRegistry;
 import org.elasticsearch.common.io.stream.StreamOutput;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.regex.Regex;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.Settings.Builder;
@@ -40,9 +35,14 @@ import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.discovery.DiscoveryModule;
 import org.elasticsearch.gateway.GatewayService;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.LogEvent;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.monitor.NodeHealthService;
 import org.elasticsearch.monitor.StatusInfo;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 import org.elasticsearch.transport.TransportService;
 import org.elasticsearch.xcontent.XContentBuilder;
@@ -1499,11 +1499,11 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
             mockAppender.start();
             Logger joinLogger = LogManager.getLogger(JoinHelper.class);
             Logger coordinatorLogger = LogManager.getLogger(Coordinator.class);
-            Loggers.addAppender(joinLogger, mockAppender);
-            Loggers.addAppender(coordinatorLogger, mockAppender);
+            AppenderSupport.provider().addAppender(joinLogger, mockAppender);
+            AppenderSupport.provider().addAppender(coordinatorLogger, mockAppender);
             try {
                 mockAppender.addExpectation(
-                    new MockLogAppender.SeenEventExpectation(
+                    MockLogAppender.createSeenEventExpectation(
                         "failed to join",
                         JoinHelper.class.getCanonicalName(),
                         Level.INFO,
@@ -1511,7 +1511,7 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                     )
                 );
                 mockAppender.addExpectation(
-                    new MockLogAppender.SeenEventExpectation(
+                    MockLogAppender.createSeenEventExpectation(
                         "failed to ping",
                         Coordinator.class.getCanonicalName(),
                         Level.WARN,
@@ -1521,8 +1521,8 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                 cluster.runFor(10000, "failing joins");
                 mockAppender.assertAllExpectationsMatched();
             } finally {
-                Loggers.removeAppender(coordinatorLogger, mockAppender);
-                Loggers.removeAppender(joinLogger, mockAppender);
+                AppenderSupport.provider().removeAppender(coordinatorLogger, mockAppender);
+                AppenderSupport.provider().removeAppender(joinLogger, mockAppender);
                 mockAppender.stop();
             }
 
@@ -1612,15 +1612,15 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
             MockLogAppender mockAppender = new MockLogAppender();
             mockAppender.start();
             mockAppender.addExpectation(
-                new MockLogAppender.SeenEventExpectation("test1", JoinHelper.class.getCanonicalName(), Level.INFO, "*failed to join*")
+                MockLogAppender.createSeenEventExpectation("test1", JoinHelper.class.getCanonicalName(), Level.INFO, "*failed to join*")
             );
             Logger joinLogger = LogManager.getLogger(JoinHelper.class);
-            Loggers.addAppender(joinLogger, mockAppender);
+            AppenderSupport.provider().addAppender(joinLogger, mockAppender);
             cluster1.runFor(DEFAULT_STABILISATION_TIME, "failing join validation");
             try {
                 mockAppender.assertAllExpectationsMatched();
             } finally {
-                Loggers.removeAppender(joinLogger, mockAppender);
+                AppenderSupport.provider().removeAppender(joinLogger, mockAppender);
                 mockAppender.stop();
             }
             assertEquals(0, newNode.getLastAppliedClusterState().version());
@@ -1708,9 +1708,9 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                 }
             });
             final var coordinatorLogger = LogManager.getLogger(Coordinator.class);
-            Loggers.addAppender(coordinatorLogger, mockAppender);
+            AppenderSupport.provider().addAppender(coordinatorLogger, mockAppender);
             final var joinHelperLogger = LogManager.getLogger(JoinHelper.class);
-            Loggers.addAppender(joinHelperLogger, mockAppender);
+            AppenderSupport.provider().addAppender(joinHelperLogger, mockAppender);
             try {
                 cluster.runFor(
                     // This expects 8 tasks to be executed after PeerFinder handling wakeup:
@@ -1729,8 +1729,8 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                 );
                 mockAppender.assertAllExpectationsMatched();
             } finally {
-                Loggers.removeAppender(joinHelperLogger, mockAppender);
-                Loggers.removeAppender(coordinatorLogger, mockAppender);
+                AppenderSupport.provider().removeAppender(joinHelperLogger, mockAppender);
+                AppenderSupport.provider().removeAppender(coordinatorLogger, mockAppender);
                 mockAppender.stop();
             }
 
@@ -2009,7 +2009,7 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                 final MockLogAppender mockLogAppender = new MockLogAppender();
                 try {
                     mockLogAppender.start();
-                    Loggers.addAppender(LogManager.getLogger(ClusterFormationFailureHelper.class), mockLogAppender);
+                    AppenderSupport.provider().addAppender(LogManager.getLogger(ClusterFormationFailureHelper.class), mockLogAppender);
                     mockLogAppender.addExpectation(new MockLogAppender.LoggingExpectation() {
                         final Set<DiscoveryNode> nodesLogged = new HashSet<>();
 
@@ -2023,8 +2023,8 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
 
                             final List<ClusterNode> matchingNodes = cluster.clusterNodes.stream()
                                 .filter(
-                                    n -> event.getContextData()
-                                        .<String>getValue(DeterministicTaskQueue.NODE_ID_LOG_CONTEXT_KEY)
+                                    n -> event.getContextMap()
+                                        .get(DeterministicTaskQueue.NODE_ID_LOG_CONTEXT_KEY)
                                         .equals(DeterministicTaskQueue.getNodeIdForLogContext(n.getLocalNode()))
                                 )
                                 .toList();
@@ -2053,7 +2053,7 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                     cluster.runFor(warningDelayMillis + DEFAULT_DELAY_VARIABILITY, "waiting for warning to be emitted");
                     mockLogAppender.assertAllExpectationsMatched();
                 } finally {
-                    Loggers.removeAppender(LogManager.getLogger(ClusterFormationFailureHelper.class), mockLogAppender);
+                    AppenderSupport.provider().removeAppender(LogManager.getLogger(ClusterFormationFailureHelper.class), mockLogAppender);
                     mockLogAppender.stop();
                 }
             }
@@ -2078,11 +2078,11 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
             final MockLogAppender mockLogAppender = new MockLogAppender();
             try {
                 mockLogAppender.start();
-                Loggers.addAppender(LogManager.getLogger(Coordinator.CoordinatorPublication.class), mockLogAppender);
-                Loggers.addAppender(LogManager.getLogger(LagDetector.class), mockLogAppender);
+                AppenderSupport.provider().addAppender(LogManager.getLogger(Coordinator.CoordinatorPublication.class), mockLogAppender);
+                AppenderSupport.provider().addAppender(LogManager.getLogger(LagDetector.class), mockLogAppender);
 
                 mockLogAppender.addExpectation(
-                    new MockLogAppender.SeenEventExpectation(
+                    MockLogAppender.createSeenEventExpectation(
                         "publication info message",
                         Coordinator.CoordinatorPublication.class.getCanonicalName(),
                         Level.INFO,
@@ -2095,7 +2095,7 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                 );
 
                 mockLogAppender.addExpectation(
-                    new MockLogAppender.SeenEventExpectation(
+                    MockLogAppender.createSeenEventExpectation(
                         "publication warning",
                         Coordinator.CoordinatorPublication.class.getCanonicalName(),
                         Level.WARN,
@@ -2108,7 +2108,7 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                 );
 
                 mockLogAppender.addExpectation(
-                    new MockLogAppender.SeenEventExpectation(
+                    MockLogAppender.createSeenEventExpectation(
                         "lag warning",
                         LagDetector.class.getCanonicalName(),
                         Level.WARN,
@@ -2123,7 +2123,7 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
                     // log messages containing control characters are hidden from the log assertions framework, and this includes the
                     // `\r` that Windows uses in its line endings, so we only see this message on systems with `\n` line endings:
                     mockLogAppender.addExpectation(
-                        new MockLogAppender.SeenEventExpectation(
+                        MockLogAppender.createSeenEventExpectation(
                             "hot threads from lagging node",
                             LagDetector.class.getCanonicalName(),
                             Level.DEBUG,
@@ -2161,8 +2161,8 @@ public class CoordinatorTests extends AbstractCoordinatorTestCase {
 
                 mockLogAppender.assertAllExpectationsMatched();
             } finally {
-                Loggers.removeAppender(LogManager.getLogger(Coordinator.CoordinatorPublication.class), mockLogAppender);
-                Loggers.removeAppender(LogManager.getLogger(LagDetector.class), mockLogAppender);
+                AppenderSupport.provider().removeAppender(LogManager.getLogger(Coordinator.CoordinatorPublication.class), mockLogAppender);
+                AppenderSupport.provider().removeAppender(LogManager.getLogger(LagDetector.class), mockLogAppender);
                 mockLogAppender.stop();
             }
         }

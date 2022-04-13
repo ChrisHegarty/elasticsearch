@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.core.ml.utils;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchParseException;
 import org.elasticsearch.ResourceAlreadyExistsException;
 import org.elasticsearch.action.ActionListener;
@@ -32,6 +29,9 @@ import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.indices.SystemIndexDescriptor;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.XContentParserConfiguration;
 import org.elasticsearch.xcontent.json.JsonXContent;
 import org.elasticsearch.xpack.core.template.IndexTemplateConfig;
@@ -98,7 +98,11 @@ public final class MlIndexAndAlias {
 
         final ActionListener<Boolean> loggingListener = ActionListener.wrap(finalListener::onResponse, e -> {
             logger.error(
-                new ParameterizedMessage("Failed to create alias and index with pattern [{}] and alias [{}]", indexPatternPrefix, alias),
+                Message.createParameterizedMessage(
+                    "Failed to create alias and index with pattern [{}] and alias [{}]",
+                    indexPatternPrefix,
+                    alias
+                ),
                 e
             );
             finalListener.onFailure(e);

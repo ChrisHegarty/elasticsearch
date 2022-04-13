@@ -8,8 +8,6 @@
 
 package org.elasticsearch;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexFormatTooNewException;
 import org.apache.lucene.index.IndexFormatTooOldException;
@@ -17,6 +15,8 @@ import org.elasticsearch.action.ShardOperationFailedException;
 import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.XContentParseException;
 
@@ -185,6 +185,41 @@ public final class ExceptionsHelper {
             } while ((t = t.getCause()) != null);
         }
         return null;
+    }
+
+    // TODO PG - moved from org.apache.logging.log4j.core.util.Throwables
+    public static Throwable getRootCause(final Throwable throwable) {
+
+        // Keep a second pointer that slowly walks the causal chain. If the fast
+        // pointer ever catches the slower pointer, then there's a loop.
+        Throwable slowPointer = throwable;
+        boolean advanceSlowPointer = false;
+
+        Throwable parent = throwable;
+        Throwable cause;
+        while ((cause = parent.getCause()) != null) {
+            parent = cause;
+            if (parent == slowPointer) {
+                throw new IllegalArgumentException("loop in causal chain");
+            }
+            if (advanceSlowPointer) {
+                slowPointer = slowPointer.getCause();
+            }
+            advanceSlowPointer = advanceSlowPointer == false; // only advance every other iteration
+        }
+        return parent;
+
+    }
+
+    public static boolean rethrow(@Nullable Throwable e) {
+        if (e != null) {
+            if (e instanceof RuntimeException) {
+                throw (RuntimeException) e;
+            } else {
+                throw new RuntimeException(e);
+            }
+        }
+        return true;
     }
 
     /**

@@ -8,8 +8,6 @@
 
 package org.elasticsearch.cluster;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
 import org.elasticsearch.Build;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -21,7 +19,6 @@ import org.elasticsearch.cluster.node.DiscoveryNodes;
 import org.elasticsearch.common.UUIDs;
 import org.elasticsearch.common.component.Lifecycle;
 import org.elasticsearch.common.component.LifecycleListener;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.BoundTransportAddress;
 import org.elasticsearch.common.transport.TransportAddress;
@@ -30,8 +27,11 @@ import org.elasticsearch.core.AbstractRefCounted;
 import org.elasticsearch.core.CheckedRunnable;
 import org.elasticsearch.core.RefCounted;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 import org.elasticsearch.threadpool.TestThreadPool;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -338,11 +338,11 @@ public class NodeConnectionsServiceTests extends ESTestCase {
         MockLogAppender appender = new MockLogAppender();
         try {
             appender.start();
-            Loggers.addAppender(LogManager.getLogger("org.elasticsearch.cluster.NodeConnectionsService"), appender);
+            AppenderSupport.provider().addAppender(LogManager.getLogger("org.elasticsearch.cluster.NodeConnectionsService"), appender);
             for (DiscoveryNode targetNode : targetNodes) {
                 if (disconnectedNodes.contains(targetNode)) {
                     appender.addExpectation(
-                        new MockLogAppender.SeenEventExpectation(
+                        MockLogAppender.createSeenEventExpectation(
                             "connecting to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -350,7 +350,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                         )
                     );
                     appender.addExpectation(
-                        new MockLogAppender.SeenEventExpectation(
+                        MockLogAppender.createSeenEventExpectation(
                             "connected to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -359,7 +359,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                     );
                 } else {
                     appender.addExpectation(
-                        new MockLogAppender.UnseenEventExpectation(
+                        MockLogAppender.createUnseenEventExpectation(
                             "connecting to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -367,7 +367,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                         )
                     );
                     appender.addExpectation(
-                        new MockLogAppender.UnseenEventExpectation(
+                        MockLogAppender.createUnseenEventExpectation(
                             "connected to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -380,7 +380,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
             runTasksUntil(deterministicTaskQueue, CLUSTER_NODE_RECONNECT_INTERVAL_SETTING.get(Settings.EMPTY).millis());
             appender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(LogManager.getLogger("org.elasticsearch.cluster.NodeConnectionsService"), appender);
+            AppenderSupport.provider().removeAppender(LogManager.getLogger("org.elasticsearch.cluster.NodeConnectionsService"), appender);
             appender.stop();
         }
         for (DiscoveryNode disconnectedNode : disconnectedNodes) {
@@ -395,11 +395,11 @@ public class NodeConnectionsServiceTests extends ESTestCase {
         appender = new MockLogAppender();
         try {
             appender.start();
-            Loggers.addAppender(LogManager.getLogger("org.elasticsearch.cluster.NodeConnectionsService"), appender);
+            AppenderSupport.provider().addAppender(LogManager.getLogger("org.elasticsearch.cluster.NodeConnectionsService"), appender);
             for (DiscoveryNode targetNode : targetNodes) {
                 if (disconnectedNodes.contains(targetNode) && newTargetNodes.get(targetNode.getId()) != null) {
                     appender.addExpectation(
-                        new MockLogAppender.SeenEventExpectation(
+                        MockLogAppender.createSeenEventExpectation(
                             "connecting to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -407,7 +407,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                         )
                     );
                     appender.addExpectation(
-                        new MockLogAppender.SeenEventExpectation(
+                        MockLogAppender.createSeenEventExpectation(
                             "connected to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -416,7 +416,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                     );
                 } else {
                     appender.addExpectation(
-                        new MockLogAppender.UnseenEventExpectation(
+                        MockLogAppender.createUnseenEventExpectation(
                             "connecting to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -424,7 +424,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                         )
                     );
                     appender.addExpectation(
-                        new MockLogAppender.UnseenEventExpectation(
+                        MockLogAppender.createUnseenEventExpectation(
                             "connected to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -434,7 +434,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                 }
                 if (newTargetNodes.get(targetNode.getId()) == null) {
                     appender.addExpectation(
-                        new MockLogAppender.SeenEventExpectation(
+                        MockLogAppender.createSeenEventExpectation(
                             "disconnected from " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -445,7 +445,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
             }
             for (DiscoveryNode targetNode : newTargetNodes) {
                 appender.addExpectation(
-                    new MockLogAppender.UnseenEventExpectation(
+                    MockLogAppender.createUnseenEventExpectation(
                         "disconnected from " + targetNode,
                         "org.elasticsearch.cluster.NodeConnectionsService",
                         Level.DEBUG,
@@ -454,7 +454,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                 );
                 if (targetNodes.get(targetNode.getId()) == null) {
                     appender.addExpectation(
-                        new MockLogAppender.SeenEventExpectation(
+                        MockLogAppender.createSeenEventExpectation(
                             "connecting to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -462,7 +462,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
                         )
                     );
                     appender.addExpectation(
-                        new MockLogAppender.SeenEventExpectation(
+                        MockLogAppender.createSeenEventExpectation(
                             "connected to " + targetNode,
                             "org.elasticsearch.cluster.NodeConnectionsService",
                             Level.DEBUG,
@@ -477,7 +477,7 @@ public class NodeConnectionsServiceTests extends ESTestCase {
             deterministicTaskQueue.runAllRunnableTasks();
             appender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(LogManager.getLogger("org.elasticsearch.cluster.NodeConnectionsService"), appender);
+            AppenderSupport.provider().removeAppender(LogManager.getLogger("org.elasticsearch.cluster.NodeConnectionsService"), appender);
             appender.stop();
         }
     }

@@ -8,13 +8,13 @@
 
 package org.elasticsearch.index.shard;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Assertions;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.threadpool.Scheduler;
 import org.junit.After;
@@ -187,7 +187,7 @@ public class GlobalCheckpointListenersTests extends ESTestCase {
             // the listener should be notified immediately
             if (failure) {
                 assertThat(globalCheckpoints[i], equalTo(Long.MIN_VALUE));
-                final ArgumentCaptor<ParameterizedMessage> message = ArgumentCaptor.forClass(ParameterizedMessage.class);
+                final ArgumentCaptor<Message> message = ArgumentCaptor.forClass(Message.class);
                 final ArgumentCaptor<RuntimeException> t = ArgumentCaptor.forClass(RuntimeException.class);
                 verify(mockLogger).warn(message.capture(), t.capture());
                 reset(mockLogger);
@@ -286,7 +286,7 @@ public class GlobalCheckpointListenersTests extends ESTestCase {
             }
         }
         if (failureCount > 0) {
-            final ArgumentCaptor<ParameterizedMessage> message = ArgumentCaptor.forClass(ParameterizedMessage.class);
+            final ArgumentCaptor<Message> message = ArgumentCaptor.forClass(Message.class);
             final ArgumentCaptor<RuntimeException> t = ArgumentCaptor.forClass(RuntimeException.class);
             verify(mockLogger, times(failureCount)).warn(message.capture(), t.capture());
             assertThat(

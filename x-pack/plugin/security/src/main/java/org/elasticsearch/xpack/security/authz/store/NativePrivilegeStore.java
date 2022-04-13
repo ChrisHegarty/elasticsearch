@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.security.authz.store;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.DocWriteResponse;
@@ -36,6 +33,9 @@ import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.index.query.TermsQueryBuilder;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParseException;
@@ -198,7 +198,7 @@ public class NativePrivilegeStore {
                         .setFetchSource(true)
                         .request();
                     logger.trace(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "Searching for [{}] privileges with query [{}]",
                             applications,
                             Strings.toString(query)
@@ -270,7 +270,7 @@ public class NativePrivilegeStore {
                 return privilege;
             }
         } catch (IOException | XContentParseException e) {
-            logger.error(new ParameterizedMessage("cannot parse application privilege [{}]", name), e);
+            logger.error(Message.createParameterizedMessage("cannot parse application privilege [{}]", name), e);
             return null;
         }
     }

@@ -8,9 +8,6 @@
 
 package org.elasticsearch.action.admin.indices.mapping.put;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.RequestValidators;
 import org.elasticsearch.action.support.ActionFilters;
@@ -28,6 +25,9 @@ import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.indices.SystemIndexDescriptor;
 import org.elasticsearch.indices.SystemIndices;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
@@ -112,7 +112,10 @@ public class TransportPutMappingAction extends AcknowledgedTransportMasterNodeAc
 
             performMappingUpdate(concreteIndices, request, listener, metadataMappingService);
         } catch (IndexNotFoundException ex) {
-            logger.debug(() -> new ParameterizedMessage("failed to put mappings on indices [{}]", Arrays.asList(request.indices())), ex);
+            logger.debug(
+                () -> Message.createParameterizedMessage("failed to put mappings on indices [{}]", Arrays.asList(request.indices())),
+                ex
+            );
             throw ex;
         }
     }
@@ -148,7 +151,10 @@ public class TransportPutMappingAction extends AcknowledgedTransportMasterNodeAc
         MetadataMappingService metadataMappingService
     ) {
         final ActionListener<AcknowledgedResponse> wrappedListener = listener.delegateResponse((l, e) -> {
-            logger.debug(() -> new ParameterizedMessage("failed to put mappings on indices [{}]", Arrays.asList(concreteIndices)), e);
+            logger.debug(
+                () -> Message.createParameterizedMessage("failed to put mappings on indices [{}]", Arrays.asList(concreteIndices)),
+                e
+            );
             l.onFailure(e);
         });
         final PutMappingClusterStateUpdateRequest updateRequest;

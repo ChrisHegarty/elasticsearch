@@ -7,9 +7,6 @@
  */
 package org.elasticsearch.cluster.coordination;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -37,6 +34,9 @@ import org.elasticsearch.common.util.LazyInitializable;
 import org.elasticsearch.core.AbstractRefCounted;
 import org.elasticsearch.core.Releasables;
 import org.elasticsearch.core.internal.io.IOUtils;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.BytesTransportRequest;
 import org.elasticsearch.transport.TransportException;
@@ -370,7 +370,10 @@ public class PublicationTransportHandler {
                     );
                 } catch (Exception e) {
                     logger.warn(
-                        () -> new ParameterizedMessage("failed to serialize cluster state before publishing it to node {}", destination),
+                        () -> Message.createParameterizedMessage(
+                            "failed to serialize cluster state before publishing it to node {}",
+                            destination
+                        ),
                         e
                     );
                     listener.onFailure(e);
@@ -395,7 +398,7 @@ public class PublicationTransportHandler {
                 if (e instanceof final TransportException transportException) {
                     if (transportException.unwrapCause() instanceof IncompatibleClusterStateVersionException) {
                         logger.debug(
-                            () -> new ParameterizedMessage(
+                            () -> Message.createParameterizedMessage(
                                 "resending full cluster state to node {} reason {}",
                                 destination,
                                 transportException.getDetailedMessage()
@@ -406,7 +409,7 @@ public class PublicationTransportHandler {
                     }
                 }
 
-                logger.debug(new ParameterizedMessage("failed to send cluster state to {}", destination), e);
+                logger.debug(Message.createParameterizedMessage("failed to send cluster state to {}", destination), e);
                 delegate.onFailure(e);
             }), this::decRef));
         }
@@ -436,7 +439,7 @@ public class PublicationTransportHandler {
                 );
             } catch (Exception e) {
                 assert false : e;
-                logger.warn(() -> new ParameterizedMessage("error sending cluster state to {}", destination), e);
+                logger.warn(() -> Message.createParameterizedMessage("error sending cluster state to {}", destination), e);
                 listener.onFailure(e);
             }
         }

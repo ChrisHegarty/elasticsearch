@@ -7,15 +7,15 @@
 
 package org.elasticsearch.xpack.security.authz.interceptor;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchSecurityException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.IndicesRequest;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.license.LicenseUtils;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.transport.TransportActionProxy;
 import org.elasticsearch.xpack.core.security.authz.AuthorizationEngine;
 import org.elasticsearch.xpack.core.security.authz.AuthorizationEngine.AuthorizationInfo;
@@ -60,7 +60,7 @@ public class DlsFlsLicenseRequestInterceptor implements RequestInterceptor {
                     boolean incompatibleLicense = false;
                     if (dlsFlsUsage.hasFieldLevelSecurity()) {
                         logger.debug(
-                            () -> new ParameterizedMessage(
+                            () -> Message.createParameterizedMessage(
                                 "User [{}] has field level security on [{}]",
                                 requestInfo.getAuthentication(),
                                 indicesAccessControl.getIndicesWithFieldLevelSecurity()
@@ -72,7 +72,7 @@ public class DlsFlsLicenseRequestInterceptor implements RequestInterceptor {
                     }
                     if (dlsFlsUsage.hasDocumentLevelSecurity()) {
                         logger.debug(
-                            () -> new ParameterizedMessage(
+                            () -> Message.createParameterizedMessage(
                                 "User [{}] has document level security on [{}]",
                                 requestInfo.getAuthentication(),
                                 indicesAccessControl.getIndicesWithDocumentLevelSecurity()

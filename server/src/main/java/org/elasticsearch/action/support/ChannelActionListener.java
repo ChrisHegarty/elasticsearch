@@ -8,10 +8,10 @@
 
 package org.elasticsearch.action.support;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.transport.TransportChannel;
 import org.elasticsearch.transport.TransportRequest;
 import org.elasticsearch.transport.TransportResponse;
@@ -48,7 +48,11 @@ public final class ChannelActionListener<Response extends TransportResponse, Req
         } catch (Exception sendException) {
             sendException.addSuppressed(e);
             logger.warn(
-                () -> new ParameterizedMessage("Failed to send error response for action [{}] and request [{}]", actionName, request),
+                () -> Message.createParameterizedMessage(
+                    "Failed to send error response for action [{}] and request [{}]",
+                    actionName,
+                    request
+                ),
                 sendException
             );
         }

@@ -8,10 +8,6 @@
 
 package org.elasticsearch.action.admin.indices.rollover;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ResourceAlreadyExistsException;
 import org.elasticsearch.action.admin.indices.alias.Alias;
 import org.elasticsearch.action.admin.indices.alias.get.GetAliasesRequest;
@@ -27,17 +23,21 @@ import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.Template;
 import org.elasticsearch.cluster.routing.allocation.AllocationService;
 import org.elasticsearch.common.Strings;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.time.DateFormatter;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.test.ESIntegTestCase;
 import org.elasticsearch.test.InternalSettingsPlugin;
-import org.elasticsearch.test.MockLogAppender;
 
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -256,20 +256,20 @@ public class RolloverIT extends ESIntegTestCase {
         MockLogAppender appender = new MockLogAppender();
         appender.start();
         appender.addExpectation(
-            new MockLogAppender.UnseenEventExpectation(
+            MockLogAppender.createUnseenEventExpectation(
                 "no related message logged on dry run",
                 AllocationService.class.getName(),
                 Level.INFO,
                 "*test_index*"
             )
         );
-        Loggers.addAppender(allocationServiceLogger, appender);
+        AppenderSupport.provider().addAppender(allocationServiceLogger, appender);
 
         final RolloverResponse response = client().admin().indices().prepareRolloverIndex("test_alias").dryRun(true).get();
 
         appender.assertAllExpectationsMatched();
         appender.stop();
-        Loggers.removeAppender(allocationServiceLogger, appender);
+        AppenderSupport.provider().removeAppender(allocationServiceLogger, appender);
 
         assertThat(response.getOldIndex(), equalTo("test_index-1"));
         assertThat(response.getNewIndex(), equalTo("test_index-000002"));
@@ -766,7 +766,7 @@ public class RolloverIT extends ESIntegTestCase {
                     }
                 }
             } catch (Exception e) {
-                logger.error(new ParameterizedMessage("thread [{}] encountered unexpected exception", i), e);
+                logger.error(Message.createParameterizedMessage("thread [{}] encountered unexpected exception", i), e);
                 fail("we should not encounter unexpected exceptions");
             }
         }, "rollover-thread-" + i)).collect(Collectors.toSet());

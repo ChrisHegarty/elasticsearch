@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.shutdown;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.ActionFilters;
@@ -27,6 +24,9 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.Priority;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.core.SuppressForbidden;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
@@ -86,7 +86,7 @@ public class TransportDeleteShutdownNodeAction extends AcknowledgedTransportMast
 
             @Override
             public void onFailure(Exception e) {
-                logger.error(new ParameterizedMessage("failed to delete shutdown for node [{}]", request.getNodeId()), e);
+                logger.error(Message.createParameterizedMessage("failed to delete shutdown for node [{}]", request.getNodeId()), e);
                 listener.onFailure(e);
             }
 
@@ -103,7 +103,10 @@ public class TransportDeleteShutdownNodeAction extends AcknowledgedTransportMast
                         @Override
                         public void onFailure(Exception e) {
                             logger.warn(
-                                new ParameterizedMessage("failed to start reroute after deleting node [{}] shutdown", request.getNodeId()),
+                                Message.createParameterizedMessage(
+                                    "failed to start reroute after deleting node [{}] shutdown",
+                                    request.getNodeId()
+                                ),
                                 e
                             );
                             listener.onFailure(e);

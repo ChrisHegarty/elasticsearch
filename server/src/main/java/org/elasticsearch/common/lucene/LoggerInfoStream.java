@@ -8,9 +8,9 @@
 
 package org.elasticsearch.common.lucene;
 
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.util.InfoStream;
-import org.elasticsearch.common.logging.Loggers;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.PrefixLogger;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,7 +40,7 @@ public final class LoggerInfoStream extends InfoStream {
     }
 
     private Logger getLogger(String component) {
-        return loggers.computeIfAbsent(component, c -> Loggers.getLogger(parentLogger, "." + c));
+        return loggers.computeIfAbsent(component, c -> PrefixLogger.getLogger(parentLogger, "." + c));
     }
 
     @Override

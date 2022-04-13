@@ -8,9 +8,6 @@
 
 package org.elasticsearch.cluster.allocation;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.tests.util.LuceneTestCase;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.elasticsearch.action.admin.cluster.reroute.ClusterRerouteResponse;
@@ -35,18 +32,21 @@ import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDeci
 import org.elasticsearch.cluster.routing.allocation.decider.ThrottlingAllocationDecider;
 import org.elasticsearch.common.Priority;
 import org.elasticsearch.common.io.FileSystemUtils;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.internal.io.IOUtils;
 import org.elasticsearch.env.NodeEnvironment;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESIntegTestCase;
 import org.elasticsearch.test.ESIntegTestCase.ClusterScope;
 import org.elasticsearch.test.ESIntegTestCase.Scope;
 import org.elasticsearch.test.InternalTestCluster;
-import org.elasticsearch.test.MockLogAppender;
 
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -437,14 +437,14 @@ public class ClusterRerouteIT extends ESIntegTestCase {
         MockLogAppender dryRunMockLog = new MockLogAppender();
         dryRunMockLog.start();
         dryRunMockLog.addExpectation(
-            new MockLogAppender.UnseenEventExpectation(
+            MockLogAppender.createUnseenEventExpectation(
                 "no completed message logged on dry run",
                 TransportClusterRerouteAction.class.getName(),
                 Level.INFO,
                 "allocated an empty primary*"
             )
         );
-        Loggers.addAppender(actionLogger, dryRunMockLog);
+        AppenderSupport.provider().addAppender(actionLogger, dryRunMockLog);
 
         AllocationCommand dryRunAllocation = new AllocateEmptyPrimaryAllocationCommand(indexName, 0, nodeName1, true);
         ClusterRerouteResponse dryRunResponse = client().admin()
@@ -462,12 +462,12 @@ public class ClusterRerouteIT extends ESIntegTestCase {
 
         dryRunMockLog.assertAllExpectationsMatched();
         dryRunMockLog.stop();
-        Loggers.removeAppender(actionLogger, dryRunMockLog);
+        AppenderSupport.provider().removeAppender(actionLogger, dryRunMockLog);
 
         MockLogAppender allocateMockLog = new MockLogAppender();
         allocateMockLog.start();
         allocateMockLog.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "message for first allocate empty primary",
                 TransportClusterRerouteAction.class.getName(),
                 Level.INFO,
@@ -475,14 +475,14 @@ public class ClusterRerouteIT extends ESIntegTestCase {
             )
         );
         allocateMockLog.addExpectation(
-            new MockLogAppender.UnseenEventExpectation(
+            MockLogAppender.createUnseenEventExpectation(
                 "no message for second allocate empty primary",
                 TransportClusterRerouteAction.class.getName(),
                 Level.INFO,
                 "allocated an empty primary*" + nodeName2 + "*"
             )
         );
-        Loggers.addAppender(actionLogger, allocateMockLog);
+        AppenderSupport.provider().addAppender(actionLogger, allocateMockLog);
 
         AllocationCommand yesDecisionAllocation = new AllocateEmptyPrimaryAllocationCommand(indexName, 0, nodeName1, true);
         AllocationCommand noDecisionAllocation = new AllocateEmptyPrimaryAllocationCommand("noexist", 1, nodeName2, true);
@@ -501,7 +501,7 @@ public class ClusterRerouteIT extends ESIntegTestCase {
 
         allocateMockLog.assertAllExpectationsMatched();
         allocateMockLog.stop();
-        Loggers.removeAppender(actionLogger, allocateMockLog);
+        AppenderSupport.provider().removeAppender(actionLogger, allocateMockLog);
     }
 
     public void testClusterRerouteWithBlocks() {

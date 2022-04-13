@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.datafeed.extractor.scroll;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.search.ClearScrollAction;
 import org.elasticsearch.action.search.ClearScrollRequest;
@@ -20,6 +17,9 @@ import org.elasticsearch.action.search.SearchScrollAction;
 import org.elasticsearch.action.search.SearchScrollRequestBuilder;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.StoredFieldsContext;
@@ -255,7 +255,7 @@ class ScrollDataExtractor implements DataExtractor {
         } catch (Exception e) {
             // This method is designed to be called from exception handlers, so just logs this exception
             // in the cleanup process so that the original exception can be propagated
-            logger.error(new ParameterizedMessage("[{}] Failed to clear scroll", context.jobId), e);
+            logger.error(Message.createParameterizedMessage("[{}] Failed to clear scroll", context.jobId), e);
         }
     }
 

@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.core.async;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
@@ -17,6 +14,9 @@ import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.TriConsumer;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.tasks.TaskManager;
 
@@ -91,7 +91,7 @@ public class AsyncResultsService<Task extends AsyncTask, Response extends AsyncR
                         RestStatus status = ExceptionsHelper.status(ExceptionsHelper.unwrapCause(exc));
                         if (status != RestStatus.NOT_FOUND) {
                             logger.error(
-                                () -> new ParameterizedMessage(
+                                () -> Message.createParameterizedMessage(
                                     "failed to update expiration time for async-search [{}]",
                                     searchId.getEncoded()
                                 ),

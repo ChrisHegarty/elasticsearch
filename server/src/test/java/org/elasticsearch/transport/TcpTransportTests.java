@@ -8,15 +8,12 @@
 
 package org.elasticsearch.transport;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.support.PlainActionFuture;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.common.component.Lifecycle;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.network.HandlingTimeTracker;
 import org.elasticsearch.common.network.NetworkService;
 import org.elasticsearch.common.network.NetworkUtils;
@@ -24,8 +21,11 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
 import org.elasticsearch.common.util.MockPageCacheRecycler;
 import org.elasticsearch.indices.breaker.NoneCircuitBreakerService;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 import org.elasticsearch.threadpool.TestThreadPool;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -422,15 +422,15 @@ public class TcpTransportTests extends ESTestCase {
             false,
             new ElasticsearchException("simulated"),
             true,
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.ERROR, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.WARN, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.INFO, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.DEBUG, "*")
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.ERROR, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.WARN, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.INFO, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.DEBUG, "*")
         );
 
         testExceptionHandling(
             new ElasticsearchException("simulated"),
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "message",
                 "org.elasticsearch.transport.TcpTransport",
                 Level.WARN,
@@ -446,7 +446,7 @@ public class TcpTransportTests extends ESTestCase {
             "An existing connection was forcibly closed by remote host" }) {
             testExceptionHandling(
                 new ElasticsearchException(message),
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     message,
                     "org.elasticsearch.transport.TcpTransport",
                     Level.INFO,
@@ -462,14 +462,14 @@ public class TcpTransportTests extends ESTestCase {
             false,
             new ElasticsearchException("simulated"),
             true,
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.ERROR, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.WARN, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.INFO, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.DEBUG, "*")
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.ERROR, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.WARN, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.INFO, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.DEBUG, "*")
         );
         testExceptionHandling(
             new ElasticsearchException("simulated"),
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "message",
                 "org.elasticsearch.transport.TcpTransport",
                 Level.WARN,
@@ -478,7 +478,7 @@ public class TcpTransportTests extends ESTestCase {
         );
         testExceptionHandling(
             new ClosedChannelException(),
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "message",
                 "org.elasticsearch.transport.TcpTransport",
                 Level.DEBUG,
@@ -495,7 +495,7 @@ public class TcpTransportTests extends ESTestCase {
             "An existing connection was forcibly closed by remote host" }) {
             testExceptionHandling(
                 new ElasticsearchException(message),
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     message,
                     "org.elasticsearch.transport.TcpTransport",
                     Level.INFO,
@@ -508,7 +508,7 @@ public class TcpTransportTests extends ESTestCase {
         for (final String message : new String[] { "Socket is closed", "Socket closed", "SSLEngine closed already" }) {
             testExceptionHandling(
                 new ElasticsearchException(message),
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     message,
                     "org.elasticsearch.transport.TcpTransport",
                     Level.DEBUG,
@@ -519,7 +519,7 @@ public class TcpTransportTests extends ESTestCase {
 
         testExceptionHandling(
             new BindException(),
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "message",
                 "org.elasticsearch.transport.TcpTransport",
                 Level.DEBUG,
@@ -528,7 +528,7 @@ public class TcpTransportTests extends ESTestCase {
         );
         testExceptionHandling(
             new CancelledKeyException(),
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "message",
                 "org.elasticsearch.transport.TcpTransport",
                 Level.DEBUG,
@@ -539,14 +539,14 @@ public class TcpTransportTests extends ESTestCase {
             true,
             new TcpTransport.HttpRequestOnTransportException("test"),
             false,
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.ERROR, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.WARN, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.INFO, "*"),
-            new MockLogAppender.UnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.DEBUG, "*")
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.ERROR, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.WARN, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.INFO, "*"),
+            MockLogAppender.createUnseenEventExpectation("message", "org.elasticsearch.transport.TcpTransport", Level.DEBUG, "*")
         );
         testExceptionHandling(
             new StreamCorruptedException("simulated"),
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "message",
                 "org.elasticsearch.transport.TcpTransport",
                 Level.WARN,
@@ -555,7 +555,7 @@ public class TcpTransportTests extends ESTestCase {
         );
         testExceptionHandling(
             new TransportNotReadyException(),
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "message",
                 "org.elasticsearch.transport.TcpTransport",
                 Level.DEBUG,
@@ -581,7 +581,7 @@ public class TcpTransportTests extends ESTestCase {
         try {
             appender.start();
 
-            Loggers.addAppender(LogManager.getLogger(TcpTransport.class), appender);
+            AppenderSupport.provider().addAppender(LogManager.getLogger(TcpTransport.class), appender);
             for (MockLogAppender.LoggingExpectation expectation : expectations) {
                 appender.addExpectation(expectation);
             }
@@ -621,7 +621,7 @@ public class TcpTransportTests extends ESTestCase {
             appender.assertAllExpectationsMatched();
 
         } finally {
-            Loggers.removeAppender(LogManager.getLogger(TcpTransport.class), appender);
+            AppenderSupport.provider().removeAppender(LogManager.getLogger(TcpTransport.class), appender);
             appender.stop();
             ThreadPool.terminate(testThreadPool, 30, TimeUnit.SECONDS);
         }

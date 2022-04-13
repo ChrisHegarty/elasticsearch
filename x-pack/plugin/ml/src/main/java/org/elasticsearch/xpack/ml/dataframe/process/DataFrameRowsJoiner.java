@@ -6,14 +6,14 @@
  */
 package org.elasticsearch.xpack.ml.dataframe.process;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.tasks.TaskId;
 import org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper;
@@ -79,7 +79,7 @@ class DataFrameRowsJoiner implements AutoCloseable {
         try {
             addResultAndJoinIfEndOfBatch(rowResults);
         } catch (Exception e) {
-            LOGGER.error(new ParameterizedMessage("[{}] Failed to join results ", analyticsId), e);
+            LOGGER.error(Message.createParameterizedMessage("[{}] Failed to join results ", analyticsId), e);
             failure = "[" + analyticsId + "] Failed to join results: " + e.getMessage();
         }
     }
@@ -145,13 +145,13 @@ class DataFrameRowsJoiner implements AutoCloseable {
         try {
             joinCurrentResults();
         } catch (Exception e) {
-            LOGGER.error(new ParameterizedMessage("[{}] Failed to join results", analyticsId), e);
+            LOGGER.error(Message.createParameterizedMessage("[{}] Failed to join results", analyticsId), e);
             failure = "[" + analyticsId + "] Failed to join results: " + e.getMessage();
         } finally {
             try {
                 consumeDataExtractor();
             } catch (Exception e) {
-                LOGGER.error(new ParameterizedMessage("[{}] Failed to consume data extractor", analyticsId), e);
+                LOGGER.error(Message.createParameterizedMessage("[{}] Failed to consume data extractor", analyticsId), e);
             }
         }
     }

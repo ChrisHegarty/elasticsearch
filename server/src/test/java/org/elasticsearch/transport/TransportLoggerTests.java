@@ -7,19 +7,19 @@
  */
 package org.elasticsearch.transport;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.admin.cluster.stats.ClusterStatsAction;
 import org.elasticsearch.action.admin.cluster.stats.ClusterStatsRequest;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.RecyclerBytesStreamOutput;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.PageCacheRecycler;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 
 import java.io.IOException;
@@ -34,12 +34,12 @@ public class TransportLoggerTests extends ESTestCase {
     public void setUp() throws Exception {
         super.setUp();
         appender = new MockLogAppender();
-        Loggers.addAppender(LogManager.getLogger(TransportLogger.class), appender);
+        AppenderSupport.provider().addAppender(LogManager.getLogger(TransportLogger.class), appender);
         appender.start();
     }
 
     public void tearDown() throws Exception {
-        Loggers.removeAppender(LogManager.getLogger(TransportLogger.class), appender);
+        AppenderSupport.provider().removeAppender(LogManager.getLogger(TransportLogger.class), appender);
         appender.stop();
         super.tearDown();
     }
@@ -52,7 +52,7 @@ public class TransportLoggerTests extends ESTestCase {
             + ", header size: \\d+B"
             + ", action: cluster:monitor/stats]"
             + " WRITE: \\d+B";
-        final MockLogAppender.LoggingExpectation writeExpectation = new MockLogAppender.PatternSeenEventExpectation(
+        final MockLogAppender.LoggingExpectation writeExpectation = MockLogAppender.createPatternSeenEventExpectation(
             "hot threads request",
             TransportLogger.class.getCanonicalName(),
             Level.TRACE,
@@ -67,7 +67,7 @@ public class TransportLoggerTests extends ESTestCase {
             + ", action: cluster:monitor/stats]"
             + " READ: \\d+B";
 
-        final MockLogAppender.LoggingExpectation readExpectation = new MockLogAppender.PatternSeenEventExpectation(
+        final MockLogAppender.LoggingExpectation readExpectation = MockLogAppender.createPatternSeenEventExpectation(
             "cluster monitor request",
             TransportLogger.class.getCanonicalName(),
             Level.TRACE,

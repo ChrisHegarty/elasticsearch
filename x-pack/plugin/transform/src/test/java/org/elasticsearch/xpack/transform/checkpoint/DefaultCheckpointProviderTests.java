@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.transform.checkpoint;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.LatchedActionListener;
@@ -19,14 +16,18 @@ import org.elasticsearch.action.admin.indices.stats.IndicesStatsAction;
 import org.elasticsearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.elasticsearch.action.support.DefaultShardOperationFailedException;
 import org.elasticsearch.client.internal.Client;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.common.util.set.Sets;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.core.MockLogAppender.LoggingExpectation;
+import org.elasticsearch.logging.spi.AppenderSupport;
+import org.elasticsearch.logging.spi.LogLevelSupport;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
-import org.elasticsearch.test.MockLogAppender.LoggingExpectation;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.core.transform.transforms.SourceConfig;
 import org.elasticsearch.xpack.core.transform.transforms.TransformCheckpoint;
@@ -83,7 +84,7 @@ public class DefaultCheckpointProviderTests extends ESTestCase {
         DefaultCheckpointProvider provider = newCheckpointProvider(transformConfig);
 
         assertExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "warn when source is empty",
                 checkpointProviderLogger.getName(),
                 Level.WARN,
@@ -99,7 +100,7 @@ public class DefaultCheckpointProviderTests extends ESTestCase {
         );
 
         assertExpectation(
-            new MockLogAppender.UnseenEventExpectation(
+            MockLogAppender.createUnseenEventExpectation(
                 "do not warn if empty again",
                 checkpointProviderLogger.getName(),
                 Level.WARN,
@@ -121,7 +122,7 @@ public class DefaultCheckpointProviderTests extends ESTestCase {
         DefaultCheckpointProvider provider = newCheckpointProvider(transformConfig);
 
         assertExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "info about adds/removal",
                 checkpointProviderLogger.getName(),
                 Level.DEBUG,
@@ -137,7 +138,7 @@ public class DefaultCheckpointProviderTests extends ESTestCase {
         );
 
         assertExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "info about adds/removal",
                 checkpointProviderLogger.getName(),
                 Level.DEBUG,
@@ -152,7 +153,7 @@ public class DefaultCheckpointProviderTests extends ESTestCase {
             () -> { provider.reportSourceIndexChanges(Sets.newHashSet("index", "other_index"), Collections.singleton("other_index")); }
         );
         assertExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "info about adds/removal",
                 checkpointProviderLogger.getName(),
                 Level.DEBUG,
@@ -183,7 +184,7 @@ public class DefaultCheckpointProviderTests extends ESTestCase {
         }
 
         assertExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "info about adds/removal",
                 checkpointProviderLogger.getName(),
                 Level.DEBUG,
@@ -284,19 +285,19 @@ public class DefaultCheckpointProviderTests extends ESTestCase {
         MockLogAppender mockLogAppender = new MockLogAppender();
         mockLogAppender.start();
 
-        Loggers.setLevel(checkpointProviderLogger, Level.DEBUG);
+        LogLevelSupport.provider().setLevel(checkpointProviderLogger, Level.DEBUG);
         mockLogAppender.addExpectation(loggingExpectation);
 
         // always start fresh
         transformAuditor.reset();
         transformAuditor.addExpectation(auditExpectation);
         try {
-            Loggers.addAppender(checkpointProviderLogger, mockLogAppender);
+            AppenderSupport.provider().addAppender(checkpointProviderLogger, mockLogAppender);
             codeBlock.run();
             mockLogAppender.assertAllExpectationsMatched();
             transformAuditor.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(checkpointProviderLogger, mockLogAppender);
+            AppenderSupport.provider().removeAppender(checkpointProviderLogger, mockLogAppender);
             mockLogAppender.stop();
         }
     }

@@ -7,14 +7,14 @@
 
 package org.elasticsearch.xpack.security.authc.service;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.UUIDs;
 import org.elasticsearch.common.hash.MessageDigests;
 import org.elasticsearch.common.settings.SecureString;
 import org.elasticsearch.core.CharArrays;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xpack.core.security.authc.AuthenticationToken;
 import org.elasticsearch.xpack.core.security.authc.support.UsernamePasswordToken;
 import org.elasticsearch.xpack.core.security.support.Validation;
@@ -95,7 +95,7 @@ public class ServiceAccountToken implements AuthenticationToken, Closeable {
             final byte[] prefixBytes = in.readNBytes(4);
             if (prefixBytes.length != 4 || false == Arrays.equals(prefixBytes, PREFIX)) {
                 logger.trace(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "service account token expects the 4 leading bytes to be {}, got {}.",
                         Arrays.toString(PREFIX),
                         Arrays.toString(prefixBytes)

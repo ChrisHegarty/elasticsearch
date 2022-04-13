@@ -7,10 +7,6 @@
  */
 package org.elasticsearch.cluster.coordination;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.ChannelActionListener;
 import org.elasticsearch.cluster.ClusterState;
@@ -29,6 +25,10 @@ import org.elasticsearch.core.Releasables;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.env.Environment;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.monitor.NodeHealthService;
 import org.elasticsearch.monitor.StatusInfo;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -215,7 +215,7 @@ public class JoinHelper {
         void logNow() {
             logger.log(
                 getLogLevel(exception),
-                () -> new ParameterizedMessage("failed to join {} with {}", destination, joinRequest),
+                () -> Message.createParameterizedMessage("failed to join {} with {}", destination, joinRequest),
                 exception
             );
         }
@@ -232,7 +232,7 @@ public class JoinHelper {
 
         void logWarnWithTimestamp() {
             logger.warn(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "last failed join attempt was {} ago, failed to join {} with {}",
                     TimeValue.timeValueMillis(TimeValue.nsecToMSec(System.nanoTime() - timestamp)),
                     destination,
@@ -333,7 +333,7 @@ public class JoinHelper {
 
             @Override
             public void handleException(TransportException exp) {
-                logger.debug(new ParameterizedMessage("failure in response to {} from {}", startJoinRequest, destination), exp);
+                logger.debug(Message.createParameterizedMessage("failure in response to {} from {}", startJoinRequest, destination), exp);
             }
         });
     }

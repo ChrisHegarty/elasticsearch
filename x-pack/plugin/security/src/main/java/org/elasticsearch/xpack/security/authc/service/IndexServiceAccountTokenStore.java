@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.security.authc.service;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -35,6 +32,9 @@ import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.CharArrays;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentFactory;
@@ -239,7 +239,7 @@ public class IndexServiceAccountTokenStore extends CachingServiceAccountTokenSto
                                     listener.onResponse(deleteResponse.getResult() == DocWriteResponse.Result.DELETED);
                                 },
                                 e -> {
-                                    final ParameterizedMessage message = new ParameterizedMessage(
+                                    final Message message = Message.createParameterizedMessage(
                                         "clearing the cache for service token [{}] failed. please clear the cache manually",
                                         qualifiedTokenName
                                     );

@@ -8,7 +8,6 @@
 
 package org.elasticsearch.transport;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.ClusterName;
@@ -22,6 +21,7 @@ import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
 import org.elasticsearch.common.util.concurrent.CountDown;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.XContentBuilder;
 
 import java.io.IOException;
@@ -274,7 +274,7 @@ public class ProxyConnectionStrategy extends RemoteConnectionStrategy {
 
                 connectionManager.connectToRemoteClusterNode(node, clusterNameValidator, compositeListener.delegateResponse((l, e) -> {
                     logger.debug(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "failed to open remote connection [remote cluster: {}, address: {}]",
                             clusterAlias,
                             resolved

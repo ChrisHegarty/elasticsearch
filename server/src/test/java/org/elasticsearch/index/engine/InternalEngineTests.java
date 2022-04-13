@@ -10,12 +10,6 @@ package org.elasticsearch.index.engine;
 
 import com.carrotsearch.randomizedtesting.generators.RandomNumbers;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.appender.AbstractAppender;
-import org.apache.logging.log4j.core.filter.RegexFilter;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.LongPoint;
@@ -32,7 +26,6 @@ import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.LiveIndexWriterConfig;
 import org.apache.lucene.index.LogDocMergePolicy;
-import org.apache.lucene.index.LogMergePolicy;
 import org.apache.lucene.index.MergePolicy;
 import org.apache.lucene.index.NoDeletionPolicy;
 import org.apache.lucene.index.NoMergePolicy;
@@ -78,7 +71,6 @@ import org.elasticsearch.common.TriFunction;
 import org.elasticsearch.common.UUIDs;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.lucene.Lucene;
 import org.elasticsearch.common.lucene.index.ElasticsearchDirectoryReader;
 import org.elasticsearch.common.lucene.index.SequentialStoredFieldsLeafReader;
@@ -127,6 +119,11 @@ import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.index.translog.TranslogConfig;
 import org.elasticsearch.index.translog.TranslogDeletionPolicy;
 import org.elasticsearch.indices.breaker.NoneCircuitBreakerService;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.core.Appender;
+import org.elasticsearch.logging.core.Filter;
+import org.elasticsearch.logging.core.Layout;
+import org.elasticsearch.logging.core.LogEvent;
 import org.elasticsearch.test.IndexSettingsModule;
 import org.elasticsearch.test.VersionUtils;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -187,7 +184,6 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.containsInRelativeOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.emptyArray;
@@ -200,7 +196,6 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.in;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
-import static org.hamcrest.Matchers.matchesRegex;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
@@ -2482,19 +2477,34 @@ public class InternalEngineTests extends EngineTestCase {
         assertTrue(indexResult.isCreated());
     }
 
-    private static class MockAppender extends AbstractAppender {
+    public static class MockAppender implements Appender {
         public boolean sawIndexWriterMessage;
 
         public boolean sawIndexWriterIFDMessage;
 
         MockAppender(final String name) throws IllegalAccessException {
-            super(name, RegexFilter.createFilter(".*(\n.*)*", new String[0], false, null, null), null);
+            // super(name, RegexFilter.createFilter(".*(\n.*)*", new String[0], false, null, null), null);
+        }
+
+        @Override
+        public Filter filter() {
+            return null;
+        }
+
+        @Override
+        public Layout layout() {
+            return null;
+        }
+
+        @Override
+        public String name() {
+            return null;
         }
 
         @Override
         public void append(LogEvent event) {
             final String formattedMessage = event.getMessage().getFormattedMessage();
-            if (event.getLevel() == Level.TRACE && event.getMarker().getName().contains("[index][0]")) {
+            if (event.getLevel() == Level.TRACE /*&& event.getMarker().getName().contains("[index][0]")*/) { // TODO PG marker
                 if (event.getLoggerName().endsWith(".IW") && formattedMessage.contains("IW: now apply all deletes")) {
                     sawIndexWriterMessage = true;
                 }
@@ -2507,10 +2517,10 @@ public class InternalEngineTests extends EngineTestCase {
 
     // #5891: make sure IndexWriter's infoStream output is
     // sent to lucene.iw with log level TRACE:
-
+    /*
     public void testIndexWriterInfoStream() throws IllegalAccessException, IOException {
         assumeFalse("who tests the tester?", VERBOSE);
-        MockAppender mockAppender = new MockAppender("testIndexWriterInfoStream");
+        Appender mockAppender = new MockAppender("testIndexWriterInfoStream");
         mockAppender.start();
 
         Logger rootLogger = LogManager.getRootLogger();
@@ -2594,6 +2604,7 @@ public class InternalEngineTests extends EngineTestCase {
             Loggers.setLevel(rootLogger, savedLevel);
         }
     }
+    */
 
     public void testSeqNoAndCheckpoints() throws IOException, InterruptedException {
         final int opCount = randomIntBetween(1, 256);
@@ -2907,39 +2918,39 @@ public class InternalEngineTests extends EngineTestCase {
         }
         return bitSet;
     }
-
-    // #8603: make sure we can separately log IFD's messages
-    public void testIndexWriterIFDInfoStream() throws IllegalAccessException, IOException {
-        assumeFalse("who tests the tester?", VERBOSE);
-        MockAppender mockAppender = new MockAppender("testIndexWriterIFDInfoStream");
-        mockAppender.start();
-
-        final Logger iwIFDLogger = LogManager.getLogger("org.elasticsearch.index.engine.Engine.IFD");
-
-        Loggers.addAppender(iwIFDLogger, mockAppender);
-        Loggers.setLevel(iwIFDLogger, Level.DEBUG);
-
-        try {
-            // First, with DEBUG, which should NOT log IndexWriter output:
-            ParsedDocument doc = testParsedDocument("1", null, testDocumentWithTextField(), B_1, null);
-            engine.index(indexForDoc(doc));
-            engine.flush();
-            assertFalse(mockAppender.sawIndexWriterMessage);
-            assertFalse(mockAppender.sawIndexWriterIFDMessage);
-
-            // Again, with TRACE, which should only log IndexWriter IFD output:
-            Loggers.setLevel(iwIFDLogger, Level.TRACE);
-            engine.index(indexForDoc(doc));
-            engine.flush();
-            assertFalse(mockAppender.sawIndexWriterMessage);
-            assertTrue(mockAppender.sawIndexWriterIFDMessage);
-
-        } finally {
-            Loggers.removeAppender(iwIFDLogger, mockAppender);
-            mockAppender.stop();
-            Loggers.setLevel(iwIFDLogger, (Level) null);
-        }
-    }
+    //
+    // // #8603: make sure we can separately log IFD's messages
+    // public void testIndexWriterIFDInfoStream() throws IllegalAccessException, IOException {
+    // assumeFalse("who tests the tester?", VERBOSE);
+    // MockAppender mockAppender = new MockAppender("testIndexWriterIFDInfoStream");
+    // mockAppender.start();
+    //
+    // final Logger iwIFDLogger = LogManager.getLogger("org.elasticsearch.index.engine.Engine.IFD");
+    //
+    // Loggers.addAppender(iwIFDLogger, mockAppender);
+    // LogLevelSupport.provider().setLevel(iwIFDLogger, Level.DEBUG);
+    //
+    // try {
+    // // First, with DEBUG, which should NOT log IndexWriter output:
+    // ParsedDocument doc = testParsedDocument("1", null, testDocumentWithTextField(), B_1, null);
+    // engine.index(indexForDoc(doc));
+    // engine.flush();
+    // assertFalse(mockAppender.sawIndexWriterMessage);
+    // assertFalse(mockAppender.sawIndexWriterIFDMessage);
+    //
+    // // Again, with TRACE, which should only log IndexWriter IFD output:
+    // LogLevelSupport.provider().setLevel(iwIFDLogger, Level.TRACE);
+    // engine.index(indexForDoc(doc));
+    // engine.flush();
+    // assertFalse(mockAppender.sawIndexWriterMessage);
+    // assertTrue(mockAppender.sawIndexWriterIFDMessage);
+    //
+    // } finally {
+    // Loggers.removeAppender(iwIFDLogger, mockAppender);
+    // mockAppender.stop();
+    // LogLevelSupport.provider().setLevel(iwIFDLogger, (Level) null);
+    // }
+    // }
 
     public void testEnableGcDeletes() throws Exception {
         try (

@@ -8,9 +8,6 @@
 
 package org.elasticsearch.action.admin.cluster.settings;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.ActionFilters;
@@ -31,6 +28,9 @@ import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.SuppressForbidden;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
@@ -235,7 +235,7 @@ public class TransportClusterUpdateSettingsAction extends TransportMasterNodeAct
                         @Override
                         public void onFailure(Exception e) {
                             // if the reroute fails we only log
-                            logger.debug(() -> new ParameterizedMessage("failed to perform [{}]", REROUTE_TASK_SOURCE), e);
+                            logger.debug(() -> Message.createParameterizedMessage("failed to perform [{}]", REROUTE_TASK_SOURCE), e);
                             listener.onFailure(new ElasticsearchException("reroute after update settings failed", e));
                         }
 
@@ -251,7 +251,7 @@ public class TransportClusterUpdateSettingsAction extends TransportMasterNodeAct
 
             @Override
             public void onFailure(Exception e) {
-                logger.debug(() -> new ParameterizedMessage("failed to perform [{}]", UPDATE_TASK_SOURCE), e);
+                logger.debug(() -> Message.createParameterizedMessage("failed to perform [{}]", UPDATE_TASK_SOURCE), e);
                 super.onFailure(e);
             }
 

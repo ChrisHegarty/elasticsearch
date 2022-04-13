@@ -6,6 +6,8 @@
  * Side Public License, v 1.
  */
 
+import org.elasticsearch.logging.spi.ServerSupport;
+
 module org.elasticsearch.server {
     requires java.logging;
     requires java.security.jgss;
@@ -16,6 +18,7 @@ module org.elasticsearch.server {
     requires org.elasticsearch.cli;
     requires org.elasticsearch.base;
     requires org.elasticsearch.geo;
+    requires org.elasticsearch.logging;
     requires org.elasticsearch.lz4;
     requires org.elasticsearch.plugin.classloader;
     requires org.elasticsearch.secure_sm;
@@ -25,12 +28,12 @@ module org.elasticsearch.server {
     requires hppc;
     requires HdrHistogram;
     requires jopt.simple;
-    requires log4j2.ecs.layout;
+    // requires log4j2.ecs.layout;
     requires org.lz4.java;
     requires t.digest;
 
-    requires org.apache.logging.log4j;
-    requires org.apache.logging.log4j.core;
+    // requires org.apache.logging.log4j;
+    // requires org.apache.logging.log4j.core;
 
     requires org.apache.lucene.analysis.common;
     requires org.apache.lucene.backward_codecs;
@@ -343,9 +346,10 @@ module org.elasticsearch.server {
     exports org.elasticsearch.watcher;
 
     opens org.elasticsearch.client.internal.node; // #### for a test, replace with command line flag
-    opens org.elasticsearch.common.logging to org.apache.logging.log4j.core;
+    opens org.elasticsearch.common.logging; // to org.apache.logging.log4j.core;
 
     provides java.util.spi.CalendarDataProvider with org.elasticsearch.common.time.IsoCalendarDataProvider;
     provides org.elasticsearch.xcontent.ErrorOnUnknown with org.elasticsearch.common.xcontent.SuggestingErrorOnUnknown;
     provides org.elasticsearch.xcontent.XContentBuilderExtension with org.elasticsearch.common.xcontent.XContentElasticsearchExtension;
+    provides ServerSupport with org.elasticsearch.bootstrap.ServerSupportImpl;
 }

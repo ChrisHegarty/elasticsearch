@@ -6,14 +6,15 @@
  */
 package org.elasticsearch.xpack.ml.job;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.core.Tuple;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.LoggerMessageFormat;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
 import org.elasticsearch.xpack.ml.MachineLearning;
 import org.elasticsearch.xpack.ml.autoscaling.MlAutoscalingDeciderService;
@@ -62,7 +63,9 @@ public class JobNodeSelector {
 
     private static String createReason(String job, String node, String msg, Object... params) {
         String preamble = String.format(Locale.ROOT, "Not opening job [%s] on node [%s]. Reason: ", job, node);
-        return preamble + ParameterizedMessage.format(msg, params);
+
+        // TODO PG not sure we should use logging formatters..
+        return preamble + LoggerMessageFormat.format(msg, params);
     }
 
     private final String jobId;
@@ -290,7 +293,7 @@ public class JobNodeSelector {
             PersistentTasksCustomMetadata.Assignment currentAssignment = new PersistentTasksCustomMetadata.Assignment(null, explanation);
             logger.debug("no node selected for job [{}], reasons [{}]", jobId, explanation);
             if ((MachineLearning.NATIVE_EXECUTABLE_CODE_OVERHEAD.getBytes() + estimatedMemoryUsage) > mostAvailableMemoryForML) {
-                ParameterizedMessage message = new ParameterizedMessage(
+                Message message = Message.createParameterizedMessage(
                     "[{}] not waiting for node assignment as estimated job size [{}] is greater than largest possible job size [{}]",
                     jobId,
                     MachineLearning.NATIVE_EXECUTABLE_CODE_OVERHEAD.getBytes() + estimatedMemoryUsage,

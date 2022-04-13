@@ -8,15 +8,15 @@
 
 package org.elasticsearch.monitor.fs;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.Constants;
 import org.elasticsearch.core.PathUtils;
 import org.elasticsearch.core.SuppressForbidden;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.env.NodeEnvironment;
 import org.elasticsearch.env.NodeEnvironment.NodePath;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 
 import java.io.IOException;
 import java.nio.file.FileStore;
@@ -107,7 +107,7 @@ public class FsProbe {
             // do not fail Elasticsearch if something unexpected
             // happens here
             logger.debug(
-                () -> new ParameterizedMessage("unexpected exception processing /proc/diskstats for devices {}", devicesNumbers),
+                () -> Message.createParameterizedMessage("unexpected exception processing /proc/diskstats for devices {}", devicesNumbers),
                 e
             );
             return null;

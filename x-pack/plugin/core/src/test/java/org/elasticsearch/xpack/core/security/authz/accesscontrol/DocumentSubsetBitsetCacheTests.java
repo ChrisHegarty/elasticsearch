@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.core.security.authz.accesscontrol;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -32,7 +29,6 @@ import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.FixedBitSet;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.common.CheckedBiConsumer;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.CheckedConsumer;
 import org.elasticsearch.index.IndexSettings;
@@ -45,9 +41,13 @@ import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.SearchExecutionContext;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.test.IndexSettingsModule;
-import org.elasticsearch.test.MockLogAppender;
 import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Before;
@@ -207,9 +207,9 @@ public class DocumentSubsetBitsetCacheTests extends ESTestCase {
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         try {
-            Loggers.addAppender(cacheLogger, mockAppender);
+            AppenderSupport.provider().addAppender(cacheLogger, mockAppender);
             mockAppender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "[bitset too big]",
                     cache.getClass().getName(),
                     Level.WARN,
@@ -232,7 +232,7 @@ public class DocumentSubsetBitsetCacheTests extends ESTestCase {
 
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(cacheLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(cacheLogger, mockAppender);
             mockAppender.stop();
         }
     }
@@ -255,9 +255,9 @@ public class DocumentSubsetBitsetCacheTests extends ESTestCase {
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         try {
-            Loggers.addAppender(cacheLogger, mockAppender);
+            AppenderSupport.provider().addAppender(cacheLogger, mockAppender);
             mockAppender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "[cache full]",
                     cache.getClass().getName(),
                     Level.INFO,
@@ -278,7 +278,7 @@ public class DocumentSubsetBitsetCacheTests extends ESTestCase {
 
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(cacheLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(cacheLogger, mockAppender);
             mockAppender.stop();
         }
     }

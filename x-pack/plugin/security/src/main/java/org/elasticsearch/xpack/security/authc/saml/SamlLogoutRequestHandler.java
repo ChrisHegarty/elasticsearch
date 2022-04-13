@@ -6,9 +6,9 @@
  */
 package org.elasticsearch.xpack.security.authc.saml;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchSecurityException;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.Message;
 import org.opensaml.saml.common.SAMLObject;
 import org.opensaml.saml.saml2.core.EncryptedID;
 import org.opensaml.saml.saml2.core.LogoutRequest;
@@ -105,7 +105,7 @@ public class SamlLogoutRequestHandler extends SamlObjectHandler {
             return decrypter.decrypt(encrypted);
         } catch (DecryptionException e) {
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "Failed to decrypt SAML EncryptedID [{}] with [{}]",
                     text(encrypted, 512),
                     describe(getSpConfiguration().getEncryptionCredentials())

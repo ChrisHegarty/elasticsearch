@@ -6,11 +6,11 @@
  */
 package org.elasticsearch.xpack.core.security.authc.support.mapper.expressiondsl;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.common.Numbers;
 import org.elasticsearch.common.Strings;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -64,7 +64,7 @@ public class ExpressionModel {
         boolean isMatch = values.stream().anyMatch(predicate);
         if (isMatch == false && predicate == NULL_PREDICATE && fieldPredicates.containsKey(field) == false) {
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "Attempt to test field [{}] against value(s) [{}],"
                         + " but the field [{}] does not have a value on this object;"
                         + " known fields are [{}]",

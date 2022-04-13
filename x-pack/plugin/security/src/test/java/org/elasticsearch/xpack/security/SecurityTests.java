@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.security;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -22,7 +19,6 @@ import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.node.DiscoveryNodes;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.Strings;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.network.NetworkModule;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Setting;
@@ -41,12 +37,17 @@ import org.elasticsearch.indices.TestIndexNameExpressionResolver;
 import org.elasticsearch.license.License;
 import org.elasticsearch.license.TestUtils;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
+import org.elasticsearch.logging.spi.LogLevelSupport;
 import org.elasticsearch.plugins.MapperPlugin;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.script.ScriptService;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.test.IndexSettingsModule;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.VersionUtils;
 import org.elasticsearch.test.rest.FakeRestRequest;
 import org.elasticsearch.threadpool.TestThreadPool;
@@ -669,9 +670,9 @@ public class SecurityTests extends ESTestCase {
 
     public void testSecurityRestHandlerWrapperCanBeInstalled() throws IllegalAccessException {
         final Logger amLogger = LogManager.getLogger(ActionModule.class);
-        Loggers.setLevel(amLogger, Level.DEBUG);
+        LogLevelSupport.provider().setLevel(amLogger, Level.DEBUG);
         final MockLogAppender appender = new MockLogAppender();
-        Loggers.addAppender(amLogger, appender);
+        AppenderSupport.provider().addAppender(amLogger, appender);
         appender.start();
 
         Settings settings = Settings.builder().put("xpack.security.enabled", false).put("path.home", createTempDir()).build();
@@ -685,7 +686,7 @@ public class SecurityTests extends ESTestCase {
             // Verify Security rest wrapper is about to be installed
             // We will throw later if another wrapper is already installed
             appender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "Security rest wrapper",
                     ActionModule.class.getName(),
                     Level.DEBUG,
@@ -712,16 +713,16 @@ public class SecurityTests extends ESTestCase {
         } finally {
             threadPool.shutdown();
             appender.stop();
-            Loggers.removeAppender(amLogger, appender);
+            AppenderSupport.provider().removeAppender(amLogger, appender);
         }
     }
 
     public void testSecurityStatusMessageInLog() throws Exception {
         final Logger mockLogger = LogManager.getLogger(Security.class);
         boolean securityEnabled = true;
-        Loggers.setLevel(mockLogger, Level.INFO);
+        LogLevelSupport.provider().setLevel(mockLogger, Level.INFO);
         final MockLogAppender appender = new MockLogAppender();
-        Loggers.addAppender(mockLogger, appender);
+        AppenderSupport.provider().addAppender(mockLogger, appender);
         appender.start();
 
         Settings.Builder settings = Settings.builder().put("path.home", createTempDir());
@@ -733,7 +734,7 @@ public class SecurityTests extends ESTestCase {
 
         try {
             appender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "message",
                     Security.class.getName(),
                     Level.INFO,
@@ -744,7 +745,7 @@ public class SecurityTests extends ESTestCase {
             appender.assertAllExpectationsMatched();
         } finally {
             appender.stop();
-            Loggers.removeAppender(mockLogger, appender);
+            AppenderSupport.provider().removeAppender(mockLogger, appender);
         }
     }
 

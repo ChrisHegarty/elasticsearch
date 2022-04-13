@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.security.authz.store;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.GroupedActionListener;
@@ -25,6 +22,9 @@ import org.elasticsearch.common.util.set.Sets;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xpack.core.security.authc.Authentication;
 import org.elasticsearch.xpack.core.security.authc.AuthenticationContext;
 import org.elasticsearch.xpack.core.security.authc.Subject;
@@ -248,7 +248,7 @@ public class CompositeRolesStore {
                 // superuser role.
                 if (includesSuperuserRole(roleReference)) {
                     logger.warn(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "there was a failure resolving the roles [{}], falling back to the [{}] role instead",
                             roleReference.id(),
                             Strings.arrayToCommaDelimitedString(superuserRole.names())

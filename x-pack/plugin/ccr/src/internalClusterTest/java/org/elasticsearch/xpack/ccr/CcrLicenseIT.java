@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.ccr;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
@@ -18,10 +15,13 @@ import org.elasticsearch.cluster.ClusterStateTaskExecutor;
 import org.elasticsearch.cluster.ClusterStateUpdateTask;
 import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.cluster.service.ClusterService;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.plugins.Plugin;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.xpack.CcrSingleNodeTestCase;
 import org.elasticsearch.xpack.ccr.action.AutoFollowCoordinator;
 import org.elasticsearch.xpack.core.ccr.AutoFollowMetadata;
@@ -138,7 +138,7 @@ public class CcrLicenseIT extends CcrSingleNodeTestCase {
         final MockLogAppender appender = new MockLogAppender();
         appender.start();
         appender.addExpectation(
-            new MockLogAppender.ExceptionSeenEventExpectation(
+            MockLogAppender.createExceptionSeenEventExpectation(
                 getTestName(),
                 logger.getName(),
                 Level.WARN,
@@ -151,7 +151,7 @@ public class CcrLicenseIT extends CcrSingleNodeTestCase {
         try {
             // Need to add mock log appender before submitting CS update, otherwise we miss the expected log:
             // (Auto followers for new remote clusters are bootstrapped when a new cluster state is published)
-            Loggers.addAppender(logger, appender);
+            AppenderSupport.provider().addAppender(logger, appender);
             // Update the cluster state so that we have auto follow patterns and verify that we log a warning
             // in case of incompatible license:
             CountDownLatch latch = new CountDownLatch(1);
@@ -205,7 +205,7 @@ public class CcrLicenseIT extends CcrSingleNodeTestCase {
             latch.await();
             appender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(logger, appender);
+            AppenderSupport.provider().removeAppender(logger, appender);
             appender.stop();
         }
     }

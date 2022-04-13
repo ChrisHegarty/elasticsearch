@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.ilm;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.Version;
 import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.cluster.ClusterState;
@@ -17,11 +14,14 @@ import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.LifecycleExecutionState;
 import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.ToXContentObject;
@@ -122,7 +122,7 @@ public class SetStepInfoUpdateTaskTests extends ESTestCase {
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         mockAppender.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "warning",
                 SetStepInfoUpdateTask.class.getCanonicalName(),
                 Level.WARN,
@@ -131,12 +131,12 @@ public class SetStepInfoUpdateTaskTests extends ESTestCase {
         );
 
         final Logger taskLogger = LogManager.getLogger(SetStepInfoUpdateTask.class);
-        Loggers.addAppender(taskLogger, mockAppender);
+        AppenderSupport.provider().addAppender(taskLogger, mockAppender);
         try {
             task.onFailure(new RuntimeException("test exception"));
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(taskLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(taskLogger, mockAppender);
             mockAppender.stop();
         }
     }

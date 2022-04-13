@@ -6,7 +6,6 @@
  */
 package org.elasticsearch.xpack.core.transform.action;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionRequestValidationException;
 import org.elasticsearch.action.ActionType;
@@ -18,6 +17,7 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.xcontent.ToXContentObject;
 import org.elasticsearch.xcontent.XContentBuilder;
@@ -131,7 +131,7 @@ public class StopTransformAction extends ActionType<StopTransformAction.Response
         public ActionRequestValidationException validate() {
             if (force && waitForCheckpoint) {
                 return addValidationError(
-                    new ParameterizedMessage(
+                    Message.createParameterizedMessage(
                         "cannot set both [{}] and [{}] to true",
                         TransformField.FORCE,
                         TransformField.WAIT_FOR_CHECKPOINT

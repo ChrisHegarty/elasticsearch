@@ -6,10 +6,10 @@
  */
 package org.elasticsearch.xpack.sql.qa.jdbc;
 
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.geometry.Point;
 import org.elasticsearch.geometry.utils.StandardValidator;
 import org.elasticsearch.geometry.utils.WellKnownText;
+import org.elasticsearch.logging.Logger;
 import org.elasticsearch.xpack.sql.jdbc.EsType;
 import org.elasticsearch.xpack.sql.proto.StringUtils;
 import org.relique.jdbc.csv.CsvResultSet;

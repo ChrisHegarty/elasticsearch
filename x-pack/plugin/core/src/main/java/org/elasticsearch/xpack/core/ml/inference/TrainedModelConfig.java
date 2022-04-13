@@ -6,7 +6,6 @@
  */
 package org.elasticsearch.xpack.core.ml.inference;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionRequestValidationException;
 import org.elasticsearch.common.Strings;
@@ -19,6 +18,7 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.RestApiVersion;
 import org.elasticsearch.license.License;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ObjectParser;
 import org.elasticsearch.xcontent.ParseField;
@@ -675,7 +675,7 @@ public class TrainedModelConfig implements ToXContentObject, Writeable {
 
             if (this.definition != null) {
                 throw new IllegalArgumentException(
-                    new ParameterizedMessage(
+                    Message.createParameterizedMessage(
                         "both [{}] and [{}] cannot be set.",
                         COMPRESSED_DEFINITION.getPreferredName(),
                         DEFINITION.getPreferredName()
@@ -693,7 +693,7 @@ public class TrainedModelConfig implements ToXContentObject, Writeable {
 
             if (this.definition != null) {
                 throw new IllegalArgumentException(
-                    new ParameterizedMessage(
+                    Message.createParameterizedMessage(
                         "both [{}] and [{}] cannot be set.",
                         COMPRESSED_DEFINITION.getPreferredName(),
                         DEFINITION.getPreferredName()

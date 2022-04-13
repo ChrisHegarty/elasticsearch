@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ilm;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.ClusterChangedEvent;
@@ -31,6 +28,9 @@ import org.elasticsearch.gateway.GatewayService;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.shard.IndexEventListener;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.plugins.ShutdownAwarePlugin;
 import org.elasticsearch.shutdown.PluginShutdownService;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -209,7 +209,7 @@ public class IndexLifecycleService
                     } catch (Exception e) {
                         if (logger.isTraceEnabled()) {
                             logger.warn(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "async action execution failed during master election trigger"
                                         + " for index [{}] with policy [{}] in step [{}], lifecycle state: [{}]",
                                     idxMeta.getIndex().getName(),
@@ -221,7 +221,7 @@ public class IndexLifecycleService
                             );
                         } else {
                             logger.warn(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "async action execution failed during master election trigger"
                                         + " for index [{}] with policy [{}] in step [{}]",
                                     idxMeta.getIndex().getName(),
@@ -424,7 +424,7 @@ public class IndexLifecycleService
                 } catch (Exception e) {
                     if (logger.isTraceEnabled()) {
                         logger.warn(
-                            new ParameterizedMessage(
+                            Message.createParameterizedMessage(
                                 "async action execution failed during policy trigger"
                                     + " for index [{}] with policy [{}] in step [{}], lifecycle state: [{}]",
                                 idxMeta.getIndex().getName(),
@@ -436,7 +436,7 @@ public class IndexLifecycleService
                         );
                     } else {
                         logger.warn(
-                            new ParameterizedMessage(
+                            Message.createParameterizedMessage(
                                 "async action execution failed during policy trigger" + " for index [{}] with policy [{}] in step [{}]",
                                 idxMeta.getIndex().getName(),
                                 policyName,

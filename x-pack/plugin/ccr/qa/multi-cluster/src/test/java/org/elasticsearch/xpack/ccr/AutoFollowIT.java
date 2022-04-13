@@ -9,7 +9,6 @@ package org.elasticsearch.xpack.ccr;
 
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.util.EntityUtils;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.ResponseException;
@@ -19,6 +18,7 @@ import org.elasticsearch.common.settings.SecureString;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.CheckedRunnable;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.ObjectPath;
 import org.elasticsearch.xcontent.XContentBuilder;
@@ -905,7 +905,7 @@ public class AutoFollowIT extends ESCCRRestTestCase {
             try {
                 final String autoFollowStats = EntityUtils.toString(getAutoFollowStats().getEntity());
                 logger.warn(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "AssertionError when waiting for auto-follower, auto-follow stats are: {}",
                         autoFollowStats
                     ),
@@ -955,7 +955,10 @@ public class AutoFollowIT extends ESCCRRestTestCase {
                 if (isNotFoundResponseException(e)) {
                     continue;
                 }
-                logger.warn(() -> new ParameterizedMessage("failed to delete auto-follow pattern [{}] after test", autoFollowPattern), e);
+                logger.warn(
+                    () -> Message.createParameterizedMessage("failed to delete auto-follow pattern [{}] after test", autoFollowPattern),
+                    e
+                );
             }
         }
         for (String dataStream : dataStreams) {
@@ -965,7 +968,7 @@ public class AutoFollowIT extends ESCCRRestTestCase {
                 if (isNotFoundResponseException(e)) {
                     continue;
                 }
-                logger.warn(() -> new ParameterizedMessage("failed to delete data stream [{}] after test", dataStream), e);
+                logger.warn(() -> Message.createParameterizedMessage("failed to delete data stream [{}] after test", dataStream), e);
             }
         }
         for (String index : indices) {
@@ -975,7 +978,7 @@ public class AutoFollowIT extends ESCCRRestTestCase {
                 if (isNotFoundResponseException(e)) {
                     continue;
                 }
-                logger.warn(() -> new ParameterizedMessage("failed to delete index [{}] after test", index), e);
+                logger.warn(() -> Message.createParameterizedMessage("failed to delete index [{}] after test", index), e);
             }
         }
     }

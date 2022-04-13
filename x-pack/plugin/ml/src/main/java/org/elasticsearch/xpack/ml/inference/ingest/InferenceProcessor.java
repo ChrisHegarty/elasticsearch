@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.inference.ingest;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.Version;
@@ -27,6 +24,9 @@ import org.elasticsearch.ingest.IngestMetadata;
 import org.elasticsearch.ingest.Pipeline;
 import org.elasticsearch.ingest.PipelineConfiguration;
 import org.elasticsearch.ingest.Processor;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xpack.core.ml.action.InternalInferModelAction;
 import org.elasticsearch.xpack.core.ml.inference.results.InferenceResults;
@@ -242,7 +242,7 @@ public class InferenceProcessor extends AbstractProcessor {
                     // We cannot throw any exception here. It might break other pipelines.
                 } catch (Exception ex) {
                     logger.debug(
-                        () -> new ParameterizedMessage("failed gathering processors for pipeline [{}]", configuration.getId()),
+                        () -> Message.createParameterizedMessage("failed gathering processors for pipeline [{}]", configuration.getId()),
                         ex
                     );
                 }

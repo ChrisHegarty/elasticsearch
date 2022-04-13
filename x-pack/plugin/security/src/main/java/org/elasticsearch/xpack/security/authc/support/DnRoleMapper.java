@@ -9,14 +9,13 @@ package org.elasticsearch.xpack.security.authc.support;
 import com.unboundid.ldap.sdk.DN;
 import com.unboundid.ldap.sdk.LDAPException;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.Supplier;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.SettingsException;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.watcher.FileChangesListener;
 import org.elasticsearch.watcher.FileWatcher;
 import org.elasticsearch.watcher.ResourceWatcherService;
@@ -97,7 +96,7 @@ public class DnRoleMapper implements UserRoleMapper {
             return parseFile(path, logger, realmType, realmName, false);
         } catch (Exception e) {
             logger.error(
-                (Supplier<?>) () -> new ParameterizedMessage(
+                (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                     "failed to parse role mappings file [{}]. skipping/removing all mappings...",
                     path.toAbsolutePath()
                 ),
@@ -112,7 +111,7 @@ public class DnRoleMapper implements UserRoleMapper {
         logger.trace("reading realm [{}/{}] role mappings file [{}]...", realmType, realmName, path.toAbsolutePath());
 
         if (Files.exists(path) == false) {
-            final ParameterizedMessage message = new ParameterizedMessage(
+            final Message message = Message.createParameterizedMessage(
                 "Role mapping file [{}] for realm [{}] does not exist.",
                 path.toAbsolutePath(),
                 realmName
@@ -141,7 +140,7 @@ public class DnRoleMapper implements UserRoleMapper {
                         }
                         dnRoles.add(role);
                     } catch (LDAPException e) {
-                        ParameterizedMessage message = new ParameterizedMessage(
+                        Message message = Message.createParameterizedMessage(
                             "invalid DN [{}] found in [{}] role mappings [{}] for realm [{}/{}].",
                             providedDn,
                             realmType,

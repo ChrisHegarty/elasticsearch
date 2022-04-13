@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.security.authc;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -33,7 +30,6 @@ import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.cache.Cache;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.SecureString;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.AbstractRunnable;
@@ -47,9 +43,14 @@ import org.elasticsearch.index.get.GetResult;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
+import org.elasticsearch.logging.spi.LogLevelSupport;
 import org.elasticsearch.test.ClusterServiceUtils;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.XContentTestUtils;
 import org.elasticsearch.threadpool.FixedExecutorBuilder;
 import org.elasticsearch.threadpool.TestThreadPool;
@@ -897,14 +898,14 @@ public class ApiKeyServiceTests extends ESTestCase {
         final AtomicInteger count = new AtomicInteger(0);
         IntStream.range(0, cacheSize).forEach(i -> apiKeyAuthCache.put(idPrefix + count.incrementAndGet(), new ListenableFuture<>()));
         final Logger logger = LogManager.getLogger(ApiKeyService.class);
-        Loggers.setLevel(logger, Level.TRACE);
+        LogLevelSupport.provider().setLevel(logger, Level.TRACE);
         final MockLogAppender appender = new MockLogAppender();
-        Loggers.addAppender(logger, appender);
+        AppenderSupport.provider().addAppender(logger, appender);
         appender.start();
 
         try {
             appender.addExpectation(
-                new MockLogAppender.PatternSeenEventExpectation(
+                MockLogAppender.createPatternSeenEventExpectation(
                     "evict",
                     ApiKeyService.class.getName(),
                     Level.TRACE,
@@ -912,7 +913,7 @@ public class ApiKeyServiceTests extends ESTestCase {
                 )
             );
             appender.addExpectation(
-                new MockLogAppender.UnseenEventExpectation(
+                MockLogAppender.createUnseenEventExpectation(
                     "no-thrashing",
                     ApiKeyService.class.getName(),
                     Level.WARN,
@@ -923,7 +924,7 @@ public class ApiKeyServiceTests extends ESTestCase {
             appender.assertAllExpectationsMatched();
 
             appender.addExpectation(
-                new MockLogAppender.UnseenEventExpectation(
+                MockLogAppender.createUnseenEventExpectation(
                     "replace",
                     ApiKeyService.class.getName(),
                     Level.TRACE,
@@ -934,7 +935,7 @@ public class ApiKeyServiceTests extends ESTestCase {
             appender.assertAllExpectationsMatched();
 
             appender.addExpectation(
-                new MockLogAppender.UnseenEventExpectation(
+                MockLogAppender.createUnseenEventExpectation(
                     "invalidate",
                     ApiKeyService.class.getName(),
                     Level.TRACE,
@@ -946,8 +947,8 @@ public class ApiKeyServiceTests extends ESTestCase {
             appender.assertAllExpectationsMatched();
         } finally {
             appender.stop();
-            Loggers.setLevel(logger, Level.INFO);
-            Loggers.removeAppender(logger, appender);
+            LogLevelSupport.provider().setLevel(logger, Level.INFO);
+            AppenderSupport.provider().removeAppender(logger, appender);
         }
     }
 
@@ -962,14 +963,14 @@ public class ApiKeyServiceTests extends ESTestCase {
         final String apiKeyId = randomAlphaOfLength(22);
 
         final Logger logger = LogManager.getLogger(ApiKeyService.class);
-        Loggers.setLevel(logger, Level.TRACE);
+        LogLevelSupport.provider().setLevel(logger, Level.TRACE);
         final MockLogAppender appender = new MockLogAppender();
-        Loggers.addAppender(logger, appender);
+        AppenderSupport.provider().addAppender(logger, appender);
         appender.start();
 
         try {
             appender.addExpectation(
-                new MockLogAppender.UnseenEventExpectation(
+                MockLogAppender.createUnseenEventExpectation(
                     "evict",
                     ApiKeyService.class.getName(),
                     Level.TRACE,
@@ -986,8 +987,8 @@ public class ApiKeyServiceTests extends ESTestCase {
             appender.assertAllExpectationsMatched();
         } finally {
             appender.stop();
-            Loggers.setLevel(logger, Level.INFO);
-            Loggers.removeAppender(logger, appender);
+            LogLevelSupport.provider().setLevel(logger, Level.INFO);
+            AppenderSupport.provider().removeAppender(logger, appender);
         }
     }
 
@@ -999,9 +1000,9 @@ public class ApiKeyServiceTests extends ESTestCase {
         apiKeyAuthCache.put(randomAlphaOfLength(20), new ListenableFuture<>());
         apiKeyAuthCache.put(randomAlphaOfLength(21), new ListenableFuture<>());
         final Logger logger = LogManager.getLogger(ApiKeyService.class);
-        Loggers.setLevel(logger, Level.TRACE);
+        LogLevelSupport.provider().setLevel(logger, Level.TRACE);
         final MockLogAppender appender = new MockLogAppender();
-        Loggers.addAppender(logger, appender);
+        AppenderSupport.provider().addAppender(logger, appender);
         appender.start();
 
         try {
@@ -1017,7 +1018,7 @@ public class ApiKeyServiceTests extends ESTestCase {
             // Ensure the counter is updated
             assertBusy(() -> assertThat(service.getEvictionCounter().longValue() >= 4500, is(true)));
             appender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "evict",
                     ApiKeyService.class.getName(),
                     Level.TRACE,
@@ -1025,7 +1026,7 @@ public class ApiKeyServiceTests extends ESTestCase {
                 )
             );
             appender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "thrashing",
                     ApiKeyService.class.getName(),
                     Level.WARN,
@@ -1041,7 +1042,7 @@ public class ApiKeyServiceTests extends ESTestCase {
 
             // Will not log warning again for the next eviction because of throttling
             appender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "evict-again",
                     ApiKeyService.class.getName(),
                     Level.TRACE,
@@ -1049,7 +1050,7 @@ public class ApiKeyServiceTests extends ESTestCase {
                 )
             );
             appender.addExpectation(
-                new MockLogAppender.UnseenEventExpectation(
+                MockLogAppender.createUnseenEventExpectation(
                     "throttling",
                     ApiKeyService.class.getName(),
                     Level.WARN,
@@ -1060,8 +1061,8 @@ public class ApiKeyServiceTests extends ESTestCase {
             appender.assertAllExpectationsMatched();
         } finally {
             appender.stop();
-            Loggers.setLevel(logger, Level.INFO);
-            Loggers.removeAppender(logger, appender);
+            LogLevelSupport.provider().setLevel(logger, Level.INFO);
+            AppenderSupport.provider().removeAppender(logger, appender);
         }
     }
 

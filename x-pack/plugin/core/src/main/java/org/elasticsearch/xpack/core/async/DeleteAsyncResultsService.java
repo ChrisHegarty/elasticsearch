@@ -7,13 +7,13 @@
 
 package org.elasticsearch.xpack.core.async;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.tasks.TaskManager;
 import org.elasticsearch.xpack.core.security.action.user.HasPrivilegesAction;
@@ -117,7 +117,7 @@ public class DeleteAsyncResultsService {
             if (status == RestStatus.NOT_FOUND && taskWasFound) {
                 listener.onResponse(AcknowledgedResponse.TRUE);
             } else {
-                logger.error(() -> new ParameterizedMessage("failed to clean async result [{}]", taskId.getEncoded()), exc);
+                logger.error(() -> Message.createParameterizedMessage("failed to clean async result [{}]", taskId.getEncoded()), exc);
                 listener.onFailure(new ResourceNotFoundException(taskId.getEncoded()));
             }
         }));

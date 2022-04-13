@@ -6,14 +6,14 @@
  */
 package org.elasticsearch.license;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.ClusterStateUpdateTask;
 import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xpack.core.XPackPlugin;
 
 import java.time.Clock;
@@ -94,7 +94,7 @@ public class StartBasicClusterTask extends ClusterStateUpdateTask {
 
     @Override
     public void onFailure(@Nullable Exception e) {
-        logger.error(new ParameterizedMessage("unexpected failure during [{}]", description), e);
+        logger.error(Message.createParameterizedMessage("unexpected failure during [{}]", description), e);
         listener.onFailure(e);
     }
 

@@ -6,14 +6,14 @@
  */
 package org.elasticsearch.xpack.ml.annotations;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Tuple;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentFactory;
@@ -94,7 +94,7 @@ public class AnnotationPersister {
             try (XContentBuilder xContentBuilder = annotation.toXContent(XContentFactory.jsonBuilder(), ToXContent.EMPTY_PARAMS)) {
                 bulkRequest.add(new IndexRequest().id(annotationId).source(xContentBuilder).setRequireAlias(true));
             } catch (IOException e) {
-                logger.error(new ParameterizedMessage("[{}] Error serialising annotation", jobId), e);
+                logger.error(Message.createParameterizedMessage("[{}] Error serialising annotation", jobId), e);
             }
 
             if (bulkRequest.numberOfActions() >= bulkLimit) {
@@ -110,7 +110,14 @@ public class AnnotationPersister {
             if (bulkRequest.numberOfActions() == 0) {
                 return null;
             }
-            logger.trace("[{}] ES API CALL: bulk request with {} actions", () -> jobId, () -> bulkRequest.numberOfActions());
+            // TODO PG I would prefer the original one
+            logger.trace(
+                () -> Message.createParameterizedMessage(
+                    "[{}] ES API CALL: bulk request with {} actions",
+                    jobId,
+                    bulkRequest.numberOfActions()
+                )
+            );
             BulkResponse bulkResponse = resultsPersisterService.bulkIndexWithRetry(
                 bulkRequest,
                 jobId,

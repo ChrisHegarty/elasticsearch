@@ -8,9 +8,9 @@
 
 package org.elasticsearch.tasks;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 
 /**
  * A TaskListener that just logs the response at the info level. Used when we
@@ -38,6 +38,6 @@ public final class LoggingTaskListener<Response> implements TaskListener<Respons
 
     @Override
     public void onFailure(Task task, Exception e) {
-        logger.warn(() -> new ParameterizedMessage("{} failed with exception", task.getId()), e);
+        logger.warn(() -> Message.createParameterizedMessage("{} failed with exception", task.getId()), e);
     }
 }

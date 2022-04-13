@@ -11,10 +11,6 @@ package org.elasticsearch.http;
 import com.carrotsearch.hppc.IntHashSet;
 import com.carrotsearch.hppc.IntSet;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.PlainActionFuture;
@@ -35,6 +31,10 @@ import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
 import org.elasticsearch.core.AbstractRefCounted;
 import org.elasticsearch.core.RefCounted;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestChannel;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.tasks.Task;
@@ -293,7 +293,7 @@ public abstract class AbstractHttpServerTransport extends AbstractLifecycleCompo
             }
             if (NetworkExceptionHelper.getCloseConnectionExceptionLevel(e, false) != Level.OFF) {
                 logger.trace(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "close connection exception caught while handling client http traffic, closing connection {}",
                         channel
                     ),
@@ -301,17 +301,17 @@ public abstract class AbstractHttpServerTransport extends AbstractLifecycleCompo
                 );
             } else if (NetworkExceptionHelper.isConnectException(e)) {
                 logger.trace(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "connect exception caught while handling client http traffic, closing connection {}",
                         channel
                     ),
                     e
                 );
             } else if (e instanceof HttpReadTimeoutException) {
-                logger.trace(() -> new ParameterizedMessage("http read timeout, closing connection {}", channel), e);
+                logger.trace(() -> Message.createParameterizedMessage("http read timeout, closing connection {}", channel), e);
             } else if (e instanceof CancelledKeyException) {
                 logger.trace(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "cancelled key exception caught while handling client http traffic, closing connection {}",
                         channel
                     ),
@@ -319,7 +319,10 @@ public abstract class AbstractHttpServerTransport extends AbstractLifecycleCompo
                 );
             } else {
                 logger.warn(
-                    () -> new ParameterizedMessage("caught exception while handling client http traffic, closing connection {}", channel),
+                    () -> Message.createParameterizedMessage(
+                        "caught exception while handling client http traffic, closing connection {}",
+                        channel
+                    ),
                     e
                 );
             }
@@ -329,7 +332,10 @@ public abstract class AbstractHttpServerTransport extends AbstractLifecycleCompo
     }
 
     protected static void onServerException(HttpServerChannel channel, Exception e) {
-        logger.error(new ParameterizedMessage("exception from http server channel caught on transport layer [channel={}]", channel), e);
+        logger.error(
+            Message.createParameterizedMessage("exception from http server channel caught on transport layer [channel={}]", channel),
+            e
+        );
     }
 
     protected void serverAcceptedChannel(HttpChannel httpChannel) {
@@ -342,7 +348,7 @@ public abstract class AbstractHttpServerTransport extends AbstractLifecycleCompo
         }));
         totalChannelsAccepted.incrementAndGet();
         httpClientStatsTracker.addClientStats(httpChannel);
-        logger.trace(() -> new ParameterizedMessage("Http channel accepted: {}", httpChannel));
+        logger.trace(() -> Message.createParameterizedMessage("Http channel accepted: {}", httpChannel));
     }
 
     /**

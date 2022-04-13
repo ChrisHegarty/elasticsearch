@@ -8,9 +8,6 @@
 
 package org.elasticsearch.tasks;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchSecurityException;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.Version;
@@ -21,6 +18,9 @@ import org.elasticsearch.action.support.ChannelActionListener;
 import org.elasticsearch.action.support.GroupedActionListener;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.EmptyTransportResponseHandler;
 import org.elasticsearch.transport.NodeDisconnectedException;
@@ -170,7 +170,7 @@ public class TaskCancellationService {
                         assert cause instanceof ElasticsearchSecurityException == false;
                         if (isUnimportantBanFailure(cause)) {
                             logger.debug(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "cannot send ban for tasks with the parent [{}] on connection [{}]",
                                     taskId,
                                     connection
@@ -179,7 +179,7 @@ public class TaskCancellationService {
                             );
                         } else if (logger.isDebugEnabled()) {
                             logger.warn(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "cannot send ban for tasks with the parent [{}] on connection [{}]",
                                     taskId,
                                     connection
@@ -219,7 +219,7 @@ public class TaskCancellationService {
                         assert cause instanceof ElasticsearchSecurityException == false;
                         if (isUnimportantBanFailure(cause)) {
                             logger.debug(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "failed to remove ban for tasks with the parent [{}] on connection [{}]",
                                     request.parentTaskId,
                                     connection
@@ -228,7 +228,7 @@ public class TaskCancellationService {
                             );
                         } else if (logger.isDebugEnabled()) {
                             logger.warn(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "failed to remove ban for tasks with the parent [{}] on connection [{}]",
                                     request.parentTaskId,
                                     connection

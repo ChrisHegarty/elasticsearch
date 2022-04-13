@@ -7,8 +7,6 @@
  */
 package org.elasticsearch.datastreams;
 
-import org.apache.logging.log4j.core.util.Throwables;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.search.TotalHits;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.ExceptionsHelper;
@@ -68,6 +66,7 @@ import org.elasticsearch.index.mapper.MapperParsingException;
 import org.elasticsearch.index.query.TermQueryBuilder;
 import org.elasticsearch.indices.InvalidAliasNameException;
 import org.elasticsearch.indices.InvalidIndexNameException;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
@@ -1466,7 +1465,7 @@ public class DataStreamIT extends ESIntegTestCase {
                     }
                 }
             } catch (Exception e) {
-                logger.error(new ParameterizedMessage("thread [{}] encountered unexpected exception", i), e);
+                logger.error(Message.createParameterizedMessage("thread [{}] encountered unexpected exception", i), e);
                 fail("we should not encounter unexpected exceptions");
             }
         }, "rollover-thread-" + i)).collect(Collectors.toSet());
@@ -1868,7 +1867,7 @@ public class DataStreamIT extends ESIntegTestCase {
         );
         Exception actualException = (Exception) e.getCause();
         assertTrue(
-            Throwables.getRootCause(actualException)
+            ExceptionsHelper.getRootCause(actualException)
                 .getMessage()
                 .contains("mapping type [_doc] must have routing required for partitioned index")
         );

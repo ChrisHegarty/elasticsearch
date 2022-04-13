@@ -7,9 +7,6 @@
  */
 package org.elasticsearch.action.admin.cluster.repositories.cleanup;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.StepListener;
@@ -29,6 +26,9 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.SuppressForbidden;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.repositories.RepositoriesService;
 import org.elasticsearch.repositories.Repository;
 import org.elasticsearch.repositories.RepositoryCleanupResult;
@@ -242,7 +242,7 @@ public final class TransportCleanupRepositoryAction extends TransportMasterNodeA
                             logger.debug("Finished repository cleanup operations on [{}][{}]", repositoryName, repositoryStateId);
                         } else {
                             logger.debug(
-                                () -> new ParameterizedMessage(
+                                () -> Message.createParameterizedMessage(
                                     "Failed to finish repository cleanup operations on [{}][{}]",
                                     repositoryName,
                                     repositoryStateId
@@ -270,7 +270,10 @@ public final class TransportCleanupRepositoryAction extends TransportMasterNodeA
                                         e.addSuppressed(failure);
                                     }
                                     logger.warn(
-                                        () -> new ParameterizedMessage("[{}] failed to remove repository cleanup task", repositoryName),
+                                        () -> Message.createParameterizedMessage(
+                                            "[{}] failed to remove repository cleanup task",
+                                            repositoryName
+                                        ),
                                         e
                                     );
                                     listener.onFailure(e);
@@ -288,7 +291,7 @@ public final class TransportCleanupRepositoryAction extends TransportMasterNodeA
                                         listener.onResponse(result);
                                     } else {
                                         logger.warn(
-                                            () -> new ParameterizedMessage(
+                                            () -> Message.createParameterizedMessage(
                                                 "Failed to run repository cleanup operations on [{}][{}]",
                                                 repositoryName,
                                                 repositoryStateId

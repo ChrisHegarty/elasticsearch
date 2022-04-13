@@ -6,10 +6,6 @@
  */
 package org.elasticsearch.xpack.monitoring.exporter.local;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.Supplier;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
@@ -34,6 +30,9 @@ import org.elasticsearch.gateway.GatewayService;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.license.LicenseStateListener;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.protocol.xpack.watcher.DeleteWatchRequest;
 import org.elasticsearch.protocol.xpack.watcher.PutWatchRequest;
 import org.elasticsearch.xcontent.XContentType;
@@ -350,7 +349,7 @@ public class LocalExporter extends Exporter implements ClusterStateListener, Cle
         if (missingTemplates.isEmpty() == false) {
             // Check to see if the template installation is disabled. If it isn't, then we should say so in the log.
             logger.debug(
-                (Supplier<?>) () -> new ParameterizedMessage(
+                (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                     "monitoring index templates [{}] do not exist, so service " + "cannot start (waiting on registered templates)",
                     missingTemplates
                 )
@@ -745,7 +744,10 @@ public class LocalExporter extends Exporter implements ClusterStateListener, Cle
         @Override
         public void onFailure(Exception e) {
             responseReceived(countDown, false, onComplete, setup);
-            logger.error((Supplier<?>) () -> new ParameterizedMessage("failed to set monitoring {} [{}]", type, name), e);
+            logger.error(
+                (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage("failed to set monitoring {} [{}]", type, name),
+                e
+            );
         }
     }
 
@@ -821,7 +823,13 @@ public class LocalExporter extends Exporter implements ClusterStateListener, Cle
             responseReceived(countDown, false, () -> {}, watcherSetup);
 
             if ((e instanceof IndexNotFoundException) == false) {
-                logger.error((Supplier<?>) () -> new ParameterizedMessage("failed to get monitoring watch [{}]", uniqueWatchId), e);
+                logger.error(
+                    (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
+                        "failed to get monitoring watch [{}]",
+                        uniqueWatchId
+                    ),
+                    e
+                );
             }
         }
 

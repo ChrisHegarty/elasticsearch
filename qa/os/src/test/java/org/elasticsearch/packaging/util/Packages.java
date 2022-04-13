@@ -8,10 +8,10 @@
 
 package org.elasticsearch.packaging.util;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.Version;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
 import org.elasticsearch.packaging.util.Shell.Result;
 
 import java.io.IOException;

@@ -8,9 +8,6 @@
 
 package org.elasticsearch.threadpool;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
@@ -24,6 +21,9 @@ import org.elasticsearch.common.util.concurrent.EsThreadPoolExecutor;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.node.Node;
 import org.elasticsearch.node.ReportingService;
 import org.elasticsearch.xcontent.ToXContentFragment;
@@ -450,7 +450,7 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
         } catch (EsRejectedExecutionException e) {
             if (e.isExecutorShutdown()) {
                 logger.debug(
-                    new ParameterizedMessage(
+                    Message.createParameterizedMessage(
                         "could not schedule execution of [{}] after [{}] on [{}] as executor is shut down",
                         command,
                         delay,
@@ -468,11 +468,14 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
     public Cancellable scheduleWithFixedDelay(Runnable command, TimeValue interval, String executor) {
         return new ReschedulingRunnable(command, interval, executor, this, (e) -> {
             if (logger.isDebugEnabled()) {
-                logger.debug(() -> new ParameterizedMessage("scheduled task [{}] was rejected on thread pool [{}]", command, executor), e);
+                logger.debug(
+                    () -> Message.createParameterizedMessage("scheduled task [{}] was rejected on thread pool [{}]", command, executor),
+                    e
+                );
             }
         },
             (e) -> logger.warn(
-                () -> new ParameterizedMessage("failed to run scheduled task [{}] on thread pool [{}]", command, executor),
+                () -> Message.createParameterizedMessage("failed to run scheduled task [{}] on thread pool [{}]", command, executor),
                 e
             )
         );
@@ -566,7 +569,7 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
             } catch (EsRejectedExecutionException e) {
                 if (e.isExecutorShutdown()) {
                     logger.debug(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "could not schedule execution of [{}] on [{}] as executor is shut down",
                             runnable,
                             executor

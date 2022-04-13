@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.process;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
@@ -18,6 +15,9 @@ import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.bytes.CompositeBytesReference;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.IdsQueryBuilder;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.xcontent.XContentParserConfiguration;
@@ -153,7 +153,7 @@ public class IndexingStateProcessor implements StateProcessor {
                 );
             } catch (Exception ex) {
                 String msg = "failed indexing updated state docs";
-                LOGGER.error(() -> new ParameterizedMessage("[{}] {}", jobId, msg), ex);
+                LOGGER.error(() -> Message.createParameterizedMessage("[{}] {}", jobId, msg), ex);
                 auditor.error(jobId, msg + " error: " + ex.getMessage());
             }
         }

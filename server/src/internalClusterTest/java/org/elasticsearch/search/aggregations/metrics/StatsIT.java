@@ -7,10 +7,10 @@
  */
 package org.elasticsearch.search.aggregations.metrics;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.search.ShardSearchFailure;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.script.Script;
 import org.elasticsearch.script.ScriptType;
@@ -221,7 +221,7 @@ public class StatsIT extends AbstractNumericTestCase {
         ShardSearchFailure[] failures = response.getShardFailures();
         if (failures.length != expectedFailures) {
             for (ShardSearchFailure failure : failures) {
-                logger.error(new ParameterizedMessage("Shard Failure: {}", failure), failure.getCause());
+                logger.error(Message.createParameterizedMessage("Shard Failure: {}", failure), failure.getCause());
             }
             fail("Unexpected shard failures!");
         }

@@ -18,8 +18,8 @@ import org.elasticsearch.cli.ExitCodes;
 import org.elasticsearch.cli.Terminal;
 import org.elasticsearch.cli.UserException;
 import org.elasticsearch.common.cli.EnvironmentAwareCommand;
-import org.elasticsearch.common.logging.LogConfigurator;
 import org.elasticsearch.env.Environment;
+import org.elasticsearch.logging.spi.LoggingBootstrapSupport;
 import org.elasticsearch.monitor.jvm.JvmInfo;
 import org.elasticsearch.node.NodeValidationException;
 
@@ -75,7 +75,7 @@ class Elasticsearch extends EnvironmentAwareCommand {
             }
 
         });
-        LogConfigurator.registerErrorListener();
+        LoggingBootstrapSupport.provider().registerErrorListener();
         final Elasticsearch elasticsearch = new Elasticsearch();
         int status = main(args, elasticsearch, Terminal.DEFAULT);
         if (status != ExitCodes.OK) {

@@ -8,7 +8,6 @@
 
 package org.elasticsearch.action.support.tasks;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.FailedNodeException;
@@ -26,6 +25,7 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.common.util.concurrent.AtomicArray;
 import org.elasticsearch.core.Tuple;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.transport.TransportChannel;
 import org.elasticsearch.transport.TransportException;
@@ -294,7 +294,7 @@ public abstract class TransportTasksAction<
         }
 
         private void onFailure(int idx, String nodeId, Throwable t) {
-            logger.debug(new ParameterizedMessage("failed to execute on node [{}]", nodeId), t);
+            logger.debug(Message.createParameterizedMessage("failed to execute on node [{}]", nodeId), t);
 
             responses.set(idx, new FailedNodeException(nodeId, "Failed node [" + nodeId + "]", t));
 

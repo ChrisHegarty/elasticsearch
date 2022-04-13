@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.ml.inference.allocation;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.search.SearchPhaseExecutionException;
@@ -24,6 +21,9 @@ import org.elasticsearch.common.component.LifecycleListener;
 import org.elasticsearch.common.util.set.Sets;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.tasks.TaskAwareRequest;
 import org.elasticsearch.tasks.TaskId;
@@ -211,7 +211,7 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
             if (stopped) {
                 return;
             }
-            logger.trace(() -> new ParameterizedMessage("[{}] attempting to load model", modelId));
+            logger.trace(() -> Message.createParameterizedMessage("[{}] attempting to load model", modelId));
             final PlainActionFuture<TrainedModelDeploymentTask> listener = new PlainActionFuture<>();
             try {
                 deploymentManager.startDeployment(loadingTask, listener);
@@ -221,14 +221,14 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
                 handleLoadSuccess(deployedTask);
             } catch (Exception ex) {
                 if (ExceptionsHelper.unwrapCause(ex) instanceof ResourceNotFoundException) {
-                    logger.warn(new ParameterizedMessage("[{}] Start deployment failed", modelId), ex);
+                    logger.warn(Message.createParameterizedMessage("[{}] Start deployment failed", modelId), ex);
                     handleLoadFailure(loadingTask, ExceptionsHelper.missingTrainedModel(modelId, ex));
                 } else if (ExceptionsHelper.unwrapCause(ex) instanceof SearchPhaseExecutionException) {
-                    logger.trace(new ParameterizedMessage("[{}] Start deployment failed, will retry", modelId), ex);
+                    logger.trace(Message.createParameterizedMessage("[{}] Start deployment failed, will retry", modelId), ex);
                     // A search phase execution failure should be retried, push task back to the queue
                     loadingToRetry.add(loadingTask);
                 } else {
-                    logger.warn(new ParameterizedMessage("[{}] Start deployment failed", modelId), ex);
+                    logger.warn(Message.createParameterizedMessage("[{}] Start deployment failed", modelId), ex);
                     handleLoadFailure(loadingTask, ex);
                 }
             }
@@ -240,7 +240,7 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
         ActionListener<Void> notifyDeploymentOfStopped = ActionListener.wrap(
             _void -> updateStoredState(task.getModelId(), new RoutingStateAndReason(RoutingState.STOPPED, reason), listener),
             failed -> { // if we failed to stop the process, something strange is going on, but we should still notify of stop
-                logger.warn(() -> new ParameterizedMessage("[{}] failed to stop due to error", task.getModelId()), failed);
+                logger.warn(() -> Message.createParameterizedMessage("[{}] failed to stop due to error", task.getModelId()), failed);
                 updateStoredState(task.getModelId(), new RoutingStateAndReason(RoutingState.STOPPED, reason), listener);
             }
         );
@@ -250,7 +250,7 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
             ActionListener.wrap(success -> stopDeploymentAsync(task, "task locally canceled", notifyDeploymentOfStopped), e -> {
                 if (ExceptionsHelper.unwrapCause(e) instanceof ResourceNotFoundException) {
                     logger.debug(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "[{}] failed to set routing state to stopping as allocation already removed",
                             task.getModelId()
                         ),
@@ -260,7 +260,10 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
                     // this is an unexpected error
                     // TODO this means requests may still be routed here, should we not stop deployment?
                     logger.warn(
-                        () -> new ParameterizedMessage("[{}] failed to set routing state to stopping due to error", task.getModelId()),
+                        () -> Message.createParameterizedMessage(
+                            "[{}] failed to set routing state to stopping due to error",
+                            task.getModelId()
+                        ),
                         e
                     );
                 }
@@ -342,9 +345,9 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
                             task,
                             NODE_NO_LONGER_REFERENCED,
                             ActionListener.wrap(
-                                r -> logger.trace(() -> new ParameterizedMessage("[{}] stopped deployment", task.getModelId())),
+                                r -> logger.trace(() -> Message.createParameterizedMessage("[{}] stopped deployment", task.getModelId())),
                                 e -> logger.warn(
-                                    () -> new ParameterizedMessage("[{}] failed to fully stop deployment", task.getModelId()),
+                                    () -> Message.createParameterizedMessage("[{}] failed to fully stop deployment", task.getModelId()),
                                     e
                                 )
                             )
@@ -362,8 +365,11 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
                     t,
                     ALLOCATION_NO_LONGER_EXISTS,
                     ActionListener.wrap(
-                        r -> logger.trace(() -> new ParameterizedMessage("[{}] stopped deployment", t.getModelId())),
-                        e -> logger.warn(() -> new ParameterizedMessage("[{}] failed to fully stop deployment", t.getModelId()), e)
+                        r -> logger.trace(() -> Message.createParameterizedMessage("[{}] stopped deployment", t.getModelId())),
+                        e -> logger.warn(
+                            () -> Message.createParameterizedMessage("[{}] failed to fully stop deployment", t.getModelId()),
+                            e
+                        )
                     )
                 );
             }
@@ -377,7 +383,11 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
 
     void prepareModelToLoad(StartTrainedModelDeploymentAction.TaskParams taskParams) {
         logger.debug(
-            () -> new ParameterizedMessage("[{}] preparing to load model with task params: {}", taskParams.getModelId(), taskParams)
+            () -> Message.createParameterizedMessage(
+                "[{}] preparing to load model with task params: {}",
+                taskParams.getModelId(),
+                taskParams
+            )
         );
         TrainedModelDeploymentTask task = (TrainedModelDeploymentTask) taskManager.register(
             TRAINED_MODEL_ALLOCATION_TASK_TYPE,
@@ -396,11 +406,14 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
     private void handleLoadSuccess(TrainedModelDeploymentTask task) {
         final String modelId = task.getModelId();
         logger.debug(
-            () -> new ParameterizedMessage("[{}] model successfully loaded and ready for inference. Notifying master node", modelId)
+            () -> Message.createParameterizedMessage(
+                "[{}] model successfully loaded and ready for inference. Notifying master node",
+                modelId
+            )
         );
         if (task.isStopped()) {
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "[{}] model loaded successfully, but stopped before routing table was updated; reason [{}]",
                     modelId,
                     task.stoppedReason().orElse("_unknown_")
@@ -411,20 +424,26 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
         updateStoredState(
             modelId,
             new RoutingStateAndReason(RoutingState.STARTED, ""),
-            ActionListener.wrap(r -> logger.debug(() -> new ParameterizedMessage("[{}] model loaded and accepting routes", modelId)), e -> {
-                // This means that either the allocation has been deleted, or this node's particular route has been removed
-                if (ExceptionsHelper.unwrapCause(e) instanceof ResourceNotFoundException) {
-                    logger.debug(
-                        () -> new ParameterizedMessage(
-                            "[{}] model loaded but failed to start accepting routes as allocation to this node was removed",
-                            modelId
-                        ),
+            ActionListener.wrap(
+                r -> logger.debug(() -> Message.createParameterizedMessage("[{}] model loaded and accepting routes", modelId)),
+                e -> {
+                    // This means that either the allocation has been deleted, or this node's particular route has been removed
+                    if (ExceptionsHelper.unwrapCause(e) instanceof ResourceNotFoundException) {
+                        logger.debug(
+                            () -> Message.createParameterizedMessage(
+                                "[{}] model loaded but failed to start accepting routes as allocation to this node was removed",
+                                modelId
+                            ),
+                            e
+                        );
+                    }
+                    // this is an unexpected error
+                    logger.warn(
+                        () -> Message.createParameterizedMessage("[{}] model loaded but failed to start accepting routes", modelId),
                         e
                     );
                 }
-                // this is an unexpected error
-                logger.warn(() -> new ParameterizedMessage("[{}] model loaded but failed to start accepting routes", modelId), e);
-            })
+            )
         );
     }
 
@@ -440,12 +459,16 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
             new UpdateTrainedModelAllocationStateAction.Request(nodeId, modelId, routingStateAndReason),
             ActionListener.wrap(success -> {
                 logger.debug(
-                    () -> new ParameterizedMessage("[{}] model is [{}] and master notified", modelId, routingStateAndReason.getState())
+                    () -> Message.createParameterizedMessage(
+                        "[{}] model is [{}] and master notified",
+                        modelId,
+                        routingStateAndReason.getState()
+                    )
                 );
                 listener.onResponse(AcknowledgedResponse.TRUE);
             }, error -> {
                 logger.warn(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "[{}] model is [{}] but failed to notify master",
                         modelId,
                         routingStateAndReason.getState()
@@ -458,10 +481,10 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
     }
 
     private void handleLoadFailure(TrainedModelDeploymentTask task, Exception ex) {
-        logger.error(() -> new ParameterizedMessage("[{}] model failed to load", task.getModelId()), ex);
+        logger.error(() -> Message.createParameterizedMessage("[{}] model failed to load", task.getModelId()), ex);
         if (task.isStopped()) {
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "[{}] model failed to load, but is now stopped; reason [{}]",
                     task.getModelId(),
                     task.stoppedReason().orElse("_unknown_")
@@ -488,7 +511,7 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
             new RoutingStateAndReason(RoutingState.FAILED, reason),
             ActionListener.wrap(
                 r -> logger.debug(
-                    new ParameterizedMessage(
+                    Message.createParameterizedMessage(
                         "[{}] Successfully updating allocation state to [{}] with reason [{}]",
                         task.getModelId(),
                         RoutingState.FAILED,
@@ -496,7 +519,7 @@ public class TrainedModelAllocationNodeService implements ClusterStateListener {
                     )
                 ),
                 e -> logger.error(
-                    new ParameterizedMessage(
+                    Message.createParameterizedMessage(
                         "[{}] Error while updating allocation state to [{}] with reason [{}]",
                         task.getModelId(),
                         RoutingState.FAILED,

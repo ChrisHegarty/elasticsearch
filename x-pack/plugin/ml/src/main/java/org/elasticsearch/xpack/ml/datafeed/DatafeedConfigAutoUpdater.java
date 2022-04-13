@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.ml.datafeed;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.support.IndicesOptions;
@@ -17,6 +14,9 @@ import org.elasticsearch.action.support.PlainActionFuture;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.metadata.IndexNameExpressionResolver;
 import org.elasticsearch.cluster.routing.IndexRoutingTable;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xpack.core.ml.MlConfigIndex;
 import org.elasticsearch.xpack.core.ml.datafeed.DatafeedConfig;
 import org.elasticsearch.xpack.core.ml.datafeed.DatafeedUpdate;
@@ -87,7 +87,7 @@ public class DatafeedConfigAutoUpdater implements MlAutoUpdateService.UpdateActi
         }
 
         logger.debug(
-            () -> new ParameterizedMessage(
+            () -> Message.createParameterizedMessage(
                 "{} datafeeds are currently being updated",
                 updates.stream().map(DatafeedUpdate::getId).collect(Collectors.toList())
             )
@@ -105,15 +105,15 @@ public class DatafeedConfigAutoUpdater implements MlAutoUpdateService.UpdateActi
             );
             try {
                 updateDatafeeds.actionGet();
-                logger.debug(() -> new ParameterizedMessage("[{}] datafeed successfully updated", update.getId()));
+                logger.debug(() -> Message.createParameterizedMessage("[{}] datafeed successfully updated", update.getId()));
             } catch (Exception ex) {
-                logger.warn(new ParameterizedMessage("[{}] failed being updated", update.getId()), ex);
+                logger.warn(Message.createParameterizedMessage("[{}] failed being updated", update.getId()), ex);
                 failures.add(new ElasticsearchException("Failed to update datafeed {}", ex, update.getId()));
             }
         }
         if (failures.isEmpty()) {
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "{} datafeeds are finished being updated",
                     updates.stream().map(DatafeedUpdate::getId).collect(Collectors.toList())
                 )

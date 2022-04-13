@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ccr.action;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.action.ActionListener;
@@ -38,6 +35,9 @@ import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexSettings;
 import org.elasticsearch.license.LicenseUtils;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.transport.NoSuchRemoteClusterException;
 import org.elasticsearch.xpack.ccr.Ccr;
 import org.elasticsearch.xpack.ccr.CcrLicenseChecker;
@@ -208,7 +208,7 @@ public class AutoFollowCoordinator extends AbstractLifecycleComponent implements
                 );
                 numberOfFailedRemoteClusterStateRequests++;
                 LOGGER.warn(
-                    new ParameterizedMessage(
+                    Message.createParameterizedMessage(
                         "failure occurred while fetching cluster state for auto follow pattern [{}]",
                         result.autoFollowPatternName
                     ),
@@ -225,7 +225,7 @@ public class AutoFollowCoordinator extends AbstractLifecycleComponent implements
                             Tuple.tuple(newStatsReceivedTimeStamp, ExceptionsHelper.convertToElastic(entry.getValue()))
                         );
                         LOGGER.warn(
-                            new ParameterizedMessage(
+                            Message.createParameterizedMessage(
                                 "failure occurred while auto following index [{}] for auto follow pattern [{}]",
                                 entry.getKey(),
                                 result.autoFollowPatternName

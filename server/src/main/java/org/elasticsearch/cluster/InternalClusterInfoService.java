@@ -8,9 +8,6 @@
 
 package org.elasticsearch.cluster;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.FailedNodeException;
 import org.elasticsearch.action.admin.cluster.node.stats.NodeStats;
@@ -37,6 +34,9 @@ import org.elasticsearch.common.util.concurrent.CountDown;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.store.StoreStats;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.monitor.fs.FsInfo;
 import org.elasticsearch.threadpool.ThreadPool;
 
@@ -178,7 +178,7 @@ public class InternalClusterInfoService implements ClusterInfoService, ClusterSt
 
                     for (final FailedNodeException failure : nodesStatsResponse.failures()) {
                         logger.warn(
-                            new ParameterizedMessage("failed to retrieve stats for node [{}]", failure.nodeId()),
+                            Message.createParameterizedMessage("failed to retrieve stats for node [{}]", failure.nodeId()),
                             failure.getCause()
                         );
                     }
@@ -222,7 +222,7 @@ public class InternalClusterInfoService implements ClusterInfoService, ClusterSt
                             if (shardFailure.getCause()instanceof final FailedNodeException failedNodeException) {
                                 if (failedNodeIds.add(failedNodeException.nodeId())) {
                                     logger.warn(
-                                        new ParameterizedMessage(
+                                        Message.createParameterizedMessage(
                                             "failed to retrieve shard stats from node [{}]",
                                             failedNodeException.nodeId()
                                         ),
@@ -230,7 +230,7 @@ public class InternalClusterInfoService implements ClusterInfoService, ClusterSt
                                     );
                                 }
                                 logger.trace(
-                                    new ParameterizedMessage(
+                                    Message.createParameterizedMessage(
                                         "failed to retrieve stats for shard [{}][{}]",
                                         shardFailure.index(),
                                         shardFailure.shardId()
@@ -239,7 +239,7 @@ public class InternalClusterInfoService implements ClusterInfoService, ClusterSt
                                 );
                             } else {
                                 logger.warn(
-                                    new ParameterizedMessage(
+                                    Message.createParameterizedMessage(
                                         "failed to retrieve stats for shard [{}][{}]",
                                         shardFailure.index(),
                                         shardFailure.shardId()
@@ -299,7 +299,7 @@ public class InternalClusterInfoService implements ClusterInfoService, ClusterSt
                             logger.trace("notifying [{}] of new cluster info", listener);
                             listener.accept(clusterInfo);
                         } catch (Exception e) {
-                            logger.info(new ParameterizedMessage("failed to notify [{}] of new cluster info", listener), e);
+                            logger.info(Message.createParameterizedMessage("failed to notify [{}] of new cluster info", listener), e);
                         }
                     }
                     assert anyListeners : "expected to notify at least one listener";

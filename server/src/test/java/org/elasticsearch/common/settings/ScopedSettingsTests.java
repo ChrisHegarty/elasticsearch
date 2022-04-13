@@ -7,16 +7,16 @@
  */
 package org.elasticsearch.common.settings;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
 import org.elasticsearch.Version;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.routing.allocation.decider.FilterAllocationDecider;
 import org.elasticsearch.cluster.routing.allocation.decider.ShardsLimitAllocationDecider;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Setting.Property;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.IndexModule;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.spi.LogLevelSupport;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.transport.TransportSettings;
 
@@ -1150,8 +1150,8 @@ public class ScopedSettingsTests extends ESTestCase {
             settings.applySettings(Settings.builder().build());
             assertEquals(property, LogManager.getLogger("test").getLevel());
         } finally {
-            Loggers.setLevel(LogManager.getRootLogger(), level);
-            Loggers.setLevel(LogManager.getLogger("test"), testLevel);
+            LogLevelSupport.provider().setLevel(LogManager.getRootLogger(), level);
+            LogLevelSupport.provider().setLevel(LogManager.getLogger("test"), testLevel);
         }
     }
 
@@ -1168,7 +1168,7 @@ public class ScopedSettingsTests extends ESTestCase {
             settings.applySettings(Settings.builder().build()); // here we fall back to 'logger.level' which is our default.
             assertEquals(Level.ERROR, LogManager.getRootLogger().getLevel());
         } finally {
-            Loggers.setLevel(LogManager.getRootLogger(), level);
+            LogLevelSupport.provider().setLevel(LogManager.getRootLogger(), level);
         }
     }
 

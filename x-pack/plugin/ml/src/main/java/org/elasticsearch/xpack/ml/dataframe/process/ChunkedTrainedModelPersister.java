@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.ml.dataframe.process;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -18,6 +15,9 @@ import org.elasticsearch.action.admin.indices.refresh.RefreshResponse;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.license.License;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.json.JsonXContent;
 import org.elasticsearch.xpack.core.ml.dataframe.DataFrameAnalyticsConfig;
 import org.elasticsearch.xpack.core.ml.dataframe.analyses.Classification;
@@ -159,16 +159,21 @@ public class ChunkedTrainedModelPersister {
         // Latch is attached to this action as it is the last one to execute.
         ActionListener<RefreshResponse> refreshListener = new LatchedActionListener<>(ActionListener.wrap(refreshed -> {
             if (refreshed != null) {
-                LOGGER.debug(() -> new ParameterizedMessage("[{}] refreshed inference index after model store", analytics.getId()));
+                LOGGER.debug(
+                    () -> Message.createParameterizedMessage("[{}] refreshed inference index after model store", analytics.getId())
+                );
             }
-        }, e -> LOGGER.warn(new ParameterizedMessage("[{}] failed to refresh inference index after model store", analytics.getId()), e)),
-            latch
-        );
+        },
+            e -> LOGGER.warn(
+                Message.createParameterizedMessage("[{}] failed to refresh inference index after model store", analytics.getId()),
+                e
+            )
+        ), latch);
 
         // First, store the model and refresh is necessary
         ActionListener<Void> storeListener = ActionListener.wrap(r -> {
             LOGGER.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "[{}] stored trained model definition chunk [{}] [{}]",
                     analytics.getId(),
                     trainedModelDefinitionDoc.getModelId(),
@@ -185,7 +190,7 @@ public class ChunkedTrainedModelPersister {
             provider.refreshInferenceIndex(refreshListener);
         }, e -> {
             LOGGER.error(
-                new ParameterizedMessage(
+                Message.createParameterizedMessage(
                     "[{}] error storing trained model definition chunk [{}] with id [{}]",
                     analytics.getId(),
                     trainedModelDefinitionDoc.getDocNum(),
@@ -215,12 +220,12 @@ public class ChunkedTrainedModelPersister {
         ActionListener<RefreshResponse> refreshListener = new LatchedActionListener<>(ActionListener.wrap(refreshed -> {
             if (refreshed != null) {
                 LOGGER.debug(
-                    () -> new ParameterizedMessage("[{}] refreshed inference index after model metadata store", analytics.getId())
+                    () -> Message.createParameterizedMessage("[{}] refreshed inference index after model metadata store", analytics.getId())
                 );
             }
         },
             e -> LOGGER.warn(
-                new ParameterizedMessage("[{}] failed to refresh inference index after model metadata store", analytics.getId()),
+                Message.createParameterizedMessage("[{}] failed to refresh inference index after model metadata store", analytics.getId()),
                 e
             )
         ), latch);
@@ -232,7 +237,7 @@ public class ChunkedTrainedModelPersister {
             provider.refreshInferenceIndex(refreshListener);
         }, e -> {
             LOGGER.error(
-                new ParameterizedMessage(
+                Message.createParameterizedMessage(
                     "[{}] error storing trained model metadata with id [{}]",
                     analytics.getId(),
                     trainedModelMetadata.getModelId()
@@ -261,7 +266,7 @@ public class ChunkedTrainedModelPersister {
             }
         }, e -> {
             LOGGER.error(
-                new ParameterizedMessage(
+                Message.createParameterizedMessage(
                     "[{}] error storing trained model config with id [{}]",
                     analytics.getId(),
                     trainedModelConfig.getModelId()

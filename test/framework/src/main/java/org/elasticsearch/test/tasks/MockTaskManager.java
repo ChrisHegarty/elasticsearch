@@ -8,13 +8,12 @@
 
 package org.elasticsearch.test.tasks;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.Supplier;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Setting.Property;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.tasks.TaskAwareRequest;
 import org.elasticsearch.tasks.TaskManager;
@@ -51,7 +50,7 @@ public class MockTaskManager extends TaskManager {
                 listener.onTaskRegistered(task);
             } catch (Exception e) {
                 logger.warn(
-                    (Supplier<?>) () -> new ParameterizedMessage(
+                    (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                         "failed to notify task manager listener about registering the task with id {}",
                         task.getId()
                     ),
@@ -71,7 +70,7 @@ public class MockTaskManager extends TaskManager {
                     listener.onTaskUnregistered(task);
                 } catch (Exception e) {
                     logger.warn(
-                        (Supplier<?>) () -> new ParameterizedMessage(
+                        (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                             "failed to notify task manager listener about unregistering the task with id {}",
                             task.getId()
                         ),
@@ -92,7 +91,7 @@ public class MockTaskManager extends TaskManager {
                 listener.waitForTaskCompletion(task);
             } catch (Exception e) {
                 logger.warn(
-                    (Supplier<?>) () -> new ParameterizedMessage(
+                    (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                         "failed to notify task manager listener about waitForTaskCompletion the task with id {}",
                         task.getId()
                     ),

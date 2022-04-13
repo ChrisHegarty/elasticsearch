@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.idp.saml.sp;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.DocWriteRequest;
@@ -41,6 +38,9 @@ import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.get.GetResult;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.ToXContent;
@@ -167,7 +167,7 @@ public class SamlServiceProviderIndex implements Closeable {
             } else {
                 logger.debug("Template [{}] appears to be up to date", TEMPLATE_NAME);
             }
-        }, e -> logger.warn(new ParameterizedMessage("Failed to install template [{}]", TEMPLATE_NAME), e)));
+        }, e -> logger.warn(Message.createParameterizedMessage("Failed to install template [{}]", TEMPLATE_NAME), e)));
     }
 
     private void checkForAliasStateChange(ClusterState state) {

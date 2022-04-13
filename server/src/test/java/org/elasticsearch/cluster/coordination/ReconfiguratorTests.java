@@ -8,7 +8,6 @@
 
 package org.elasticsearch.cluster.coordination;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Version;
 import org.elasticsearch.cluster.coordination.CoordinationMetadata.VotingConfiguration;
 import org.elasticsearch.cluster.node.DiscoveryNode;
@@ -16,6 +15,7 @@ import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.settings.Settings.Builder;
 import org.elasticsearch.common.util.set.Sets;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.test.ESTestCase;
 import org.junit.Before;
 
@@ -218,7 +218,7 @@ public class ReconfiguratorTests extends ESTestCase {
         final DiscoveryNode master = liveNodes.stream().filter(n -> n.getId().equals(masterId)).findFirst().get();
         final VotingConfiguration adaptedConfig = reconfigurator.reconfigure(liveNodes, retired, master, config);
         assertEquals(
-            new ParameterizedMessage(
+            Message.createParameterizedMessage(
                 "[liveNodes={}, retired={}, master={}, config={}, autoShrinkVotingConfiguration={}]",
                 liveNodes,
                 retired,

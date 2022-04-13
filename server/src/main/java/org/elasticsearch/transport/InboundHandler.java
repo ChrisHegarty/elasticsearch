@@ -8,9 +8,6 @@
 
 package org.elasticsearch.transport;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.Version;
 import org.elasticsearch.common.io.stream.ByteBufferStreamInput;
@@ -21,6 +18,9 @@ import org.elasticsearch.common.network.HandlingTimeTracker;
 import org.elasticsearch.common.util.concurrent.AbstractRunnable;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 
 import java.io.IOException;
@@ -215,7 +215,7 @@ public class InboundHandler {
                     sendErrorResponse(action, transportChannel, e);
                 } else {
                     logger.warn(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "could not send error response to handshake received on [{}] using wire format version [{}], closing channel",
                             channel,
                             header.getVersion()
@@ -324,7 +324,10 @@ public class InboundHandler {
             transportChannel.sendResponse(e);
         } catch (Exception inner) {
             inner.addSuppressed(e);
-            logger.warn(() -> new ParameterizedMessage("Failed to send error message back to client for action [{}]", actionName), inner);
+            logger.warn(
+                () -> Message.createParameterizedMessage("Failed to send error message back to client for action [{}]", actionName),
+                inner
+            );
         }
     }
 
@@ -342,7 +345,10 @@ public class InboundHandler {
                 "Failed to deserialize response from handler [" + handler + "]",
                 e
             );
-            logger.warn(new ParameterizedMessage("Failed to deserialize response from [{}]", remoteAddress), serializationException);
+            logger.warn(
+                Message.createParameterizedMessage("Failed to deserialize response from [{}]", remoteAddress),
+                serializationException
+            );
             assert ignoreDeserializationErrors : e;
             handleException(handler, serializationException);
             return;
@@ -406,7 +412,7 @@ public class InboundHandler {
             handler.handleException(transportException);
         } catch (Exception e) {
             transportException.addSuppressed(e);
-            logger.error(() -> new ParameterizedMessage("failed to handle exception response [{}]", handler), transportException);
+            logger.error(() -> Message.createParameterizedMessage("failed to handle exception response [{}]", handler), transportException);
         }
     }
 

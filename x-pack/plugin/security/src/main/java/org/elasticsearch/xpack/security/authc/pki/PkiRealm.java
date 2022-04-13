@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.security.authc.pki;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.Supplier;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.cache.Cache;
@@ -19,6 +16,8 @@ import org.elasticsearch.common.ssl.SslTrustConfig;
 import org.elasticsearch.common.util.concurrent.ReleasableLock;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.watcher.ResourceWatcherService;
 import org.elasticsearch.xpack.core.XPackSettings;
 import org.elasticsearch.xpack.core.security.authc.AuthenticationResult;
@@ -151,7 +150,7 @@ public class PkiRealm extends Realm implements CachingRealm {
             User user = cache.get(fingerprint);
             if (user != null) {
                 logger.debug(
-                    (Supplier<?>) () -> new ParameterizedMessage(
+                    (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                         "Using cached authentication for DN [{}], as principal [{}]",
                         token.dn(),
                         user.principal()
@@ -173,7 +172,7 @@ public class PkiRealm extends Realm implements CachingRealm {
                 final String principal = getPrincipalFromSubjectDN(principalPattern, token, logger);
                 if (principal == null) {
                     logger.debug(
-                        (Supplier<?>) () -> new ParameterizedMessage(
+                        (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                             "the extracted principal after cert chain validation, from DN [{}], using pattern [{}] is null",
                             token.dn(),
                             principalPattern.toString()
@@ -191,7 +190,7 @@ public class PkiRealm extends Realm implements CachingRealm {
                     }, listener::onFailure);
                     if (false == principal.equals(token.principal())) {
                         logger.debug(
-                            (Supplier<?>) () -> new ParameterizedMessage(
+                            (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                                 "the extracted principal before [{}] and after [{}] cert chain validation, for DN [{}], are different",
                                 token.principal(),
                                 principal,
@@ -242,7 +241,7 @@ public class PkiRealm extends Realm implements CachingRealm {
         Matcher matcher = principalPattern.matcher(dn);
         if (false == matcher.find()) {
             logger.debug(
-                (Supplier<?>) () -> new ParameterizedMessage(
+                (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                     "could not extract principal from DN [{}] using pattern [{}]",
                     dn,
                     principalPattern.toString()
@@ -253,7 +252,7 @@ public class PkiRealm extends Realm implements CachingRealm {
         String principal = matcher.group(1);
         if (Strings.isNullOrEmpty(principal)) {
             logger.debug(
-                (Supplier<?>) () -> new ParameterizedMessage(
+                (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                     "the extracted principal from DN [{}] using pattern [{}] is empty",
                     dn,
                     principalPattern.toString()

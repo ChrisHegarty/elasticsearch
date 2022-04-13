@@ -7,8 +7,6 @@
  */
 package org.elasticsearch.gateway;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchTimeoutException;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.action.ActionListener;
@@ -22,6 +20,8 @@ import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Releasable;
 import org.elasticsearch.index.shard.ShardId;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.transport.ReceiveTimeoutTransportException;
 
 import java.util.ArrayList;
@@ -235,7 +235,7 @@ public abstract class AsyncShardFetch<T extends BaseNodeResponse> implements Rel
                             nodeEntry.restartFetching();
                         } else {
                             logger.warn(
-                                () -> new ParameterizedMessage(
+                                () -> Message.createParameterizedMessage(
                                     "{}: failed to list shard for {} on node [{}]",
                                     shardId,
                                     type,

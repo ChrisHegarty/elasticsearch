@@ -8,7 +8,6 @@
 
 package org.elasticsearch.indices;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.automaton.Automata;
 import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
@@ -32,6 +31,7 @@ import org.elasticsearch.core.Booleans;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.plugins.SystemIndexPlugin;
 import org.elasticsearch.snapshots.SnapshotsService;
 
@@ -126,7 +126,7 @@ public class SystemIndices {
                     // The below filter & map are inside the enclosing flapMap so we have access to both the feature and the descriptor
                     .filter(descriptor -> overlaps(descriptor.getIndexPattern(), suffixPattern) == false)
                     .map(
-                        descriptor -> new ParameterizedMessage(
+                        descriptor -> Message.createParameterizedMessage(
                             "pattern [{}] from feature [{}]",
                             descriptor.getIndexPattern(),
                             feature.getKey()
@@ -136,7 +136,7 @@ public class SystemIndices {
             .toList();
         if (descriptorsWithNoRoomForSuffix.isEmpty() == false) {
             throw new IllegalStateException(
-                new ParameterizedMessage(
+                Message.createParameterizedMessage(
                     "the following system index patterns do not allow suffix [{}] required to allow upgrades: [{}]",
                     UPGRADED_INDEX_SUFFIX,
                     descriptorsWithNoRoomForSuffix

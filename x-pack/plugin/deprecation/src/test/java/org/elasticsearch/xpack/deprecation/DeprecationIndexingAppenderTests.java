@@ -7,9 +7,9 @@
 
 package org.elasticsearch.xpack.deprecation;
 
-import org.apache.logging.log4j.core.Layout;
-import org.apache.logging.log4j.core.LogEvent;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.logging.core.Layout;
+import org.elasticsearch.logging.core.LogEvent;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.xpack.deprecation.logging.DeprecationIndexingAppender;
 import org.junit.Before;
@@ -29,7 +29,7 @@ import static org.mockito.Mockito.when;
 public class DeprecationIndexingAppenderTests extends ESTestCase {
 
     private DeprecationIndexingAppender appender;
-    private Layout<String> layout;
+    private Layout layout;
     private Consumer<IndexRequest> consumer;
 
     @Before

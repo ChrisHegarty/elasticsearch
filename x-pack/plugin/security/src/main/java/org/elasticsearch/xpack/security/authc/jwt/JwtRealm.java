@@ -12,9 +12,6 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.cache.Cache;
@@ -27,6 +24,9 @@ import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.Releasable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xpack.core.security.authc.AuthenticationResult;
 import org.elasticsearch.xpack.core.security.authc.AuthenticationToken;
 import org.elasticsearch.xpack.core.security.authc.Realm;
@@ -292,7 +292,7 @@ public class JwtRealm extends Realm implements CachingRealm, Releasable {
             try {
                 this.httpClient.close();
             } catch (IOException e) {
-                LOGGER.warn(new ParameterizedMessage("Exception closing HTTPS client for realm [{}]", super.name()), e);
+                LOGGER.warn(Message.createParameterizedMessage("Exception closing HTTPS client for realm [{}]", super.name()), e);
             }
         }
     }
@@ -470,7 +470,7 @@ public class JwtRealm extends Realm implements CachingRealm, Releasable {
                 if (result.isAuthenticated()) {
                     final User user = result.getValue();
                     LOGGER.debug(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "Realm [{}] roles [{}] for principal=[{}].",
                             super.name(),
                             String.join(",", user.roles()),

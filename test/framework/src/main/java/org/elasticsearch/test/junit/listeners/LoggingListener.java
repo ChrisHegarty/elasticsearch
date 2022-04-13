@@ -8,10 +8,10 @@
 
 package org.elasticsearch.test.junit.listeners;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.util.Maps;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.spi.LogLevelSupport;
 import org.elasticsearch.test.junit.annotations.TestIssueLogging;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 import org.junit.runner.Description;
@@ -79,6 +79,7 @@ public class LoggingListener extends RunListener {
      */
     private static Logger resolveLogger(String loggerName) {
         if (loggerName.equalsIgnoreCase("_root")) {
+            // TODO PG do we want to have getRootLogger?
             return LogManager.getRootLogger();
         }
         return LogManager.getLogger(loggerName);
@@ -119,7 +120,7 @@ public class LoggingListener extends RunListener {
         }
         for (final Map.Entry<String, String> entry : loggingLevels.entrySet()) {
             final Logger logger = resolveLogger(entry.getKey());
-            Loggers.setLevel(logger, entry.getValue());
+            LogLevelSupport.provider().setLevel(logger, entry.getValue());
         }
         return existing;
     }
@@ -173,7 +174,7 @@ public class LoggingListener extends RunListener {
     private Map<String, String> reset(final Map<String, String> map) {
         for (final Map.Entry<String, String> previousLogger : map.entrySet()) {
             final Logger logger = resolveLogger(previousLogger.getKey());
-            Loggers.setLevel(logger, previousLogger.getValue());
+            LogLevelSupport.provider().setLevel(logger, previousLogger.getValue());
         }
 
         return Collections.emptyMap();

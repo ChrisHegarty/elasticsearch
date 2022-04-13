@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.ccr.action;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.ClusterChangedEvent;
@@ -19,6 +16,9 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.gateway.GatewayService;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexNotFoundException;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.persistent.CompletionPersistentTaskAction;
 import org.elasticsearch.persistent.PersistentTaskResponse;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
@@ -88,7 +88,7 @@ public class ShardFollowTaskCleaner implements ClusterStateListener {
 
                     @Override
                     public void onFailure(Exception e) {
-                        logger.warn(new ParameterizedMessage("failed to clean up task [{}]", persistentTask.getId()), e);
+                        logger.warn(Message.createParameterizedMessage("failed to clean up task [{}]", persistentTask.getId()), e);
                     }
                 });
             });

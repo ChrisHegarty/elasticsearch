@@ -6,15 +6,15 @@
  */
 package org.elasticsearch.xpack.security.authc.saml;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchSecurityException;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.util.NamedFormatter;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
-import org.elasticsearch.test.MockLogAppender;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.xpack.core.watcher.watch.ClockMock;
 import org.hamcrest.Matchers;
 import org.junit.Before;
@@ -220,7 +220,7 @@ public class SamlAuthenticatorTests extends SamlResponseHandlerTests {
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         try {
-            Loggers.addAppender(samlLogger, mockAppender);
+            AppenderSupport.provider().addAppender(samlLogger, mockAppender);
             mockAppender.addExpectation(
                 new MockLogAppender.SeenEventExpectation(
                     "attribute name warning",
@@ -233,7 +233,7 @@ public class SamlAuthenticatorTests extends SamlResponseHandlerTests {
             assertThat(attributes, notNullValue());
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(samlLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(samlLogger, mockAppender);
             mockAppender.stop();
         }
     }
@@ -251,12 +251,12 @@ public class SamlAuthenticatorTests extends SamlResponseHandlerTests {
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         try {
-            Loggers.addAppender(samlLogger, mockAppender);
+            AppenderSupport.provider().addAppender(samlLogger, mockAppender);
             final SamlAttributes attributes = authenticator.authenticate(token);
             assertThat(attributes, notNullValue());
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(samlLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(samlLogger, mockAppender);
             mockAppender.stop();
         }
     }
@@ -277,7 +277,7 @@ public class SamlAuthenticatorTests extends SamlResponseHandlerTests {
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         try {
-            Loggers.addAppender(samlLogger, mockAppender);
+            AppenderSupport.provider().addAppender(samlLogger, mockAppender);
             mockAppender.addExpectation(
                 new MockLogAppender.SeenEventExpectation(
                     "attribute name warning",
@@ -298,7 +298,7 @@ public class SamlAuthenticatorTests extends SamlResponseHandlerTests {
             assertThat(attributes, notNullValue());
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(samlLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(samlLogger, mockAppender);
             mockAppender.stop();
         }
     }
@@ -849,10 +849,10 @@ public class SamlAuthenticatorTests extends SamlResponseHandlerTests {
         final MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         try {
-            Loggers.addAppender(samlLogger, mockAppender);
+            AppenderSupport.provider().addAppender(samlLogger, mockAppender);
 
             mockAppender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "similar audience",
                     authenticator.getClass().getName(),
                     Level.INFO,
@@ -866,7 +866,7 @@ public class SamlAuthenticatorTests extends SamlResponseHandlerTests {
                 )
             );
             mockAppender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "not similar audience",
                     authenticator.getClass().getName(),
                     Level.INFO,
@@ -877,7 +877,7 @@ public class SamlAuthenticatorTests extends SamlResponseHandlerTests {
             assertThat(exception.getMessage(), containsString("required audience"));
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(samlLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(samlLogger, mockAppender);
             mockAppender.stop();
         }
     }

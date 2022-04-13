@@ -9,8 +9,8 @@
 module org.elasticsearch.transport.netty4 {
     requires org.elasticsearch.base;
     requires org.elasticsearch.server;
+    requires org.elasticsearch.logging;
     requires org.elasticsearch.xcontent;
-    requires org.apache.logging.log4j;
     requires org.apache.lucene.core;
     requires io.netty.buffer;
     requires io.netty.codec;

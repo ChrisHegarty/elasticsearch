@@ -8,7 +8,6 @@
 
 package org.elasticsearch.action.support.broadcast;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.NoShardAvailableActionException;
@@ -27,6 +26,7 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportChannel;
@@ -220,7 +220,7 @@ public abstract class TransportBroadcastAction<
                     if (logger.isTraceEnabled()) {
                         if (TransportActions.isShardNotAvailableException(e) == false) {
                             logger.trace(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "{}: failed to execute [{}]",
                                     shard != null ? shard.shortSummary() : shardIt.shardId(),
                                     request
@@ -236,7 +236,7 @@ public abstract class TransportBroadcastAction<
                     if (e != null) {
                         if (TransportActions.isShardNotAvailableException(e) == false) {
                             logger.debug(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "{}: failed to execute [{}]",
                                     shard != null ? shard.shortSummary() : shardIt.shardId(),
                                     request
@@ -297,7 +297,7 @@ public abstract class TransportBroadcastAction<
                     channel.sendResponse(e);
                 } catch (Exception e1) {
                     logger.warn(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "Failed to send error response for action [{}] and request [{}]",
                             actionName,
                             request

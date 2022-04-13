@@ -6,12 +6,12 @@
  */
 package org.elasticsearch.xpack.ml.dataframe.process;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xpack.core.ml.dataframe.DataFrameAnalyticsConfig;
 import org.elasticsearch.xpack.core.ml.utils.ExceptionsHelper;
 import org.elasticsearch.xpack.ml.dataframe.extractor.DataFrameDataExtractor;
@@ -100,7 +100,7 @@ public class MemoryUsageEstimationProcessManager {
         try {
             return readResult(jobId, process);
         } catch (Exception e) {
-            String errorMsg = new ParameterizedMessage(
+            String errorMsg = Message.createParameterizedMessage(
                 "[{}] Error while processing process output [{}], process errors: [{}]",
                 jobId,
                 e.getMessage(),
@@ -113,7 +113,7 @@ public class MemoryUsageEstimationProcessManager {
                 process.close();
                 LOGGER.debug("[{}] Closed process", jobId);
             } catch (Exception e) {
-                String errorMsg = new ParameterizedMessage(
+                String errorMsg = Message.createParameterizedMessage(
                     "[{}] Error while closing process [{}], process errors: [{}]",
                     jobId,
                     e.getMessage(),
@@ -130,14 +130,16 @@ public class MemoryUsageEstimationProcessManager {
     private static MemoryUsageEstimationResult readResult(String jobId, AnalyticsProcess<MemoryUsageEstimationResult> process) {
         Iterator<MemoryUsageEstimationResult> iterator = process.readAnalyticsResults();
         if (iterator.hasNext() == false) {
-            String errorMsg = new ParameterizedMessage("[{}] Memory usage estimation process returned no results", jobId)
+            String errorMsg = Message.createParameterizedMessage("[{}] Memory usage estimation process returned no results", jobId)
                 .getFormattedMessage();
             throw ExceptionsHelper.serverError(errorMsg);
         }
         MemoryUsageEstimationResult result = iterator.next();
         if (iterator.hasNext()) {
-            String errorMsg = new ParameterizedMessage("[{}] Memory usage estimation process returned more than one result", jobId)
-                .getFormattedMessage();
+            String errorMsg = Message.createParameterizedMessage(
+                "[{}] Memory usage estimation process returned more than one result",
+                jobId
+            ).getFormattedMessage();
             throw ExceptionsHelper.serverError(errorMsg);
         }
         return result;

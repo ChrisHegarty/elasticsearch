@@ -8,18 +8,18 @@
 
 package org.elasticsearch.bootstrap;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.Constants;
 import org.elasticsearch.cluster.metadata.Metadata;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.PathUtils;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
+import org.elasticsearch.logging.core.LogEvent;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.AbstractBootstrapCheckTestCase;
-import org.elasticsearch.test.MockLogAppender;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -145,11 +145,11 @@ public class MaxMapCountCheckTests extends AbstractBootstrapCheckTestCase {
                     e -> ioException == e
                 )
             );
-            Loggers.addAppender(logger, appender);
+            AppenderSupport.provider().addAppender(logger, appender);
             assertThat(check.getMaxMapCount(logger), equalTo(-1L));
             appender.assertAllExpectationsMatched();
             verify(reader).close();
-            Loggers.removeAppender(logger, appender);
+            AppenderSupport.provider().removeAppender(logger, appender);
             appender.stop();
         }
 
@@ -169,11 +169,11 @@ public class MaxMapCountCheckTests extends AbstractBootstrapCheckTestCase {
                     e -> e instanceof NumberFormatException && e.getMessage().equals("For input string: \"eof\"")
                 )
             );
-            Loggers.addAppender(logger, appender);
+            AppenderSupport.provider().addAppender(logger, appender);
             assertThat(check.getMaxMapCount(logger), equalTo(-1L));
             appender.assertAllExpectationsMatched();
             verify(reader).close();
-            Loggers.removeAppender(logger, appender);
+            AppenderSupport.provider().removeAppender(logger, appender);
             appender.stop();
         }
 
@@ -208,9 +208,9 @@ public class MaxMapCountCheckTests extends AbstractBootstrapCheckTestCase {
 
         @Override
         public void match(final LogEvent event) {
-            if (event.getLevel().equals(level)
-                && event.getLoggerName().equals(loggerName)
-                && event.getMessage()instanceof final ParameterizedMessage message) {
+            if (event.getLevel().equals(level) && event.getLoggerName().equals(loggerName)
+            /* && event.getMessage() instanceof final org.elasticsearch.logging. message*/) {
+                Message message = event.getMessage();
                 saw = message.getFormat().equals(messagePattern)
                     && Arrays.deepEquals(arguments, message.getParameters())
                     && throwablePredicate.test(event.getThrown());

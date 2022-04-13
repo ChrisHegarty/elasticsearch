@@ -72,6 +72,8 @@ import org.elasticsearch.core.SuppressForbidden;
 import org.elasticsearch.index.analysis.AnalyzerScope;
 import org.elasticsearch.index.analysis.NamedAnalyzer;
 import org.elasticsearch.index.fielddata.IndexFieldData;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.lucene.grouping.TopFieldGroups;
 import org.elasticsearch.search.sort.ShardDocSortField;
 
@@ -103,6 +105,18 @@ public class Lucene {
     public static final TopDocs EMPTY_TOP_DOCS = new TopDocs(new TotalHits(0, TotalHits.Relation.EQUAL_TO), EMPTY_SCORE_DOCS);
 
     private Lucene() {}
+
+    public static Version parseVersion(@Nullable String version, Version defaultVersion, Logger logger) {
+        if (version == null) {
+            return defaultVersion;
+        }
+        try {
+            return Version.parse(version);
+        } catch (ParseException e) {
+            logger.warn(() -> Message.createParameterizedMessage("no version match {}, default to {}", version, defaultVersion), e);
+            return defaultVersion;
+        }
+    }
 
     /**
      * Reads the segments infos, failing if it fails to load

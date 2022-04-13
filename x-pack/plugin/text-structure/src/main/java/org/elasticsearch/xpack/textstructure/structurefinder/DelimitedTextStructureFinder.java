@@ -6,8 +6,8 @@
  */
 package org.elasticsearch.xpack.textstructure.structurefinder;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.core.Tuple;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xpack.core.textstructure.structurefinder.FieldStats;
 import org.elasticsearch.xpack.core.textstructure.structurefinder.TextStructure;
 import org.supercsv.exception.SuperCsvException;
@@ -661,7 +661,7 @@ public class DelimitedTextStructureFinder implements TextStructureFinder {
                         // as it may have and down stream effects
                         if (illFormattedRows.size() > Math.ceil(allowedFractionOfBadLines * totalNumberOfRows)) {
                             explanation.add(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "Not {} because {} or more rows did not have the same number of fields "
                                         + "as the first row ({}). Bad rows {}",
                                     formatName,

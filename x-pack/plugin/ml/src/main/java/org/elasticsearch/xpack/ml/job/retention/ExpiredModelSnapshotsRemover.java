@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.job.retention;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.search.SearchRequest;
@@ -17,6 +14,9 @@ import org.elasticsearch.client.internal.OriginSettingClient;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.FieldSortBuilder;
@@ -169,7 +169,7 @@ public class ExpiredModelSnapshotsRemover extends AbstractExpiredJobDataRemover 
             return;
         }
         LOGGER.debug(
-            () -> new ParameterizedMessage(
+            () -> Message.createParameterizedMessage(
                 "Considering model snapshots of job [{}] that have a timestamp before [{}] for removal",
                 job.getId(),
                 cutoffEpochMs
@@ -245,7 +245,7 @@ public class ExpiredModelSnapshotsRemover extends AbstractExpiredJobDataRemover 
         deleter.deleteModelSnapshots(modelSnapshots, ActionListener.wrap(bulkResponse -> {
             auditor.info(jobId, Messages.getMessage(Messages.JOB_AUDIT_SNAPSHOTS_DELETED, modelSnapshots.size()));
             LOGGER.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "[{}] deleted model snapshots {} with descriptions {}",
                     jobId,
                     modelSnapshots.stream().map(ModelSnapshot::getSnapshotId).collect(Collectors.toList()),

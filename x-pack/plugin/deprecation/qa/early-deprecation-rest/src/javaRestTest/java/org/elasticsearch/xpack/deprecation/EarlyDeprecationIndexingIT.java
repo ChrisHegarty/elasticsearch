@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import static org.elasticsearch.common.logging.DeprecatedMessage.KEY_FIELD_NAME;
+import static org.elasticsearch.logging.DeprecatedMessage.KEY_FIELD_NAME;
 import static org.elasticsearch.xpack.deprecation.DeprecationTestUtils.DATA_STREAM_NAME;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -59,7 +59,7 @@ public class EarlyDeprecationIndexingIT extends ESRestTestCase {
 
         assertBusy(() -> {
             List<Map<String, Object>> documents = DeprecationTestUtils.getIndexedDeprecations(client());
-            logger.warn(documents);
+            logger.warn(documents.toString());
             assertThat(
                 documents,
                 containsInAnyOrder(

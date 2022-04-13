@@ -8,9 +8,6 @@
 
 package org.elasticsearch.cluster.routing;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.ContextPreservingActionListener;
@@ -22,6 +19,9 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.Priority;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.SuppressForbidden;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -141,12 +141,12 @@ public class BatchedRerouteService implements RerouteService {
                     final ClusterState state = clusterService.state();
                     if (logger.isTraceEnabled()) {
                         logger.error(
-                            () -> new ParameterizedMessage("unexpected failure during [{}], current state:\n{}", source, state),
+                            () -> Message.createParameterizedMessage("unexpected failure during [{}], current state:\n{}", source, state),
                             e
                         );
                     } else {
                         logger.error(
-                            () -> new ParameterizedMessage(
+                            () -> Message.createParameterizedMessage(
                                 "unexpected failure during [{}], current state version [{}]",
                                 source,
                                 state.version()
@@ -170,7 +170,7 @@ public class BatchedRerouteService implements RerouteService {
                 }
             }
             ClusterState state = clusterService.state();
-            logger.warn(() -> new ParameterizedMessage("failed to reroute routing table, current state:\n{}", state), e);
+            logger.warn(() -> Message.createParameterizedMessage("failed to reroute routing table, current state:\n{}", state), e);
             ActionListener.onFailure(
                 currentListeners,
                 new ElasticsearchException("delayed reroute [" + reason + "] could not be submitted", e)

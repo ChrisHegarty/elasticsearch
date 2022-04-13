@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.watcher.execution;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.ResourceNotFoundException;
 import org.elasticsearch.action.ActionListener;
@@ -33,6 +30,9 @@ import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.index.engine.DocumentMissingException;
 import org.elasticsearch.index.engine.VersionConflictEngineException;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentFactory;
@@ -291,7 +291,7 @@ public class ExecutionService {
             BulkItemResponse itemResponse = response.getItems()[i];
             if (itemResponse.isFailed()) {
                 logger.error(
-                    new ParameterizedMessage("could not store triggered watch with id [{}]", itemResponse.getId()),
+                    Message.createParameterizedMessage("could not store triggered watch with id [{}]", itemResponse.getId()),
                     itemResponse.getFailure().getCause()
                 );
             } else {
@@ -362,7 +362,7 @@ public class ExecutionService {
                             historyStore.put(record);
                         }
                     } catch (Exception e) {
-                        logger.error(new ParameterizedMessage("failed to update watch record [{}]", ctx.id()), e);
+                        logger.error(Message.createParameterizedMessage("failed to update watch record [{}]", ctx.id()), e);
                         // TODO log watch record in logger, when saving in history store failed, otherwise the info is gone!
                     }
                 }
@@ -421,7 +421,7 @@ public class ExecutionService {
     private void logWatchRecord(WatchExecutionContext ctx, Exception e) {
         // failed watches stack traces are only logged in debug, otherwise they should be checked out in the history
         if (logger.isDebugEnabled()) {
-            logger.debug(() -> new ParameterizedMessage("failed to execute watch [{}]", ctx.id().watchId()), e);
+            logger.debug(() -> Message.createParameterizedMessage("failed to execute watch [{}]", ctx.id().watchId()), e);
         } else {
             logger.warn("failed to execute watch [{}]", ctx.id().watchId());
         }
@@ -451,7 +451,7 @@ public class ExecutionService {
                     forcePutHistory(record);
                 } catch (Exception exc) {
                     logger.error(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "Error storing watch history record for watch [{}] after thread pool rejection",
                             triggeredWatch.id()
                         ),
@@ -462,7 +462,7 @@ public class ExecutionService {
                     deleteTrigger(triggeredWatch.id());
                 } catch (Exception exc) {
                     logger.error(
-                        new ParameterizedMessage(
+                        Message.createParameterizedMessage(
                             "Error deleting entry from .triggered_watches for watch [{}] after thread pool rejection",
                             triggeredWatch.id()
                         ),
@@ -507,7 +507,7 @@ public class ExecutionService {
             }
         } catch (InterruptedException | ExecutionException | TimeoutException | IOException ioe) {
             final WatchRecord wr = watchRecord;
-            logger.error(new ParameterizedMessage("failed to persist watch record [{}]", wr), ioe);
+            logger.error(Message.createParameterizedMessage("failed to persist watch record [{}]", wr), ioe);
         }
     }
 

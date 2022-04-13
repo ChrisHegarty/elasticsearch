@@ -8,11 +8,11 @@
 
 package org.elasticsearch.transport;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.common.util.concurrent.AbstractRunnable;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 
 /**
@@ -63,7 +63,7 @@ abstract class ForkingResponseHandlerRunnable extends AbstractRunnable {
         } catch (Exception e2) {
             exceptionToDeliver.addSuppressed(e2);
             logger.error(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "{} [{}]",
                     transportException == null ? "failed to handle rejection of response" : "failed to handle rejection of error response",
                     handler
@@ -77,7 +77,7 @@ abstract class ForkingResponseHandlerRunnable extends AbstractRunnable {
     public void onFailure(Exception e) {
         assert false : e; // delivering the response shouldn't throw anything
         logger.error(
-            () -> new ParameterizedMessage(
+            () -> Message.createParameterizedMessage(
                 "{} [{}]",
                 transportException == null ? "failed to handle rejection of response" : "failed to handle rejection of error response",
                 handler

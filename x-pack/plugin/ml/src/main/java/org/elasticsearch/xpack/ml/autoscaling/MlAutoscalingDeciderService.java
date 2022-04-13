@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.autoscaling;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.LocalNodeMasterListener;
 import org.elasticsearch.cluster.node.DiscoveryNode;
@@ -21,6 +18,9 @@ import org.elasticsearch.common.xcontent.XContentElasticsearchExtension;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata;
 import org.elasticsearch.persistent.PersistentTasksCustomMetadata.PersistentTask;
 import org.elasticsearch.xpack.autoscaling.capacity.AutoscalingCapacity;
@@ -130,7 +130,7 @@ public class MlAutoscalingDeciderService implements AutoscalingDeciderService, L
             value = OptionalLong.of(Long.parseLong(valueStr));
         } catch (NumberFormatException e) {
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "could not parse stored string value [{}] in node attribute [{}]",
                     valueStr,
                     MachineLearning.MAX_JVM_SIZE_NODE_ATTR
@@ -433,7 +433,7 @@ public class MlAutoscalingDeciderService implements AutoscalingDeciderService, L
 
         if (mlMemoryTracker.isRecentlyRefreshed(memoryTrackingStale) == false) {
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "view of job memory is stale given duration [{}]. Not attempting to make scaling decision",
                     memoryTrackingStale
                 )
@@ -616,7 +616,7 @@ public class MlAutoscalingDeciderService implements AutoscalingDeciderService, L
                         MAX_OPEN_JOBS_PER_NODE.getKey()
                     );
                     logger.info(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "{} Calculated potential scaled down capacity [{}] ",
                             msg,
                             scaleDownDecisionResult.requiredCapacity()
@@ -632,7 +632,7 @@ public class MlAutoscalingDeciderService implements AutoscalingDeciderService, L
             }
             TimeValue downScaleDelay = DOWN_SCALE_DELAY.get(configuration);
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "not scaling down as the current scale down delay [{}] is not satisfied."
                         + " The last time scale down was detected [{}]. Calculated scaled down capacity [{}] ",
                     downScaleDelay.getStringRep(),

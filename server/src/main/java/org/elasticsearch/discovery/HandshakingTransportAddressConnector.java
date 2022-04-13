@@ -8,9 +8,6 @@
 
 package org.elasticsearch.discovery;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.NotifyOnceListener;
@@ -23,6 +20,9 @@ import org.elasticsearch.common.transport.TransportAddress;
 import org.elasticsearch.core.Releasable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.internal.io.IOUtils;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.transport.ConnectTransportException;
 import org.elasticsearch.transport.ConnectionProfile;
 import org.elasticsearch.transport.TransportRequestOptions.Type;
@@ -148,7 +148,7 @@ public class HandshakingTransportAddressConnector implements TransportAddressCon
                                             // that the remote node is listening on 0.0.0.0 but has made an inappropriate choice for its
                                             // publish address.
                                             logger.warn(
-                                                new ParameterizedMessage(
+                                                Message.createParameterizedMessage(
                                                     "completed handshake with [{}] at [{}] but followup connection to [{}] failed",
                                                     remoteNode.descriptionWithoutAttributes(),
                                                     transportAddress,
@@ -170,7 +170,7 @@ public class HandshakingTransportAddressConnector implements TransportAddressCon
                             // we opened a connection and successfully performed a low-level handshake, so we were definitely
                             // talking to an Elasticsearch node, but the high-level handshake failed indicating some kind of
                             // mismatched configurations (e.g. cluster name) that the user should address
-                            logger.warn(new ParameterizedMessage("handshake to [{}] failed", transportAddress), e);
+                            logger.warn(Message.createParameterizedMessage("handshake to [{}] failed", transportAddress), e);
                             IOUtils.closeWhileHandlingException(connection);
                             listener.onFailure(e);
                         }

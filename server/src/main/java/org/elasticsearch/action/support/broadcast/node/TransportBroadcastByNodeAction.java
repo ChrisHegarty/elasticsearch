@@ -8,7 +8,6 @@
 
 package org.elasticsearch.action.support.broadcast.node;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.FailedNodeException;
 import org.elasticsearch.action.IndicesRequest;
@@ -33,6 +32,7 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.common.util.concurrent.AtomicArray;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.CancellableTask;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.tasks.TaskCancelledException;
@@ -383,7 +383,7 @@ public abstract class TransportBroadcastByNodeAction<
 
         protected void onNodeFailure(DiscoveryNode node, int nodeIndex, Throwable t) {
             String nodeId = node.getId();
-            logger.debug(new ParameterizedMessage("failed to execute [{}] on node [{}]", actionName, nodeId), t);
+            logger.debug(Message.createParameterizedMessage("failed to execute [{}] on node [{}]", actionName, nodeId), t);
             if (nodeResponseTracker.trackResponseAndCheckIfLast(
                 nodeIndex,
                 new FailedNodeException(nodeId, "Failed node [" + nodeId + "]", t)
@@ -525,7 +525,7 @@ public abstract class TransportBroadcastByNodeAction<
                 if (TransportActions.isShardNotAvailableException(e)) {
                     if (logger.isTraceEnabled()) {
                         logger.trace(
-                            new ParameterizedMessage(
+                            Message.createParameterizedMessage(
                                 "[{}] failed to execute operation for shard [{}]",
                                 actionName,
                                 shardRouting.shortSummary()
@@ -536,7 +536,7 @@ public abstract class TransportBroadcastByNodeAction<
                 } else {
                     if (logger.isDebugEnabled()) {
                         logger.debug(
-                            new ParameterizedMessage(
+                            Message.createParameterizedMessage(
                                 "[{}] failed to execute operation for shard [{}]",
                                 actionName,
                                 shardRouting.shortSummary()

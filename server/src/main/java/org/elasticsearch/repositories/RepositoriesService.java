@@ -8,9 +8,6 @@
 
 package org.elasticsearch.repositories;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
@@ -45,6 +42,9 @@ import org.elasticsearch.core.SuppressForbidden;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.internal.io.IOUtils;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.repositories.blobstore.MeteredBlobStoreRepository;
 import org.elasticsearch.snapshots.Snapshot;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -244,7 +244,7 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
 
                 @Override
                 public void onFailure(Exception e) {
-                    logger.warn(() -> new ParameterizedMessage("failed to create repository [{}]", request.name()), e);
+                    logger.warn(() -> Message.createParameterizedMessage("failed to create repository [{}]", request.name()), e);
                     publicationStep.onFailure(e);
                     super.onFailure(e);
                 }
@@ -417,7 +417,10 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
                                         repository.endVerification(verificationToken);
                                     } catch (Exception e) {
                                         logger.warn(
-                                            () -> new ParameterizedMessage("[{}] failed to finish repository verification", repositoryName),
+                                            () -> Message.createParameterizedMessage(
+                                                "[{}] failed to finish repository verification",
+                                                repositoryName
+                                            ),
                                             e
                                         );
                                         delegatedListener.onFailure(e);
@@ -434,7 +437,10 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
                             } catch (Exception inner) {
                                 inner.addSuppressed(e);
                                 logger.warn(
-                                    () -> new ParameterizedMessage("[{}] failed to finish repository verification", repositoryName),
+                                    () -> Message.createParameterizedMessage(
+                                        "[{}] failed to finish repository verification",
+                                        repositoryName
+                                    ),
                                     inner
                                 );
                             }
@@ -514,7 +520,10 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
                         } catch (RepositoryException ex) {
                             // TODO: this catch is bogus, it means the old repo is already closed,
                             // but we have nothing to replace it
-                            logger.warn(() -> new ParameterizedMessage("failed to change repository [{}]", repositoryMetadata.name()), ex);
+                            logger.warn(
+                                () -> Message.createParameterizedMessage("failed to change repository [{}]", repositoryMetadata.name()),
+                                ex
+                            );
                             repository = new InvalidRepository(repositoryMetadata, ex);
                         }
                     }
@@ -522,7 +531,10 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
                     try {
                         repository = createRepository(repositoryMetadata, typesRegistry, RepositoriesService::createUnknownTypeRepository);
                     } catch (RepositoryException ex) {
-                        logger.warn(() -> new ParameterizedMessage("failed to create repository [{}]", repositoryMetadata.name()), ex);
+                        logger.warn(
+                            () -> Message.createParameterizedMessage("failed to create repository [{}]", repositoryMetadata.name()),
+                            ex
+                        );
                         repository = new InvalidRepository(repositoryMetadata, ex);
                     }
                 }
@@ -617,7 +629,7 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
         });
         if (type.equals(repository.getMetadata().type()) == false) {
             logger.warn(
-                new ParameterizedMessage(
+                Message.createParameterizedMessage(
                     "internal repository [{}][{}] already registered. this prevented the registration of "
                         + "internal repository [{}][{}].",
                     name,
@@ -628,7 +640,7 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
             );
         } else if (repositories.containsKey(name)) {
             logger.warn(
-                new ParameterizedMessage(
+                Message.createParameterizedMessage(
                     "non-internal repository [{}] already registered. this repository will block the "
                         + "usage of internal repository [{}][{}].",
                     name,
@@ -643,7 +655,7 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
         Repository repository = internalRepositories.remove(name);
         if (repository != null) {
             RepositoryMetadata metadata = repository.getMetadata();
-            logger.debug(() -> new ParameterizedMessage("delete internal repository [{}][{}].", metadata.type(), name));
+            logger.debug(() -> Message.createParameterizedMessage("delete internal repository [{}][{}].", metadata.type(), name));
             closeRepository(repository);
         }
     }
@@ -686,7 +698,11 @@ public class RepositoriesService extends AbstractLifecycleComponent implements C
         } catch (Exception e) {
             IOUtils.closeWhileHandlingException(repository);
             logger.warn(
-                new ParameterizedMessage("failed to create repository [{}][{}]", repositoryMetadata.type(), repositoryMetadata.name()),
+                Message.createParameterizedMessage(
+                    "failed to create repository [{}][{}]",
+                    repositoryMetadata.type(),
+                    repositoryMetadata.name()
+                ),
                 e
             );
             throw new RepositoryException(repositoryMetadata.name(), "failed to create repository", e);

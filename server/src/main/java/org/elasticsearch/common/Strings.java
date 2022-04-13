@@ -37,6 +37,8 @@ import java.util.stream.Stream;
 
 public class Strings {
 
+    public static final String EMPTY = "";
+
     public static final String[] EMPTY_ARRAY = new String[0];
 
     public static void spaceify(int spaces, String from, StringBuilder to) throws Exception {
@@ -168,6 +170,10 @@ public class Strings {
      */
     public static boolean isEmpty(CharSequence str) {
         return hasLength(str) == false;
+    }
+
+    public static boolean isNotEmpty(CharSequence str) {
+        return isEmpty(str) == false;
     }
 
     /**
@@ -972,5 +978,23 @@ public class Strings {
             }
         }
         return out.toString();
+    }
+
+    // TODO PG methods from import org.apache.logging.log4j.util.Strings
+    public static boolean isBlank(String s) {
+        if (s == null || s.isEmpty()) {
+            return true;
+        }
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isWhitespace(c) == false) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static String join(List<String> fields, char c) {
+        return fields.stream().collect(Collectors.joining(String.valueOf(c)));
     }
 }

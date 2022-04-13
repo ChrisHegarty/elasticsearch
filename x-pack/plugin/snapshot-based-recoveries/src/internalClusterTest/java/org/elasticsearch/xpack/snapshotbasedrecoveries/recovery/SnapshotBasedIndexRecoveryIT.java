@@ -7,8 +7,6 @@
 
 package org.elasticsearch.xpack.snapshotbasedrecoveries.recovery;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
 import org.apache.lucene.index.IndexCommit;
 import org.elasticsearch.action.admin.cluster.node.stats.NodeStats;
 import org.elasticsearch.action.admin.cluster.node.stats.NodesStatsResponse;
@@ -30,7 +28,6 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.support.FilterBlobContainer;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.core.CheckedRunnable;
@@ -51,6 +48,10 @@ import org.elasticsearch.indices.recovery.RecoverySettings;
 import org.elasticsearch.indices.recovery.RecoverySnapshotFileRequest;
 import org.elasticsearch.indices.recovery.RecoverySourceHandler;
 import org.elasticsearch.indices.recovery.RecoveryState;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
 import org.elasticsearch.repositories.IndexId;
@@ -65,7 +66,6 @@ import org.elasticsearch.snapshots.RestoreInfo;
 import org.elasticsearch.snapshots.SnapshotInfo;
 import org.elasticsearch.test.ESIntegTestCase;
 import org.elasticsearch.test.InternalSettingsPlugin;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 import org.elasticsearch.test.transport.MockTransportService;
 import org.elasticsearch.transport.Transport;
@@ -338,7 +338,7 @@ public class SnapshotBasedIndexRecoveryIT extends AbstractSnapshotIntegTestCase 
         final var mockLogAppender = new MockLogAppender();
         mockLogAppender.start();
         try {
-            Loggers.addAppender(recoverySourceHandlerLogger, mockLogAppender);
+            AppenderSupport.provider().addAppender(recoverySourceHandlerLogger, mockLogAppender);
             mockLogAppender.addExpectation(
                 new MockLogAppender.SeenEventExpectation(
                     "expected warn log about restore failure",
@@ -361,7 +361,7 @@ public class SnapshotBasedIndexRecoveryIT extends AbstractSnapshotIntegTestCase 
 
             mockLogAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(recoverySourceHandlerLogger, mockLogAppender);
+            AppenderSupport.provider().removeAppender(recoverySourceHandlerLogger, mockLogAppender);
             mockLogAppender.stop();
         }
 
@@ -624,7 +624,7 @@ public class SnapshotBasedIndexRecoveryIT extends AbstractSnapshotIntegTestCase 
             final var mockLogAppender = new MockLogAppender();
             mockLogAppender.start();
             try {
-                Loggers.addAppender(recoverySourceHandlerLogger, mockLogAppender);
+                AppenderSupport.provider().addAppender(recoverySourceHandlerLogger, mockLogAppender);
                 mockLogAppender.addExpectation(
                     new MockLogAppender.SeenEventExpectation(
                         "expected debug log about restore cancellation",
@@ -646,7 +646,7 @@ public class SnapshotBasedIndexRecoveryIT extends AbstractSnapshotIntegTestCase 
 
                 assertBusy(mockLogAppender::assertAllExpectationsMatched);
             } finally {
-                Loggers.removeAppender(recoverySourceHandlerLogger, mockLogAppender);
+                AppenderSupport.provider().removeAppender(recoverySourceHandlerLogger, mockLogAppender);
                 mockLogAppender.stop();
             }
 

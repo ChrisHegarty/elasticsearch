@@ -7,9 +7,6 @@
  */
 package org.elasticsearch.cluster.routing.allocation;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.ClusterInfo;
@@ -32,13 +29,16 @@ import org.elasticsearch.cluster.routing.RoutingTable;
 import org.elasticsearch.cluster.routing.ShardRoutingState;
 import org.elasticsearch.common.Priority;
 import org.elasticsearch.common.collect.ImmutableOpenMap;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.util.set.Sets;
 import org.elasticsearch.index.shard.ShardId;
-import org.elasticsearch.test.MockLogAppender;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 
 import java.util.Arrays;
@@ -909,21 +909,21 @@ public class DiskThresholdMonitorTests extends ESAllocationTestCase {
         MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         mockAppender.addExpectation(
-            new MockLogAppender.UnseenEventExpectation("any INFO message", DiskThresholdMonitor.class.getCanonicalName(), Level.INFO, "*")
+            MockLogAppender.createUnseenEventExpectation("any INFO message", DiskThresholdMonitor.class.getCanonicalName(), Level.INFO, "*")
         );
         mockAppender.addExpectation(
-            new MockLogAppender.UnseenEventExpectation("any WARN message", DiskThresholdMonitor.class.getCanonicalName(), Level.WARN, "*")
+            MockLogAppender.createUnseenEventExpectation("any WARN message", DiskThresholdMonitor.class.getCanonicalName(), Level.WARN, "*")
         );
 
         Logger diskThresholdMonitorLogger = LogManager.getLogger(DiskThresholdMonitor.class);
-        Loggers.addAppender(diskThresholdMonitorLogger, mockAppender);
+        AppenderSupport.provider().addAppender(diskThresholdMonitorLogger, mockAppender);
 
         for (int i = between(1, 3); i >= 0; i--) {
             monitor.onNewInfo(clusterInfo(diskUsages));
         }
 
         mockAppender.assertAllExpectationsMatched();
-        Loggers.removeAppender(diskThresholdMonitorLogger, mockAppender);
+        AppenderSupport.provider().removeAppender(diskThresholdMonitorLogger, mockAppender);
         mockAppender.stop();
     }
 
@@ -951,10 +951,10 @@ public class DiskThresholdMonitorTests extends ESAllocationTestCase {
         MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         mockAppender.addExpectation(
-            new MockLogAppender.SeenEventExpectation("expected message", DiskThresholdMonitor.class.getCanonicalName(), level, message)
+            MockLogAppender.createSeenEventExpectation("expected message", DiskThresholdMonitor.class.getCanonicalName(), level, message)
         );
         mockAppender.addExpectation(
-            new MockLogAppender.UnseenEventExpectation(
+            MockLogAppender.createUnseenEventExpectation(
                 "any message of another level",
                 DiskThresholdMonitor.class.getCanonicalName(),
                 level == Level.INFO ? Level.WARN : Level.INFO,
@@ -963,12 +963,12 @@ public class DiskThresholdMonitorTests extends ESAllocationTestCase {
         );
 
         Logger diskThresholdMonitorLogger = LogManager.getLogger(DiskThresholdMonitor.class);
-        Loggers.addAppender(diskThresholdMonitorLogger, mockAppender);
+        AppenderSupport.provider().addAppender(diskThresholdMonitorLogger, mockAppender);
 
         monitor.onNewInfo(clusterInfo(diskUsages));
 
         mockAppender.assertAllExpectationsMatched();
-        Loggers.removeAppender(diskThresholdMonitorLogger, mockAppender);
+        AppenderSupport.provider().removeAppender(diskThresholdMonitorLogger, mockAppender);
         mockAppender.stop();
     }
 

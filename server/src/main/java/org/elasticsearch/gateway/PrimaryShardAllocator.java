@@ -8,8 +8,6 @@
 
 package org.elasticsearch.gateway;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.RecoverySource;
@@ -27,6 +25,8 @@ import org.elasticsearch.cluster.routing.allocation.decider.Decision.Type;
 import org.elasticsearch.env.ShardLockObtainFailedException;
 import org.elasticsearch.gateway.AsyncShardFetch.FetchResult;
 import org.elasticsearch.gateway.TransportNodesListGatewayStartedShards.NodeGatewayStartedShards;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -320,7 +320,7 @@ public abstract class PrimaryShardAllocator extends BaseGatewayShardAllocator {
                 final String finalAllocationId = allocationId;
                 if (nodeShardState.storeException() instanceof ShardLockObtainFailedException) {
                     logger.trace(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "[{}] on node [{}] has allocation id [{}] but the store can not be "
                                 + "opened as it's locked, treating as valid shard",
                             shard,
@@ -331,7 +331,7 @@ public abstract class PrimaryShardAllocator extends BaseGatewayShardAllocator {
                     );
                 } else {
                     logger.trace(
-                        () -> new ParameterizedMessage(
+                        () -> Message.createParameterizedMessage(
                             "[{}] on node [{}] has allocation id [{}] but the store can not be " + "opened, treating as no allocation id",
                             shard,
                             nodeShardState.getNode(),

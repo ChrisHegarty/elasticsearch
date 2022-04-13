@@ -6,12 +6,12 @@
  */
 package org.elasticsearch.xpack.core.ml.integration;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.common.xcontent.support.XContentMapValues;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.test.rest.ESRestTestCase;
 
 import java.io.IOException;
@@ -51,7 +51,7 @@ public class MlRestTestStateCleaner {
             try {
                 adminClient.performRequest(new Request("DELETE", "/_ingest/pipeline/" + pipelineId));
             } catch (Exception ex) {
-                logger.warn(() -> new ParameterizedMessage("failed to delete pipeline [{}]", pipelineId), ex);
+                logger.warn(() -> Message.createParameterizedMessage("failed to delete pipeline [{}]", pipelineId), ex);
             }
         }
     }

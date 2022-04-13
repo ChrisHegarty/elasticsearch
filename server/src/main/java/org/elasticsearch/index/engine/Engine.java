@@ -8,8 +8,6 @@
 
 package org.elasticsearch.index.engine;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexFileNames;
@@ -30,7 +28,6 @@ import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.collect.ImmutableOpenMap;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.lucene.Lucene;
 import org.elasticsearch.common.lucene.index.ElasticsearchDirectoryReader;
 import org.elasticsearch.common.lucene.uid.Versions;
@@ -60,6 +57,9 @@ import org.elasticsearch.index.shard.ShardLongFieldRange;
 import org.elasticsearch.index.store.Store;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.index.translog.TranslogStats;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
+import org.elasticsearch.logging.PrefixLogger;
 import org.elasticsearch.search.suggest.completion.CompletionStats;
 import org.elasticsearch.transport.Transports;
 
@@ -134,7 +134,7 @@ public abstract class Engine implements Closeable {
         this.shardId = engineConfig.getShardId();
         this.store = engineConfig.getStore();
         // we use the engine class directly here to make sure all subclasses have the same logger name
-        this.logger = Loggers.getLogger(Engine.class, engineConfig.getShardId());
+        this.logger = PrefixLogger.getLogger(Engine.class, engineConfig.getShardId().getId());
         this.eventListener = engineConfig.getEventListener();
     }
 
@@ -188,7 +188,7 @@ public abstract class Engine implements Closeable {
             try {
                 sizeInBytes += info.sizeInBytes();
             } catch (IOException e) {
-                logger.trace(() -> new ParameterizedMessage("failed to get size for [{}]", info.info.name), e);
+                logger.trace(() -> Message.createParameterizedMessage("failed to get size for [{}]", info.info.name), e);
             }
         }
         return new DocsStats(numDocs, numDeletedDocs, sizeInBytes);
@@ -661,7 +661,7 @@ public abstract class Engine implements Closeable {
         } catch (Exception ex) {
             maybeFailEngine("acquire_reader", ex);
             ensureOpen(ex); // throw EngineCloseException here if we are already closed
-            logger.error(() -> new ParameterizedMessage("failed to acquire reader"), ex);
+            logger.error(() -> Message.createParameterizedMessage("failed to acquire reader"), ex);
             throw new EngineException(shardId, "failed to acquire reader", ex);
         } finally {
             Releasables.close(releasable);
@@ -854,10 +854,13 @@ public abstract class Engine implements Closeable {
                         long fileLength = segmentReader.directory().fileLength(fileName);
                         files.put(fileExtension, new SegmentsStats.FileStats(fileExtension, fileLength, 1L, fileLength, fileLength));
                     } catch (IOException ioe) {
-                        logger.warn(() -> new ParameterizedMessage("Error when retrieving file length for [{}]", fileName), ioe);
+                        logger.warn(() -> Message.createParameterizedMessage("Error when retrieving file length for [{}]", fileName), ioe);
                     } catch (AlreadyClosedException ace) {
                         logger.warn(
-                            () -> new ParameterizedMessage("Error when retrieving file length for [{}], directory is closed", fileName),
+                            () -> Message.createParameterizedMessage(
+                                "Error when retrieving file length for [{}], directory is closed",
+                                fileName
+                            ),
                             ace
                         );
                         return ImmutableOpenMap.of();
@@ -867,7 +870,7 @@ public abstract class Engine implements Closeable {
             return files.build();
         } catch (IOException e) {
             logger.warn(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "Error when listing files for segment reader [{}] and segment info [{}]",
                     segmentReader,
                     segmentReader.getSegmentInfo()
@@ -921,7 +924,7 @@ public abstract class Engine implements Closeable {
                     try {
                         segment.sizeInBytes = info.sizeInBytes();
                     } catch (IOException e) {
-                        logger.trace(() -> new ParameterizedMessage("failed to get size for [{}]", info.info.name), e);
+                        logger.trace(() -> Message.createParameterizedMessage("failed to get size for [{}]", info.info.name), e);
                     }
                     segment.segmentSort = info.info.getIndexSort();
                     segment.attributes = info.info.getAttributes();
@@ -949,7 +952,7 @@ public abstract class Engine implements Closeable {
         try {
             segment.sizeInBytes = info.sizeInBytes();
         } catch (IOException e) {
-            logger.trace(() -> new ParameterizedMessage("failed to get size for [{}]", info.info.name), e);
+            logger.trace(() -> Message.createParameterizedMessage("failed to get size for [{}]", info.info.name), e);
         }
         segment.segmentSort = info.info.getIndexSort();
         segment.attributes = info.info.getAttributes();
@@ -1115,7 +1118,10 @@ public abstract class Engine implements Closeable {
             try {
                 if (failedEngine.get() != null) {
                     logger.warn(
-                        () -> new ParameterizedMessage("tried to fail engine but engine is already failed. ignoring. [{}]", reason),
+                        () -> Message.createParameterizedMessage(
+                            "tried to fail engine but engine is already failed. ignoring. [{}]",
+                            reason
+                        ),
                         failure
                     );
                     return;
@@ -1127,7 +1133,7 @@ public abstract class Engine implements Closeable {
                     // we just go and close this engine - no way to recover
                     closeNoLock("engine failed on: [" + reason + "]", closedLatch);
                 } finally {
-                    logger.warn(() -> new ParameterizedMessage("failed engine [{}]", reason), failure);
+                    logger.warn(() -> Message.createParameterizedMessage("failed engine [{}]", reason), failure);
                     // we must set a failure exception, generate one if not supplied
                     // we first mark the store as corrupted before we notify any listeners
                     // this must happen first otherwise we might try to reallocate so quickly
@@ -1146,7 +1152,7 @@ public abstract class Engine implements Closeable {
                             }
                         } else {
                             logger.warn(
-                                () -> new ParameterizedMessage(
+                                () -> Message.createParameterizedMessage(
                                     "tried to mark store as corrupted but store is already closed. [{}]",
                                     reason
                                 ),
@@ -1163,7 +1169,7 @@ public abstract class Engine implements Closeable {
             }
         } else {
             logger.debug(
-                () -> new ParameterizedMessage(
+                () -> Message.createParameterizedMessage(
                     "tried to fail engine but could not acquire lock - engine should " + "be failed by now [{}]",
                     reason
                 ),

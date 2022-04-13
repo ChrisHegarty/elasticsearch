@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.security.authz.store;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.cluster.node.stats.NodesStatsAction;
@@ -30,7 +27,6 @@ import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.StreamOutput;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.common.util.set.Sets;
@@ -40,8 +36,12 @@ import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.license.LicenseStateListener;
 import org.elasticsearch.license.MockLicenseState;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.VersionUtils;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportRequest;
@@ -279,7 +279,7 @@ public class CompositeRolesStoreTests extends ESTestCase {
         final Logger logger = LogManager.getLogger(RoleDescriptorStore.class);
         mockAppender.start();
         try {
-            Loggers.addAppender(logger, mockAppender);
+            AppenderSupport.provider().addAppender(logger, mockAppender);
             mockAppender.addExpectation(
                 new MockLogAppender.SeenEventExpectation(
                     "disabled role warning",
@@ -295,7 +295,7 @@ public class CompositeRolesStoreTests extends ESTestCase {
             assertThat(effectiveRoleDescriptors.get(), empty());
             mockAppender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(logger, mockAppender);
+            AppenderSupport.provider().removeAppender(logger, mockAppender);
             mockAppender.stop();
         }
     }

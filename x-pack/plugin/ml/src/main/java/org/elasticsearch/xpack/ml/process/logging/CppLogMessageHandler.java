@@ -6,10 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.process.logging;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.bytes.BytesArray;
@@ -18,6 +14,10 @@ import org.elasticsearch.common.bytes.CompositeBytesReference;
 import org.elasticsearch.common.util.Maps;
 import org.elasticsearch.common.util.concurrent.ConcurrentCollections;
 import org.elasticsearch.common.xcontent.LoggingDeprecationHandler;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.NamedXContentRegistry;
 import org.elasticsearch.xcontent.XContent;
 import org.elasticsearch.xcontent.XContentFactory;
@@ -267,7 +267,7 @@ public class CppLogMessageHandler implements Closeable {
             XContentParser parser = xContent.createParser(NamedXContentRegistry.EMPTY, LoggingDeprecationHandler.INSTANCE, stream)
         ) {
             CppLogMessage msg = CppLogMessage.PARSER.apply(parser, null);
-            Level level = Level.getLevel(msg.getLevel());
+            Level level = Level.valueOf(msg.getLevel());
             if (level == null) {
                 // This isn't expected to ever happen
                 level = Level.WARN;
@@ -290,7 +290,7 @@ public class CppLogMessageHandler implements Closeable {
             }
 
             // get out of here quickly if level isn't of interest
-            if (LOGGER.isEnabled(level) == false) {
+            if (LOGGER.isLoggable(level) == false) {
                 return;
             }
 
@@ -348,7 +348,7 @@ public class CppLogMessageHandler implements Closeable {
         } catch (IOException e) {
             if (jobId != null) {
                 LOGGER.warn(
-                    new ParameterizedMessage(
+                    Message.createParameterizedMessage(
                         "[{}] IO failure receiving C++ log message: {}",
                         new Object[] { jobId, bytesRef.utf8ToString() }
                     ),
@@ -356,7 +356,10 @@ public class CppLogMessageHandler implements Closeable {
                 );
             } else {
                 LOGGER.warn(
-                    new ParameterizedMessage("IO failure receiving C++ log message: {}", new Object[] { bytesRef.utf8ToString() }),
+                    Message.createParameterizedMessage(
+                        "IO failure receiving C++ log message: {}",
+                        new Object[] { bytesRef.utf8ToString() }
+                    ),
                     e
                 );
             }

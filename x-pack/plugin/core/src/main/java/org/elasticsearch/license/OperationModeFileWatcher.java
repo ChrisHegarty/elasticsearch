@@ -6,11 +6,10 @@
  */
 package org.elasticsearch.license;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.Supplier;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.license.License.OperationMode;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.watcher.FileChangesListener;
 import org.elasticsearch.watcher.FileWatcher;
 import org.elasticsearch.watcher.ResourceWatcherService;
@@ -98,7 +97,7 @@ public final class OperationModeFileWatcher implements FileChangesListener {
                         content = Files.readAllBytes(licenseModePath);
                     } catch (IOException e) {
                         logger.error(
-                            (Supplier<?>) () -> new ParameterizedMessage(
+                            (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                                 "couldn't read operation mode from [{}]",
                                 licenseModePath.toAbsolutePath()
                             ),
@@ -112,7 +111,7 @@ public final class OperationModeFileWatcher implements FileChangesListener {
                         newOperationMode = OperationMode.parse(operationMode);
                     } catch (IllegalArgumentException e) {
                         logger.error(
-                            (Supplier<?>) () -> new ParameterizedMessage(
+                            (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                                 "invalid operation mode in [{}]",
                                 licenseModePath.toAbsolutePath()
                             ),

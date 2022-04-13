@@ -7,9 +7,6 @@
 package org.elasticsearch.xpack.monitoring.exporter.http;
 
 import org.apache.http.HttpEntity;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.Supplier;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
@@ -22,6 +19,8 @@ import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.core.CheckedFunction;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.XContent;
 
@@ -286,7 +285,7 @@ public abstract class PublishableHttpResource extends HttpResource {
                     }
                 } catch (Exception e) {
                     logger.error(
-                        (Supplier<?>) () -> new ParameterizedMessage(
+                        (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                             "failed to parse [{}/{}] on the [{}]",
                             resourceBasePath,
                             resourceName,
@@ -306,7 +305,7 @@ public abstract class PublishableHttpResource extends HttpResource {
                     final int statusCode = response.getStatusLine().getStatusCode();
 
                     logger.error(
-                        (Supplier<?>) () -> new ParameterizedMessage(
+                        (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                             "failed to verify {} [{}] on the [{}] {} with status code [{}]",
                             resourceType,
                             resourceName,
@@ -318,7 +317,7 @@ public abstract class PublishableHttpResource extends HttpResource {
                     );
                 } else {
                     logger.error(
-                        (Supplier<?>) () -> new ParameterizedMessage(
+                        (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                             "failed to verify {} [{}] on the [{}] {}",
                             resourceType,
                             resourceName,
@@ -397,7 +396,7 @@ public abstract class PublishableHttpResource extends HttpResource {
             @Override
             public void onFailure(final Exception exception) {
                 logger.error(
-                    (Supplier<?>) () -> new ParameterizedMessage(
+                    (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                         "failed to upload {} [{}] on the [{}] {}",
                         resourceType,
                         resourceName,
@@ -468,7 +467,7 @@ public abstract class PublishableHttpResource extends HttpResource {
             @Override
             public void onFailure(Exception exception) {
                 logger.error(
-                    (Supplier<?>) () -> new ParameterizedMessage(
+                    (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                         "failed to delete {} [{}] on the [{}] {}",
                         resourceType,
                         resourceName,

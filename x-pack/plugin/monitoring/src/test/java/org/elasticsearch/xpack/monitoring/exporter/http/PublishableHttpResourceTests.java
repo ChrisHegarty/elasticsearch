@@ -9,7 +9,6 @@ package org.elasticsearch.xpack.monitoring.exporter.http;
 import org.apache.http.HttpEntity;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.ResponseException;
@@ -17,6 +16,7 @@ import org.elasticsearch.client.ResponseListener;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.common.SuppressLoggerChecks;
 import org.elasticsearch.core.CheckedFunction;
+import org.elasticsearch.logging.Logger;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.XContent;
 import org.elasticsearch.xcontent.XContentType;
@@ -75,7 +75,7 @@ public class PublishableHttpResourceTests extends AbstractPublishableHttpResourc
 
         verify(logger).trace("checking if {} [{}] exists on the [{}] {}", resourceType, resourceName, owner, ownerType);
         verify(client).performRequestAsync(eq(request), any(ResponseListener.class));
-        verify(logger).error(any(org.apache.logging.log4j.util.Supplier.class), any(ResponseException.class));
+        verify(logger).error(any(java.util.function.Supplier.class), any(ResponseException.class));
 
         verifyNoMoreInteractions(client, logger);
     }
@@ -121,7 +121,7 @@ public class PublishableHttpResourceTests extends AbstractPublishableHttpResourc
         verifyCheckListener(null);
         verify(logger).trace("checking if {} [{}] exists on the [{}] {}", resourceType, resourceName, owner, ownerType);
         verify(client).performRequestAsync(eq(request), any(ResponseListener.class));
-        verify(logger).error(any(org.apache.logging.log4j.util.Supplier.class), any(ResponseException.class));
+        verify(logger).error(any(java.util.function.Supplier.class), any(ResponseException.class));
 
         verifyNoMoreInteractions(client, logger);
     }
@@ -155,7 +155,7 @@ public class PublishableHttpResourceTests extends AbstractPublishableHttpResourc
         verify(logger).trace("checking if {} [{}] exists on the [{}] {}", resourceType, resourceName, owner, ownerType);
         verify(logger).debug("{} [{}] found on the [{}] {}", resourceType, resourceName, owner, ownerType);
         verify(client).performRequestAsync(eq(request), any(ResponseListener.class));
-        verify(logger, times(2)).error(any(org.apache.logging.log4j.util.Supplier.class), any(Exception.class));
+        verify(logger, times(2)).error(any(java.util.function.Supplier.class), any(Exception.class));
 
         verifyNoMoreInteractions(client, logger);
     }
@@ -176,7 +176,7 @@ public class PublishableHttpResourceTests extends AbstractPublishableHttpResourc
 
         verify(logger).trace("checking if {} [{}] exists on the [{}] {}", resourceType, resourceName, owner, ownerType);
         verify(client).performRequestAsync(eq(request), any(ResponseListener.class));
-        verify(logger).error(any(org.apache.logging.log4j.util.Supplier.class), eq(e));
+        verify(logger).error(any(java.util.function.Supplier.class), eq(e));
 
         verifyNoMoreInteractions(client, logger);
     }
@@ -216,7 +216,7 @@ public class PublishableHttpResourceTests extends AbstractPublishableHttpResourc
 
         verify(logger).trace("uploading {} [{}] to the [{}] {}", resourceType, resourceName, owner, ownerType);
         verify(client).performRequestAsync(eq(request), any(ResponseListener.class));
-        verify(logger).error(any(org.apache.logging.log4j.util.Supplier.class), eq(e));
+        verify(logger).error(any(java.util.function.Supplier.class), eq(e));
 
         verifyNoMoreInteractions(client, logger);
     }
@@ -257,7 +257,7 @@ public class PublishableHttpResourceTests extends AbstractPublishableHttpResourc
 
         verify(logger).trace("deleting {} [{}] from the [{}] {}", resourceType, resourceName, owner, ownerType);
         verify(client).performRequestAsync(eq(request), any(ResponseListener.class));
-        verify(logger).error(any(org.apache.logging.log4j.util.Supplier.class), eq(e));
+        verify(logger).error(any(java.util.function.Supplier.class), eq(e));
 
         verifyNoMoreInteractions(client, logger);
     }
@@ -461,7 +461,7 @@ public class PublishableHttpResourceTests extends AbstractPublishableHttpResourc
         } else {
             ArgumentCaptor<RuntimeException> e = ArgumentCaptor.forClass(RuntimeException.class);
 
-            verify(logger).error(any(org.apache.logging.log4j.util.Supplier.class), e.capture());
+            verify(logger).error(any(java.util.function.Supplier.class), e.capture());
 
             assertThat(
                 e.getValue().getMessage(),
@@ -550,7 +550,7 @@ public class PublishableHttpResourceTests extends AbstractPublishableHttpResourc
         } else {
             ArgumentCaptor<RuntimeException> e = ArgumentCaptor.forClass(RuntimeException.class);
 
-            verify(logger).error(any(org.apache.logging.log4j.util.Supplier.class), e.capture());
+            verify(logger).error(any(java.util.function.Supplier.class), e.capture());
 
             assertThat(
                 e.getValue().getMessage(),

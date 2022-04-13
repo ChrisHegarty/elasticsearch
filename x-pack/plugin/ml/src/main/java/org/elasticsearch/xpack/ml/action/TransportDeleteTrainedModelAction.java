@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.ml.action;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.ActionFilters;
@@ -30,6 +27,9 @@ import org.elasticsearch.ingest.IngestMetadata;
 import org.elasticsearch.ingest.IngestService;
 import org.elasticsearch.ingest.Pipeline;
 import org.elasticsearch.ingest.PipelineConfiguration;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -101,7 +101,11 @@ public class TransportDeleteTrainedModelAction extends AcknowledgedTransportMast
         ActionListener<AcknowledgedResponse> listener
     ) {
         logger.debug(
-            () -> new ParameterizedMessage("[{}] Request to delete trained model{}", request.getId(), request.isForce() ? " (force)" : "")
+            () -> Message.createParameterizedMessage(
+                "[{}] Request to delete trained model{}",
+                request.getId(),
+                request.isForce() ? " (force)" : ""
+            )
         );
 
         String id = request.getId();
@@ -182,7 +186,7 @@ public class TransportDeleteTrainedModelAction extends AcknowledgedTransportMast
                     .map(InferenceProcessor::getModelId)
                     .forEach(allReferencedModelKeys::add);
             } catch (Exception ex) {
-                logger.warn(new ParameterizedMessage("failed to load pipeline [{}]", pipelineId), ex);
+                logger.warn(Message.createParameterizedMessage("failed to load pipeline [{}]", pipelineId), ex);
             }
         }
         return allReferencedModelKeys;
@@ -210,7 +214,7 @@ public class TransportDeleteTrainedModelAction extends AcknowledgedTransportMast
         List<String> modelAliases,
         ActionListener<AcknowledgedResponse> listener
     ) {
-        logger.debug(() -> new ParameterizedMessage("[{}] Deleting model", request.getId()));
+        logger.debug(() -> Message.createParameterizedMessage("[{}] Deleting model", request.getId()));
 
         ActionListener<AcknowledgedResponse> nameDeletionListener = ActionListener.wrap(
             ack -> trainedModelProvider.deleteTrainedModel(request.getId(), ActionListener.wrap(r -> {

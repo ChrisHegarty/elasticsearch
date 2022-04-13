@@ -24,11 +24,6 @@ import com.unboundid.ldap.sdk.SearchResultEntry;
 import com.unboundid.ldap.sdk.SearchResultReference;
 import com.unboundid.ldap.sdk.SearchScope;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.Supplier;
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.SpecialPermission;
 import org.elasticsearch.action.ActionListener;
@@ -38,6 +33,10 @@ import org.elasticsearch.common.util.concurrent.AbstractRunnable;
 import org.elasticsearch.common.util.concurrent.CountDown;
 import org.elasticsearch.core.SuppressForbidden;
 import org.elasticsearch.core.internal.io.IOUtils;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.core.security.support.Exceptions;
 
@@ -659,7 +658,7 @@ public final class LdapUtils {
                         );
                     } catch (LDAPException e) {
                         LOGGER.warn(
-                            (Supplier<?>) () -> new ParameterizedMessage(
+                            (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
                                 "caught exception while trying to follow referral [{}]",
                                 referralUrl
                             ),
@@ -744,7 +743,7 @@ public final class LdapUtils {
                 if (ignoreErrors) {
                     if (LOGGER.isDebugEnabled()) {
                         LOGGER.debug(
-                            new ParameterizedMessage(
+                            Message.createParameterizedMessage(
                                 "Failed to retrieve results from referral URL [{}]." + " Treating as 'no results'",
                                 referralURL
                             ),

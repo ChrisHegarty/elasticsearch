@@ -6,8 +6,6 @@
  */
 package org.elasticsearch.xpack.security;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.util.SetOnce;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -56,6 +54,8 @@ import org.elasticsearch.license.License;
 import org.elasticsearch.license.LicenseService;
 import org.elasticsearch.license.LicensedFeature;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
 import org.elasticsearch.plugins.ClusterPlugin;
 import org.elasticsearch.plugins.DiscoveryPlugin;
 import org.elasticsearch.plugins.ExtensiblePlugin;
@@ -1455,6 +1455,7 @@ public class Security extends Plugin
         NamedWriteableRegistry namedWriteableRegistry,
         NetworkService networkService
     ) {
+
         if (enabled == false) { // don't register anything if we are not enabled
             return Collections.emptyMap();
         }

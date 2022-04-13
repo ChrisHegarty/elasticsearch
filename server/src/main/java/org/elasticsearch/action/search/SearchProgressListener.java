@@ -8,12 +8,12 @@
 
 package org.elasticsearch.action.search;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.search.TotalHits;
 import org.elasticsearch.action.search.SearchResponse.Clusters;
 import org.elasticsearch.cluster.routing.GroupShardsIterator;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.search.SearchPhaseResult;
 import org.elasticsearch.search.SearchShardTarget;
 import org.elasticsearch.search.aggregations.InternalAggregations;
@@ -101,7 +101,7 @@ public abstract class SearchProgressListener {
         try {
             onListShards(shards, skippedShards, clusters, fetchPhase);
         } catch (Exception e) {
-            logger.warn(() -> new ParameterizedMessage("Failed to execute progress listener on list shards"), e);
+            logger.warn(() -> Message.createParameterizedMessage("Failed to execute progress listener on list shards"), e);
         }
     }
 
@@ -110,7 +110,10 @@ public abstract class SearchProgressListener {
             onQueryResult(shardIndex);
         } catch (Exception e) {
             logger.warn(
-                () -> new ParameterizedMessage("[{}] Failed to execute progress listener on query result", shards.get(shardIndex)),
+                () -> Message.createParameterizedMessage(
+                    "[{}] Failed to execute progress listener on query result",
+                    shards.get(shardIndex)
+                ),
                 e
             );
         }
@@ -121,7 +124,10 @@ public abstract class SearchProgressListener {
             onQueryFailure(shardIndex, shardTarget, exc);
         } catch (Exception e) {
             logger.warn(
-                () -> new ParameterizedMessage("[{}] Failed to execute progress listener on query failure", shards.get(shardIndex)),
+                () -> Message.createParameterizedMessage(
+                    "[{}] Failed to execute progress listener on query failure",
+                    shards.get(shardIndex)
+                ),
                 e
             );
         }
@@ -131,7 +137,7 @@ public abstract class SearchProgressListener {
         try {
             onPartialReduce(shards, totalHits, aggs, reducePhase);
         } catch (Exception e) {
-            logger.warn(() -> new ParameterizedMessage("Failed to execute progress listener on partial reduce"), e);
+            logger.warn(() -> Message.createParameterizedMessage("Failed to execute progress listener on partial reduce"), e);
         }
     }
 
@@ -139,7 +145,7 @@ public abstract class SearchProgressListener {
         try {
             onFinalReduce(shards, totalHits, aggs, reducePhase);
         } catch (Exception e) {
-            logger.warn(() -> new ParameterizedMessage("Failed to execute progress listener on reduce"), e);
+            logger.warn(() -> Message.createParameterizedMessage("Failed to execute progress listener on reduce"), e);
         }
     }
 
@@ -148,7 +154,10 @@ public abstract class SearchProgressListener {
             onFetchResult(shardIndex);
         } catch (Exception e) {
             logger.warn(
-                () -> new ParameterizedMessage("[{}] Failed to execute progress listener on fetch result", shards.get(shardIndex)),
+                () -> Message.createParameterizedMessage(
+                    "[{}] Failed to execute progress listener on fetch result",
+                    shards.get(shardIndex)
+                ),
                 e
             );
         }
@@ -159,7 +168,10 @@ public abstract class SearchProgressListener {
             onFetchFailure(shardIndex, shardTarget, exc);
         } catch (Exception e) {
             logger.warn(
-                () -> new ParameterizedMessage("[{}] Failed to execute progress listener on fetch failure", shards.get(shardIndex)),
+                () -> Message.createParameterizedMessage(
+                    "[{}] Failed to execute progress listener on fetch failure",
+                    shards.get(shardIndex)
+                ),
                 e
             );
         }

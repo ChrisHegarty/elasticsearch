@@ -8,9 +8,6 @@
 
 package org.elasticsearch.upgrades;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.ClusterStateTaskExecutor;
@@ -18,6 +15,9 @@ import org.elasticsearch.cluster.ClusterStateUpdateTask;
 import org.elasticsearch.cluster.metadata.Metadata;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.core.SuppressForbidden;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 
 import java.util.HashMap;
 
@@ -56,8 +56,11 @@ public class MigrationResultsUpdateTask extends ClusterStateUpdateTask {
      * @param clusterService The cluster service to which this task should be submitted.
      */
     public void submit(ClusterService clusterService) {
-        String source = new ParameterizedMessage("record [{}] migration [{}]", featureName, status.succeeded() ? "success" : "failure")
-            .getFormattedMessage();
+        String source = Message.createParameterizedMessage(
+            "record [{}] migration [{}]",
+            featureName,
+            status.succeeded() ? "success" : "failure"
+        ).getFormattedMessage();
         clusterService.submitStateUpdateTask(source, this, newExecutor());
     }
 
@@ -87,12 +90,15 @@ public class MigrationResultsUpdateTask extends ClusterStateUpdateTask {
     public void onFailure(Exception clusterStateUpdateException) {
         if (status.succeeded()) {
             logger.warn(
-                new ParameterizedMessage("failed to update cluster state after successful migration of feature [{}]", featureName),
+                Message.createParameterizedMessage(
+                    "failed to update cluster state after successful migration of feature [{}]",
+                    featureName
+                ),
                 clusterStateUpdateException
             );
         } else {
             logger.error(
-                new ParameterizedMessage(
+                Message.createParameterizedMessage(
                     "failed to update cluster state after failed migration of feature [{}] on index [{}]",
                     featureName,
                     status.getFailedIndexName()

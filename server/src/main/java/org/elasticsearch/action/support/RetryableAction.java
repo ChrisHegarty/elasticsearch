@@ -8,13 +8,13 @@
 
 package org.elasticsearch.action.support;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.common.Randomness;
 import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 
@@ -150,7 +150,10 @@ public abstract class RetryableAction<Response> {
                 final long elapsedMillis = threadPool.relativeTimeInMillis() - startMillis;
                 if (elapsedMillis >= timeoutMillis) {
                     logger.debug(
-                        () -> new ParameterizedMessage("retryable action timed out after {}", TimeValue.timeValueMillis(elapsedMillis)),
+                        () -> Message.createParameterizedMessage(
+                            "retryable action timed out after {}",
+                            TimeValue.timeValueMillis(elapsedMillis)
+                        ),
                         e
                     );
                     onFinalFailure(e);
@@ -165,7 +168,7 @@ public abstract class RetryableAction<Response> {
                     assert delayMillis > 0;
                     if (isDone.get() == false) {
                         final TimeValue delay = TimeValue.timeValueMillis(delayMillis);
-                        logger.debug(() -> new ParameterizedMessage("retrying action that failed in {}", delay), e);
+                        logger.debug(() -> Message.createParameterizedMessage("retrying action that failed in {}", delay), e);
                         try {
                             retryTask = threadPool.schedule(runnable, delay, executor);
                         } catch (EsRejectedExecutionException ree) {

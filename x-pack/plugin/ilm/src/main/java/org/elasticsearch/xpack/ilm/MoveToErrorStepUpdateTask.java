@@ -6,10 +6,6 @@
  */
 package org.elasticsearch.xpack.ilm;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.MessageSupplier;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.cluster.ClusterState;
 import org.elasticsearch.cluster.NotMasterException;
@@ -17,12 +13,16 @@ import org.elasticsearch.cluster.coordination.FailedToCommitClusterStateExceptio
 import org.elasticsearch.cluster.metadata.IndexMetadata;
 import org.elasticsearch.cluster.metadata.LifecycleExecutionState;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xpack.core.ilm.Step;
 
 import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 public class MoveToErrorStepUpdateTask extends IndexLifecycleClusterStateUpdateTask {
 
@@ -95,7 +95,7 @@ public class MoveToErrorStepUpdateTask extends IndexLifecycleClusterStateUpdateT
 
     @Override
     protected void handleFailure(Exception e) {
-        final MessageSupplier messageSupplier = () -> new ParameterizedMessage(
+        final Supplier<Message> messageSupplier = () -> Message.createParameterizedMessage(
             "policy [{}] for index [{}] failed trying to move from step [{}] to the ERROR step.",
             policy,
             index.getName(),

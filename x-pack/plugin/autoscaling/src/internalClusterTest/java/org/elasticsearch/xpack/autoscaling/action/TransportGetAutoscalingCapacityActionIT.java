@@ -7,14 +7,14 @@
 
 package org.elasticsearch.xpack.autoscaling.action;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.env.NodeEnvironment;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.monitor.os.OsProbe;
 import org.elasticsearch.test.ESIntegTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 import org.elasticsearch.xpack.autoscaling.AutoscalingIntegTestCase;
 import org.elasticsearch.xpack.autoscaling.capacity.AutoscalingCapacity;
@@ -55,7 +55,7 @@ public class TransportGetAutoscalingCapacityActionIT extends AutoscalingIntegTes
         MockLogAppender appender = new MockLogAppender();
         appender.start();
         appender.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "autoscaling capacity response message with " + storage,
                 TransportGetAutoscalingCapacityAction.class.getName(),
                 Level.DEBUG,
@@ -66,7 +66,7 @@ public class TransportGetAutoscalingCapacityActionIT extends AutoscalingIntegTes
                     + "*\"reason_summary\"*\"reason_details\"*]"
             )
         );
-        Loggers.addAppender(subjectLogger, appender);
+        AppenderSupport.provider().addAppender(subjectLogger, appender);
         try {
             GetAutoscalingCapacityAction.Response capacity = capacity();
             AutoscalingCapacity currentCapacity = capacity.results().get("test").currentCapacity();
@@ -77,7 +77,7 @@ public class TransportGetAutoscalingCapacityActionIT extends AutoscalingIntegTes
             appender.assertAllExpectationsMatched();
         } finally {
             appender.stop();
-            Loggers.removeAppender(subjectLogger, appender);
+            AppenderSupport.provider().removeAppender(subjectLogger, appender);
         }
     }
 

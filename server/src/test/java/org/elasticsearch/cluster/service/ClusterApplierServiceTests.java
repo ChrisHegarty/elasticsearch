@@ -8,9 +8,6 @@
 
 package org.elasticsearch.cluster.service;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.ClusterName;
@@ -24,13 +21,16 @@ import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.node.DiscoveryNodes;
 import org.elasticsearch.cluster.routing.allocation.decider.EnableAllocationDecider;
 import org.elasticsearch.common.Priority;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.ThreadContext;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.test.MockLogAppender;
 import org.elasticsearch.test.junit.annotations.TestLogging;
 import org.elasticsearch.threadpool.TestThreadPool;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -124,7 +124,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
         MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         mockAppender.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "test1",
                 ClusterApplierService.class.getCanonicalName(),
                 Level.DEBUG,
@@ -132,7 +132,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
             )
         );
         mockAppender.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "test2",
                 ClusterApplierService.class.getCanonicalName(),
                 Level.TRACE,
@@ -140,7 +140,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
             )
         );
         mockAppender.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "test3",
                 ClusterApplierService.class.getCanonicalName(),
                 Level.DEBUG,
@@ -149,7 +149,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
         );
 
         Logger clusterLogger = LogManager.getLogger(ClusterApplierService.class);
-        Loggers.addAppender(clusterLogger, mockAppender);
+        AppenderSupport.provider().addAppender(clusterLogger, mockAppender);
         try {
             currentTimeMillis = randomLongBetween(0L, Long.MAX_VALUE / 2);
             clusterApplierService.runOnApplierThread(
@@ -190,7 +190,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
             });
             assertBusy(mockAppender::assertAllExpectationsMatched);
         } finally {
-            Loggers.removeAppender(clusterLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(clusterLogger, mockAppender);
             mockAppender.stop();
         }
     }
@@ -200,7 +200,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
         MockLogAppender mockAppender = new MockLogAppender();
         mockAppender.start();
         mockAppender.addExpectation(
-            new MockLogAppender.UnseenEventExpectation(
+            MockLogAppender.createUnseenEventExpectation(
                 "test1 shouldn't see because setting is too low",
                 ClusterApplierService.class.getCanonicalName(),
                 Level.WARN,
@@ -208,7 +208,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
             )
         );
         mockAppender.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "test2",
                 ClusterApplierService.class.getCanonicalName(),
                 Level.WARN,
@@ -217,7 +217,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
             )
         );
         mockAppender.addExpectation(
-            new MockLogAppender.SeenEventExpectation(
+            MockLogAppender.createSeenEventExpectation(
                 "test4",
                 ClusterApplierService.class.getCanonicalName(),
                 Level.WARN,
@@ -227,7 +227,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
         );
 
         Logger clusterLogger = LogManager.getLogger(ClusterApplierService.class);
-        Loggers.addAppender(clusterLogger, mockAppender);
+        AppenderSupport.provider().addAppender(clusterLogger, mockAppender);
         try {
             final CountDownLatch latch = new CountDownLatch(4);
             final CountDownLatch processedFirstTask = new CountDownLatch(1);
@@ -295,7 +295,7 @@ public class ClusterApplierServiceTests extends ESTestCase {
             });
             latch.await();
         } finally {
-            Loggers.removeAppender(clusterLogger, mockAppender);
+            AppenderSupport.provider().removeAppender(clusterLogger, mockAppender);
             mockAppender.stop();
         }
         mockAppender.assertAllExpectationsMatched();

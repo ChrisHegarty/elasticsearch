@@ -7,9 +7,6 @@
 
 package org.elasticsearch.xpack.slm;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.GroupedActionListener;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
@@ -23,6 +20,9 @@ import org.elasticsearch.common.Strings;
 import org.elasticsearch.core.SuppressForbidden;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.snapshots.SnapshotId;
 import org.elasticsearch.snapshots.SnapshotInfo;
 import org.elasticsearch.snapshots.SnapshotState;
@@ -297,7 +297,7 @@ public class SnapshotRetentionTask implements SchedulerEngine.Listener {
                 }
                 listener.onResponse(snapshots);
             }, e -> {
-                logger.debug(new ParameterizedMessage("unable to retrieve snapshots for [{}] repositories", repositories), e);
+                logger.debug(Message.createParameterizedMessage("unable to retrieve snapshots for [{}] repositories", repositories), e);
                 listener.onFailure(e);
             }));
     }
@@ -389,7 +389,7 @@ public class SnapshotRetentionTask implements SchedulerEngine.Listener {
                     } catch (IOException ex) {
                         // This shouldn't happen unless there's an issue with serializing the original exception
                         logger.error(
-                            new ParameterizedMessage(
+                            Message.createParameterizedMessage(
                                 "failed to record snapshot deletion failure for snapshot lifecycle policy [{}]",
                                 policyId
                             ),
@@ -441,7 +441,7 @@ public class SnapshotRetentionTask implements SchedulerEngine.Listener {
                 listener.onResponse(acknowledgedResponse);
             }, e -> {
                 try {
-                    logger.warn(new ParameterizedMessage("[{}] failed to delete snapshot [{}] for retention", repo, snapshot), e);
+                    logger.warn(Message.createParameterizedMessage("[{}] failed to delete snapshot [{}] for retention", repo, snapshot), e);
                     slmStats.snapshotDeleteFailure(slmPolicy);
                 } finally {
                     listener.onFailure(e);

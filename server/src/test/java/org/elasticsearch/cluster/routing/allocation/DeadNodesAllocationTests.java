@@ -8,9 +8,6 @@
 
 package org.elasticsearch.cluster.routing.allocation;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.elasticsearch.Version;
 import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.cluster.ClusterState;
@@ -22,9 +19,12 @@ import org.elasticsearch.cluster.routing.RoutingTable;
 import org.elasticsearch.cluster.routing.allocation.command.AllocationCommands;
 import org.elasticsearch.cluster.routing.allocation.command.MoveAllocationCommand;
 import org.elasticsearch.cluster.routing.allocation.decider.ClusterRebalanceAllocationDecider;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.test.MockLogAppender;
+import org.elasticsearch.logging.Level;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.core.MockLogAppender;
+import org.elasticsearch.logging.spi.AppenderSupport;
 
 import static org.elasticsearch.cluster.routing.ShardRoutingState.INITIALIZING;
 import static org.elasticsearch.cluster.routing.ShardRoutingState.RELOCATING;
@@ -99,12 +99,12 @@ public class DeadNodesAllocationTests extends ESAllocationTestCase {
         final Logger allocationServiceLogger = LogManager.getLogger(AllocationService.class);
         final MockLogAppender appender = new MockLogAppender();
         appender.start();
-        Loggers.addAppender(allocationServiceLogger, appender);
+        AppenderSupport.provider().addAppender(allocationServiceLogger, appender);
         try {
             final String dissociationReason = "node left " + randomAlphaOfLength(10);
 
             appender.addExpectation(
-                new MockLogAppender.SeenEventExpectation(
+                MockLogAppender.createSeenEventExpectation(
                     "health change log message",
                     AllocationService.class.getName(),
                     Level.INFO,
@@ -122,7 +122,7 @@ public class DeadNodesAllocationTests extends ESAllocationTestCase {
 
             appender.assertAllExpectationsMatched();
         } finally {
-            Loggers.removeAppender(allocationServiceLogger, appender);
+            AppenderSupport.provider().removeAppender(allocationServiceLogger, appender);
             appender.stop();
         }
     }

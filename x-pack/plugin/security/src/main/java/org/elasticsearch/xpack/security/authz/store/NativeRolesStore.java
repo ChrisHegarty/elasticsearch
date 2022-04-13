@@ -6,9 +6,6 @@
  */
 package org.elasticsearch.xpack.security.authz.store;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.DocWriteResponse;
@@ -34,6 +31,9 @@ import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.license.LicenseUtils;
 import org.elasticsearch.license.XPackLicenseState;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentType;
@@ -245,7 +245,7 @@ public class NativeRolesStore implements BiConsumer<Set<String>, ActionListener<
 
                     @Override
                     public void onFailure(Exception e) {
-                        logger.error(new ParameterizedMessage("failed to put role [{}]", request.name()), e);
+                        logger.error(Message.createParameterizedMessage("failed to put role [{}]", request.name()), e);
                         listener.onFailure(e);
                     }
                 },
@@ -388,7 +388,7 @@ public class NativeRolesStore implements BiConsumer<Set<String>, ActionListener<
 
             @Override
             public void onFailure(Exception e) {
-                logger.error(new ParameterizedMessage("unable to clear cache for role [{}]", role), e);
+                logger.error(Message.createParameterizedMessage("unable to clear cache for role [{}]", role), e);
                 ElasticsearchException exception = new ElasticsearchException(
                     "clearing the cache for [" + role + "] failed. please clear the role cache manually",
                     e
@@ -442,7 +442,7 @@ public class NativeRolesStore implements BiConsumer<Set<String>, ActionListener<
                 return roleDescriptor;
             }
         } catch (Exception e) {
-            logger.error(new ParameterizedMessage("error in the format of data for role [{}]", name), e);
+            logger.error(Message.createParameterizedMessage("error in the format of data for role [{}]", name), e);
             return null;
         }
     }

@@ -6,17 +6,16 @@
  */
 package org.elasticsearch.xpack.security.authc.esnative;
 
-import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.util.Supplier;
 import org.elasticsearch.action.ActionListener;
-import org.elasticsearch.common.logging.DeprecationCategory;
-import org.elasticsearch.common.logging.DeprecationLogger;
 import org.elasticsearch.common.settings.KeyStoreWrapper;
 import org.elasticsearch.common.settings.SecureSetting;
 import org.elasticsearch.common.settings.SecureString;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.env.Environment;
+import org.elasticsearch.logging.DeprecationCategory;
+import org.elasticsearch.logging.DeprecationLogger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.core.XPackSettings;
 import org.elasticsearch.xpack.core.security.authc.AuthenticationResult;
@@ -281,7 +280,10 @@ public class ReservedRealm extends CachingUsernamePasswordRealm {
             }
         }, (e) -> {
             logger.error(
-                (Supplier<?>) () -> new ParameterizedMessage("failed to retrieve password hash for reserved user [{}]", username),
+                (java.util.function.Supplier<?>) () -> Message.createParameterizedMessage(
+                    "failed to retrieve password hash for reserved user [{}]",
+                    username
+                ),
                 e
             );
             consumer.accept(null);

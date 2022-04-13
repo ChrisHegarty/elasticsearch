@@ -8,11 +8,11 @@
 
 package org.elasticsearch.common.blobstore.url.http;
 
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.elasticsearch.common.util.Maps;
 import org.elasticsearch.core.internal.io.IOUtils;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.rest.RestStatus;
 
 import java.io.IOException;
@@ -148,7 +148,7 @@ class RetryingHttpInputStream extends InputStream {
     private void maybeThrow(IOException e) throws IOException {
         if (retryCount >= maxRetries || e instanceof NoSuchFileException) {
             logger.debug(
-                new ParameterizedMessage(
+                Message.createParameterizedMessage(
                     "failed reading [{}] at offset [{}], retry [{}] of [{}], giving up",
                     blobURI,
                     start + totalBytesRead,
@@ -161,7 +161,7 @@ class RetryingHttpInputStream extends InputStream {
         }
 
         logger.debug(
-            new ParameterizedMessage(
+            Message.createParameterizedMessage(
                 "failed reading [{}] at offset [{}], retry [{}] of [{}], retrying",
                 blobURI,
                 start + totalBytesRead,
@@ -292,7 +292,7 @@ class RetryingHttpInputStream extends InputStream {
             return contentLength == null ? 0 : Long.parseLong(contentLength);
 
         } catch (Exception e) {
-            logger.debug(new ParameterizedMessage("Unable to parse response headers while reading [{}]", blobURI), e);
+            logger.debug(Message.createParameterizedMessage("Unable to parse response headers while reading [{}]", blobURI), e);
             return MAX_RANGE_VAL;
         }
     }

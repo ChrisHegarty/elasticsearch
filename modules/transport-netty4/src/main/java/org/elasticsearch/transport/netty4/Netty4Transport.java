@@ -21,10 +21,9 @@ import io.netty.channel.FixedRecvByteBufAllocator;
 import io.netty.channel.RecvByteBufAllocator;
 import io.netty.channel.socket.nio.NioChannelOption;
 import io.netty.util.AttributeKey;
+import io.netty.util.internal.logging.InternalLoggerFactory;
+import io.netty.util.internal.logging.JdkLoggerFactory;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.Version;
@@ -43,6 +42,9 @@ import org.elasticsearch.core.Releasables;
 import org.elasticsearch.core.SuppressForbidden;
 import org.elasticsearch.core.internal.net.NetUtils;
 import org.elasticsearch.indices.breaker.CircuitBreakerService;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TcpTransport;
 import org.elasticsearch.transport.TransportSettings;
@@ -63,6 +65,11 @@ import static org.elasticsearch.common.util.concurrent.ConcurrentCollections.new
  * sending out ping requests to other nodes.
  */
 public class Netty4Transport extends TcpTransport {
+
+    static {
+        InternalLoggerFactory.setDefaultFactory(JdkLoggerFactory.INSTANCE);
+
+    }
     private static final Logger logger = LogManager.getLogger(Netty4Transport.class);
 
     public static final Setting<Integer> WORKER_COUNT = new Setting<>(
@@ -381,7 +388,7 @@ public class Netty4Transport extends TcpTransport {
     private static void addClosedExceptionLogger(Channel channel) {
         channel.closeFuture().addListener(f -> {
             if (f.isSuccess() == false) {
-                logger.debug(() -> new ParameterizedMessage("exception while closing channel: {}", channel), f.cause());
+                logger.debug(() -> Message.createParameterizedMessage("exception while closing channel: {}", channel), f.cause());
             }
         });
     }

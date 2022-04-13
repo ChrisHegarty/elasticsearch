@@ -8,9 +8,6 @@
 
 package org.elasticsearch.index.seqno;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.action.ActionListener;
@@ -36,6 +33,9 @@ import org.elasticsearch.index.shard.IndexShardClosedException;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.indices.SystemIndices;
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.tasks.TaskId;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -138,7 +138,7 @@ public class RetentionLeaseSyncAction extends TransportWriteAction<
                             AlreadyClosedException.class,
                             IndexShardClosedException.class
                         ) == null) {
-                            getLogger().warn(new ParameterizedMessage("{} retention lease sync failed", shardId), e);
+                            getLogger().warn(Message.createParameterizedMessage("{} retention lease sync failed", shardId), e);
                         }
                         task.setPhase("finished");
                         taskManager.unregister(task);

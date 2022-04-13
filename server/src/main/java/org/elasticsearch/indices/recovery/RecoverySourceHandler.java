@@ -8,8 +8,6 @@
 
 package org.elasticsearch.indices.recovery;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexFormatTooNewException;
@@ -33,7 +31,6 @@ import org.elasticsearch.common.StopWatch;
 import org.elasticsearch.common.bytes.BytesArray;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.bytes.ReleasableBytesReference;
-import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.util.CancellableThreads;
 import org.elasticsearch.common.util.concurrent.CountDown;
@@ -63,6 +60,9 @@ import org.elasticsearch.index.store.StoreFileMetadata;
 import org.elasticsearch.index.translog.Translog;
 import org.elasticsearch.indices.recovery.plan.RecoveryPlannerService;
 import org.elasticsearch.indices.recovery.plan.ShardRecoveryPlan;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.logging.Message;
+import org.elasticsearch.logging.PrefixLogger;
 import org.elasticsearch.snapshots.SnapshotShardsService;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.RemoteTransportException;
@@ -143,7 +143,7 @@ public class RecoverySourceHandler {
         this.recoveryPlannerService = recoveryPlannerService;
         this.request = request;
         this.shardId = this.request.shardId().id();
-        this.logger = Loggers.getLogger(getClass(), request.shardId(), "recover to " + request.targetNode().getName());
+        this.logger = PrefixLogger.getLogger(getClass(), request.shardId().getId(), "recover to " + request.targetNode().getName());
         this.chunkSizeInBytes = fileChunkSizeInBytes;
         this.maxConcurrentFileChunks = maxConcurrentFileChunks;
         this.maxConcurrentOperations = maxConcurrentOperations;
@@ -829,7 +829,7 @@ public class RecoverySourceHandler {
                     public void onFailure(Exception e) {
                         if (cancelled.get() || e instanceof CancellableThreads.ExecutionCancelledException) {
                             logger.debug(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "cancelled while recovering file [{}] from snapshot",
                                     snapshotFileToRecover.metadata()
                                 ),
@@ -837,7 +837,7 @@ public class RecoverySourceHandler {
                             );
                         } else {
                             logger.warn(
-                                new ParameterizedMessage(
+                                Message.createParameterizedMessage(
                                     "failed to recover file [{}] from snapshot{}",
                                     snapshotFileToRecover.metadata(),
                                     shardRecoveryPlan.canRecoverSnapshotFilesFromSourceNode() ? ", will recover from primary instead" : ""
@@ -1476,7 +1476,7 @@ public class RecoverySourceHandler {
                 );
                 remoteException.addSuppressed(e);
                 logger.warn(
-                    () -> new ParameterizedMessage(
+                    () -> Message.createParameterizedMessage(
                         "{} Remote file corruption on node {}, recovering {}. local checksum OK",
                         shardId,
                         request.targetNode(),
