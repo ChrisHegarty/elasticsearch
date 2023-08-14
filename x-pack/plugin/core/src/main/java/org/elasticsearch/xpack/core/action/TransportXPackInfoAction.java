@@ -84,11 +84,26 @@ public class TransportXPackInfoAction extends HandledTransportAction<XPackInfoRe
                         request,
                         listener.delegateFailureAndWrap((l, response) -> featureSets.add(response.getInfo()))
                     );
+                } else {
+                    featureSets.add(notPresentFeatureSet(infoAction));
                 }
             }
             featureSetsInfo = new FeatureSetsInfo(featureSets);
         }
 
         listener.onResponse(new XPackInfoResponse(buildInfo, licenseInfo, featureSetsInfo));
+    }
+
+    static String actionToFeatureName(XPackInfoFeatureAction action) {
+        final String name = action.name();
+        int idx = name.lastIndexOf('/');
+        if (idx == -1 || name.length() < idx + 1) {
+            throw new IllegalStateException("unexpected action name: " + name);
+        }
+        return name.substring(idx);
+    }
+
+    static FeatureSet notPresentFeatureSet(XPackInfoFeatureAction action) {
+        return new FeatureSet(actionToFeatureName(action), false, false);
     }
 }
