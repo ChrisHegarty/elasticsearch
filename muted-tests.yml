@@ -35,9 +35,6 @@ tests:
 - class: org.elasticsearch.xpack.searchablesnapshots.cache.common.CacheFileTests
   method: testCacheFileCreatedAsSparseFile
   issue: https://github.com/elastic/elasticsearch/issues/110801
-- class: org.elasticsearch.nativeaccess.VectorSystemPropertyTests
-  method: testSystemPropertyDisabled
-  issue: https://github.com/elastic/elasticsearch/issues/110949
 - class: org.elasticsearch.packaging.test.DockerTests
   method: test021InstallPlugin
   issue: https://github.com/elastic/elasticsearch/issues/110343
