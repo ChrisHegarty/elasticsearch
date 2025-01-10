@@ -567,4 +567,28 @@ public interface EsqlBaseParserVisitor<T> extends ParseTreeVisitor<T> {
    * @return the visitor result
    */
   T visitInlinestatsCommand(EsqlBaseParser.InlinestatsCommandContext ctx);
+  /**
+   * Visit a parse tree produced by {@link EsqlBaseParser#forkCommand}.
+   * @param ctx the parse tree
+   * @return the visitor result
+   */
+  T visitForkCommand(EsqlBaseParser.ForkCommandContext ctx);
+  /**
+   * Visit a parse tree produced by {@link EsqlBaseParser#subQuery}.
+   * @param ctx the parse tree
+   * @return the visitor result
+   */
+  T visitSubQuery(EsqlBaseParser.SubQueryContext ctx);
+  /**
+   * Visit a parse tree produced by {@link EsqlBaseParser#subQueryCommand}.
+   * @param ctx the parse tree
+   * @return the visitor result
+   */
+  T visitSubQueryCommand(EsqlBaseParser.SubQueryCommandContext ctx);
+  /**
+   * Visit a parse tree produced by {@link EsqlBaseParser#subQueryTailCommand}.
+   * @param ctx the parse tree
+   * @return the visitor result
+   */
+  T visitSubQueryTailCommand(EsqlBaseParser.SubQueryTailCommandContext ctx);
 }

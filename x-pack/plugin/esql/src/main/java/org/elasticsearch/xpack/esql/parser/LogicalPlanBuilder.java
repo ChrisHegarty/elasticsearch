@@ -52,6 +52,7 @@ import org.elasticsearch.xpack.esql.plan.logical.MvExpand;
 import org.elasticsearch.xpack.esql.plan.logical.OrderBy;
 import org.elasticsearch.xpack.esql.plan.logical.Rename;
 import org.elasticsearch.xpack.esql.plan.logical.Row;
+import org.elasticsearch.xpack.esql.plan.logical.Fork;
 import org.elasticsearch.xpack.esql.plan.logical.UnresolvedRelation;
 import org.elasticsearch.xpack.esql.plan.logical.show.ShowInfo;
 import org.elasticsearch.xpack.esql.plugin.EsqlPlugin;
@@ -524,4 +525,21 @@ public class LogicalPlanBuilder extends ExpressionBuilder {
         return p -> new Lookup(source, p, tableName, matchFields, null /* localRelation will be resolved later*/);
     }
 
+    @Override
+    public PlanFactory visitForkCommand(EsqlBaseParser.ForkCommandContext ctx) {
+        PlanFactory firstQuery = visitSubQuery(ctx.firstQuery);
+        PlanFactory secondQuery = visitSubQuery(ctx.secondQuery);
+        return input -> new Fork(
+            source(ctx),
+            input,
+            firstQuery.apply(input),
+            secondQuery.apply(input)
+        );
+    }
+
+    @Override public PlanFactory visitSubQuery(EsqlBaseParser.SubQueryContext ctx) {
+        //return visitWhereCommand(ctx.subQueryCommand().whereCommand());
+        return visitWhereCommand(ctx.subQueryCommand().whereCommand());
+
+    }
 }

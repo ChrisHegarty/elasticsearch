@@ -70,9 +70,11 @@ import org.elasticsearch.xpack.esql.plan.logical.Keep;
 import org.elasticsearch.xpack.esql.plan.logical.Limit;
 import org.elasticsearch.xpack.esql.plan.logical.LogicalPlan;
 import org.elasticsearch.xpack.esql.plan.logical.Lookup;
+import org.elasticsearch.xpack.esql.plan.logical.Merge;
 import org.elasticsearch.xpack.esql.plan.logical.MvExpand;
 import org.elasticsearch.xpack.esql.plan.logical.Project;
 import org.elasticsearch.xpack.esql.plan.logical.Rename;
+import org.elasticsearch.xpack.esql.plan.logical.Fork;
 import org.elasticsearch.xpack.esql.plan.logical.UnresolvedRelation;
 import org.elasticsearch.xpack.esql.plan.logical.local.EsqlProject;
 import org.elasticsearch.xpack.esql.plan.logical.local.LocalRelation;
@@ -139,6 +141,7 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
             new ResolveLookupTables(),
             new ResolveFunctions()
         );
+        // NOTE: add support for fork/merge resolution
         var resolution = new Batch<>(
             "Resolution",
             new ResolveRefs(),
@@ -437,6 +440,10 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                 return resolveLookup(l, childrenOutput);
             }
 
+            if (plan instanceof Fork f) {
+                return resolveFork(f, childrenOutput);
+            }
+
             return plan.transformExpressionsOnly(UnresolvedAttribute.class, ua -> maybeResolveAttribute(ua, childrenOutput));
         }
 
@@ -575,6 +582,20 @@ public class Analyzer extends ParameterizedRuleExecutor<LogicalPlan, AnalyzerCon
                 return new Lookup(l.source(), l.child(), l.tableName(), matchFields, l.localRelation());
             }
             return l;
+        }
+
+        // TODO: this is not right, fix the resolution
+        private LogicalPlan resolveFork(Fork fork, List<Attribute> childrenOutput) {
+            LogicalPlan first = fork.first();
+            LogicalPlan second = fork.second();
+            var newFirst = first.transformUp(LogicalPlan.class, p -> p.childrenResolved() == false ? p : doRule(p));
+            var newSecond = second.transformUp(LogicalPlan.class, p -> p.childrenResolved() == false ? p : doRule(p));
+            return new Fork(fork.source(), fork.child(), newFirst, newSecond);
+        }
+
+        private LogicalPlan resolveMerge(Merge m, List<Attribute> childrenOutput) {
+
+            return null;
         }
 
         private Attribute maybeResolveAttribute(UnresolvedAttribute ua, List<Attribute> childrenOutput) {

@@ -54,6 +54,7 @@ processingCommand
     // in development
     | {this.isDevVersion()}? inlinestatsCommand
     | {this.isDevVersion()}? lookupCommand
+    | {this.isDevVersion()}? forkCommand
     ;
 
 whereCommand
@@ -321,4 +322,21 @@ lookupCommand
 
 inlinestatsCommand
     : DEV_INLINESTATS stats=aggFields (BY grouping=fields)?
+    ;
+
+forkCommand
+    : DEV_FORK firstQuery=subQuery COMMA secondQuery=subQuery
+    ;
+
+subQuery
+    : OPENING_BRACKET subQueryCommand CLOSING_BRACKET
+    ;
+
+subQueryCommand
+    : whereCommand (PIPE subQueryTailCommand)?
+    ;
+
+subQueryTailCommand
+    : sortCommand
+    | limitCommand
     ;

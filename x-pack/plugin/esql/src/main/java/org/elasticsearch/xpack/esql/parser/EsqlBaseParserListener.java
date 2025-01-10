@@ -941,4 +941,44 @@ public interface EsqlBaseParserListener extends ParseTreeListener {
    * @param ctx the parse tree
    */
   void exitInlinestatsCommand(EsqlBaseParser.InlinestatsCommandContext ctx);
+  /**
+   * Enter a parse tree produced by {@link EsqlBaseParser#forkCommand}.
+   * @param ctx the parse tree
+   */
+  void enterForkCommand(EsqlBaseParser.ForkCommandContext ctx);
+  /**
+   * Exit a parse tree produced by {@link EsqlBaseParser#forkCommand}.
+   * @param ctx the parse tree
+   */
+  void exitForkCommand(EsqlBaseParser.ForkCommandContext ctx);
+  /**
+   * Enter a parse tree produced by {@link EsqlBaseParser#subQuery}.
+   * @param ctx the parse tree
+   */
+  void enterSubQuery(EsqlBaseParser.SubQueryContext ctx);
+  /**
+   * Exit a parse tree produced by {@link EsqlBaseParser#subQuery}.
+   * @param ctx the parse tree
+   */
+  void exitSubQuery(EsqlBaseParser.SubQueryContext ctx);
+  /**
+   * Enter a parse tree produced by {@link EsqlBaseParser#subQueryCommand}.
+   * @param ctx the parse tree
+   */
+  void enterSubQueryCommand(EsqlBaseParser.SubQueryCommandContext ctx);
+  /**
+   * Exit a parse tree produced by {@link EsqlBaseParser#subQueryCommand}.
+   * @param ctx the parse tree
+   */
+  void exitSubQueryCommand(EsqlBaseParser.SubQueryCommandContext ctx);
+  /**
+   * Enter a parse tree produced by {@link EsqlBaseParser#subQueryTailCommand}.
+   * @param ctx the parse tree
+   */
+  void enterSubQueryTailCommand(EsqlBaseParser.SubQueryTailCommandContext ctx);
+  /**
+   * Exit a parse tree produced by {@link EsqlBaseParser#subQueryTailCommand}.
+   * @param ctx the parse tree
+   */
+  void exitSubQueryTailCommand(EsqlBaseParser.SubQueryTailCommandContext ctx);
 }
