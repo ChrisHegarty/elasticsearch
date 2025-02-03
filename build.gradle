@@ -51,6 +51,13 @@ plugins {
   id 'elasticsearch.versions'
 }
 
+// TODO: this is temporary, will be removed
+allprojects {
+  repositories {
+    mavenLocal()
+  }
+}
+
 /**
  * This is a convenient method for declaring test artifact dependencies provided by the internal
  * test artifact plugin. It replaces basically the longer dependency notation with explicit capability

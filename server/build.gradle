@@ -54,6 +54,9 @@ dependencies {
   api "org.apache.lucene:lucene-sandbox:${versions.lucene}"
   api "org.apache.lucene:lucene-suggest:${versions.lucene}"
 
+  // required or lucene sandbox
+  implementation 'com.nvidia.cuvs:cuvs-java:25.02.0'
+
   // utilities
   api project(":libs:cli")
   implementation 'com.carrotsearch:hppc:0.8.1'

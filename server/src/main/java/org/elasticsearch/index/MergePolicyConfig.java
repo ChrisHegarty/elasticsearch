@@ -341,7 +341,7 @@ public final class MergePolicyConfig {
     }
 
     void setMaxMergesAtOnce(int maxMergeAtOnce) {
-        tieredMergePolicy.setMaxMergeAtOnce(maxMergeAtOnce);
+        // tieredMergePolicy.setMaxMergedSegmentMB(maxMergeAtOnce); // LUCENE 11.0.0 API
         // LogByteSizeMergePolicy ignores this parameter, it always merges merge_factor segments at once.
     }
 

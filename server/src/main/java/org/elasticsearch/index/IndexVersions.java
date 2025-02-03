@@ -80,58 +80,59 @@ public class IndexVersions {
     public static final IndexVersion V_7_15_0 = def(7_15_00_99, parseUnchecked("8.9.0"));
     public static final IndexVersion V_7_16_0 = def(7_16_00_99, parseUnchecked("8.10.1"));
     public static final IndexVersion V_7_17_0 = def(7_17_00_99, parseUnchecked("8.11.1"));
-    public static final IndexVersion V_8_0_0 = def(8_00_00_99, Version.LUCENE_9_0_0);
-    public static final IndexVersion V_8_1_0 = def(8_01_00_99, Version.LUCENE_9_0_0);
-    public static final IndexVersion V_8_2_0 = def(8_02_00_99, Version.LUCENE_9_1_0);
-    public static final IndexVersion V_8_3_0 = def(8_03_00_99, Version.LUCENE_9_2_0);
-    public static final IndexVersion V_8_4_0 = def(8_04_00_99, Version.LUCENE_9_3_0);
-    public static final IndexVersion V_8_5_0 = def(8_05_00_99, Version.LUCENE_9_4_1);
-    public static final IndexVersion V_8_6_0 = def(8_06_00_99, Version.LUCENE_9_4_2);
-    public static final IndexVersion V_8_7_0 = def(8_07_00_99, Version.LUCENE_9_5_0);
-    public static final IndexVersion V_8_8_0 = def(8_08_00_99, Version.LUCENE_9_6_0);
-    public static final IndexVersion V_8_8_2 = def(8_08_02_99, Version.LUCENE_9_6_0);
-    public static final IndexVersion V_8_9_0 = def(8_09_00_99, Version.LUCENE_9_7_0);
-    public static final IndexVersion V_8_9_1 = def(8_09_01_99, Version.LUCENE_9_7_0);
-    public static final IndexVersion V_8_10_0 = def(8_10_00_99, Version.LUCENE_9_7_0);
+    public static final IndexVersion V_8_0_0 = def(8_00_00_99, parseUnchecked("9.0.0"));
+    public static final IndexVersion V_8_1_0 = def(8_01_00_99, parseUnchecked("9.0.0"));
+    public static final IndexVersion V_8_2_0 = def(8_02_00_99, parseUnchecked("9.1.0"));
+    public static final IndexVersion V_8_3_0 = def(8_03_00_99, parseUnchecked("9.2.0"));
+    public static final IndexVersion V_8_4_0 = def(8_04_00_99, parseUnchecked("9.3.0"));
+    public static final IndexVersion V_8_5_0 = def(8_05_00_99, parseUnchecked("9.4.1"));
+    public static final IndexVersion V_8_6_0 = def(8_06_00_99, parseUnchecked("9.4.2"));
+    public static final IndexVersion V_8_7_0 = def(8_07_00_99, parseUnchecked("9.5.0"));
+    public static final IndexVersion V_8_8_0 = def(8_08_00_99, parseUnchecked("9.6.0"));
+    public static final IndexVersion V_8_8_2 = def(8_08_02_99, parseUnchecked("9.6.0"));
+    public static final IndexVersion V_8_9_0 = def(8_09_00_99, parseUnchecked("9.7.0"));
+    public static final IndexVersion V_8_9_1 = def(8_09_01_99, parseUnchecked("9.7.0"));
+    public static final IndexVersion V_8_10_0 = def(8_10_00_99, parseUnchecked("9.7.0"));
     /*
      * READ THE COMMENT BELOW THIS BLOCK OF DECLARATIONS BEFORE ADDING NEW INDEX VERSIONS
      * Detached index versions added below here.
      */
-    public static final IndexVersion FIRST_DETACHED_INDEX_VERSION = def(8_500_000, Version.LUCENE_9_7_0);
-    public static final IndexVersion NEW_SPARSE_VECTOR = def(8_500_001, Version.LUCENE_9_7_0);
-    public static final IndexVersion SPARSE_VECTOR_IN_FIELD_NAMES_SUPPORT = def(8_500_002, Version.LUCENE_9_7_0);
-    public static final IndexVersion UPGRADE_LUCENE_9_8 = def(8_500_003, Version.LUCENE_9_8_0);
-    public static final IndexVersion ES_VERSION_8_12 = def(8_500_004, Version.LUCENE_9_8_0);
-    public static final IndexVersion NORMALIZED_VECTOR_COSINE = def(8_500_005, Version.LUCENE_9_8_0);
-    public static final IndexVersion UPGRADE_LUCENE_9_9 = def(8_500_006, Version.LUCENE_9_9_0);
-    public static final IndexVersion NORI_DUPLICATES = def(8_500_007, Version.LUCENE_9_9_0);
-    public static final IndexVersion UPGRADE_LUCENE_9_9_1 = def(8_500_008, Version.LUCENE_9_9_1);
-    public static final IndexVersion ES_VERSION_8_12_1 = def(8_500_009, Version.LUCENE_9_9_1);
-    public static final IndexVersion UPGRADE_8_12_1_LUCENE_9_9_2 = def(8_500_010, Version.LUCENE_9_9_2);
-    public static final IndexVersion NEW_INDEXVERSION_FORMAT = def(8_501_00_0, Version.LUCENE_9_9_1);
-    public static final IndexVersion UPGRADE_LUCENE_9_9_2 = def(8_502_00_0, Version.LUCENE_9_9_2);
-    public static final IndexVersion TIME_SERIES_ID_HASHING = def(8_502_00_1, Version.LUCENE_9_9_2);
-    public static final IndexVersion UPGRADE_TO_LUCENE_9_10 = def(8_503_00_0, Version.LUCENE_9_10_0);
-    public static final IndexVersion TIME_SERIES_ROUTING_HASH_IN_ID = def(8_504_00_0, Version.LUCENE_9_10_0);
-    public static final IndexVersion DEFAULT_DENSE_VECTOR_TO_INT8_HNSW = def(8_505_00_0, Version.LUCENE_9_10_0);
-    public static final IndexVersion DOC_VALUES_FOR_IGNORED_META_FIELD = def(8_505_00_1, Version.LUCENE_9_10_0);
-    public static final IndexVersion SOURCE_MAPPER_LOSSY_PARAMS_CHECK = def(8_506_00_0, Version.LUCENE_9_10_0);
-    public static final IndexVersion SEMANTIC_TEXT_FIELD_TYPE = def(8_507_00_0, Version.LUCENE_9_10_0);
-    public static final IndexVersion UPGRADE_TO_LUCENE_9_11 = def(8_508_00_0, Version.LUCENE_9_11_0);
-    public static final IndexVersion UNIQUE_TOKEN_FILTER_POS_FIX = def(8_509_00_0, Version.LUCENE_9_11_0);
-    public static final IndexVersion ADD_SECURITY_MIGRATION = def(8_510_00_0, Version.LUCENE_9_11_0);
-    public static final IndexVersion UPGRADE_TO_LUCENE_9_11_1 = def(8_511_00_0, Version.LUCENE_9_11_1);
-    public static final IndexVersion INDEX_SORTING_ON_NESTED = def(8_512_00_0, Version.LUCENE_9_11_1);
-    public static final IndexVersion LENIENT_UPDATEABLE_SYNONYMS = def(8_513_00_0, Version.LUCENE_9_11_1);
-    public static final IndexVersion ENABLE_IGNORE_MALFORMED_LOGSDB = def(8_514_00_0, Version.LUCENE_9_11_1);
-    public static final IndexVersion MERGE_ON_RECOVERY_VERSION = def(8_515_00_0, Version.LUCENE_9_11_1);
-    public static final IndexVersion UPGRADE_TO_LUCENE_9_12 = def(8_516_00_0, Version.LUCENE_9_12_0);
-    public static final IndexVersion ENABLE_IGNORE_ABOVE_LOGSDB = def(8_517_00_0, Version.LUCENE_9_12_0);
-    public static final IndexVersion ADD_ROLE_MAPPING_CLEANUP_MIGRATION = def(8_518_00_0, Version.LUCENE_9_12_0);
-    public static final IndexVersion LOGSDB_DEFAULT_IGNORE_DYNAMIC_BEYOND_LIMIT_BACKPORT = def(8_519_00_0, Version.LUCENE_9_12_0);
-    public static final IndexVersion TIME_BASED_K_ORDERED_DOC_ID_BACKPORT = def(8_520_00_0, Version.LUCENE_9_12_0);
-    public static final IndexVersion V8_DEPRECATE_SOURCE_MODE_MAPPER = def(8_521_00_0, Version.LUCENE_9_12_0);
-    public static final IndexVersion USE_SYNTHETIC_SOURCE_FOR_RECOVERY_BACKPORT = def(8_522_00_0, Version.LUCENE_9_12_0);
+    // LUCENE 11.0.0 API
+    public static final IndexVersion FIRST_DETACHED_INDEX_VERSION = def(8_500_000,parseUnchecked("9.7.0"));
+    public static final IndexVersion NEW_SPARSE_VECTOR = def(8_500_001, parseUnchecked("9.7.0"));
+    public static final IndexVersion SPARSE_VECTOR_IN_FIELD_NAMES_SUPPORT = def(8_500_002, parseUnchecked("9.7.0"));
+    public static final IndexVersion UPGRADE_LUCENE_9_8 = def(8_500_003, parseUnchecked("9.8.0"));
+    public static final IndexVersion ES_VERSION_8_12 = def(8_500_004, parseUnchecked("9.8.0"));
+    public static final IndexVersion NORMALIZED_VECTOR_COSINE = def(8_500_005, parseUnchecked("9.8.0"));
+    public static final IndexVersion UPGRADE_LUCENE_9_9 = def(8_500_006, parseUnchecked("9.9.0"));
+    public static final IndexVersion NORI_DUPLICATES = def(8_500_007, parseUnchecked("9.9.0"));
+    public static final IndexVersion UPGRADE_LUCENE_9_9_1 = def(8_500_008, parseUnchecked("9.9.1"));
+    public static final IndexVersion ES_VERSION_8_12_1 = def(8_500_009, parseUnchecked("9.9.1"));
+    public static final IndexVersion UPGRADE_8_12_1_LUCENE_9_9_2 = def(8_500_010, parseUnchecked("9.9.2"));
+    public static final IndexVersion NEW_INDEXVERSION_FORMAT = def(8_501_00_0, parseUnchecked("9.9.1"));
+    public static final IndexVersion UPGRADE_LUCENE_9_9_2 = def(8_502_00_0, parseUnchecked("9.9.2"));
+    public static final IndexVersion TIME_SERIES_ID_HASHING = def(8_502_00_1, parseUnchecked("9.9.2"));
+    public static final IndexVersion UPGRADE_TO_LUCENE_9_10 = def(8_503_00_0, parseUnchecked("9.10.0"));
+    public static final IndexVersion TIME_SERIES_ROUTING_HASH_IN_ID = def(8_504_00_0, parseUnchecked("9.10.0"));
+    public static final IndexVersion DEFAULT_DENSE_VECTOR_TO_INT8_HNSW = def(8_505_00_0, parseUnchecked("9.10.0"));
+    public static final IndexVersion DOC_VALUES_FOR_IGNORED_META_FIELD = def(8_505_00_1, parseUnchecked("9.10.0"));
+    public static final IndexVersion SOURCE_MAPPER_LOSSY_PARAMS_CHECK = def(8_506_00_0, parseUnchecked("9.10.0"));
+    public static final IndexVersion SEMANTIC_TEXT_FIELD_TYPE = def(8_507_00_0, parseUnchecked("9.10.0"));
+    public static final IndexVersion UPGRADE_TO_LUCENE_9_11 = def(8_508_00_0, parseUnchecked("9.11.0"));
+    public static final IndexVersion UNIQUE_TOKEN_FILTER_POS_FIX = def(8_509_00_0, parseUnchecked("9.11.0"));
+    public static final IndexVersion ADD_SECURITY_MIGRATION = def(8_510_00_0, parseUnchecked("9.11.0"));
+    public static final IndexVersion UPGRADE_TO_LUCENE_9_11_1 = def(8_511_00_0, parseUnchecked("9.11.1"));
+    public static final IndexVersion INDEX_SORTING_ON_NESTED = def(8_512_00_0, parseUnchecked("9.11.1"));
+    public static final IndexVersion LENIENT_UPDATEABLE_SYNONYMS = def(8_513_00_0, parseUnchecked("9.11.1"));
+    public static final IndexVersion ENABLE_IGNORE_MALFORMED_LOGSDB = def(8_514_00_0, parseUnchecked("9.11.1"));
+    public static final IndexVersion MERGE_ON_RECOVERY_VERSION = def(8_515_00_0, parseUnchecked("9.11.1"));
+    public static final IndexVersion UPGRADE_TO_LUCENE_9_12 = def(8_516_00_0, parseUnchecked("9.12.0"));
+    public static final IndexVersion ENABLE_IGNORE_ABOVE_LOGSDB = def(8_517_00_0, parseUnchecked("9.12.0"));
+    public static final IndexVersion ADD_ROLE_MAPPING_CLEANUP_MIGRATION = def(8_518_00_0, parseUnchecked("9.12.0"));
+    public static final IndexVersion LOGSDB_DEFAULT_IGNORE_DYNAMIC_BEYOND_LIMIT_BACKPORT = def(8_519_00_0, parseUnchecked("9.12.0"));
+    public static final IndexVersion TIME_BASED_K_ORDERED_DOC_ID_BACKPORT = def(8_520_00_0, parseUnchecked("9.12.0"));
+    public static final IndexVersion V8_DEPRECATE_SOURCE_MODE_MAPPER = def(8_521_00_0, parseUnchecked("9.12.0"));
+    public static final IndexVersion USE_SYNTHETIC_SOURCE_FOR_RECOVERY_BACKPORT = def(8_522_00_0, parseUnchecked("9.12.0"));
     public static final IndexVersion UPGRADE_TO_LUCENE_9_12_1 = def(8_523_00_0, parseUnchecked("9.12.1"));
     public static final IndexVersion INFERENCE_METADATA_FIELDS_BACKPORT = def(8_524_00_0, parseUnchecked("9.12.1"));
     public static final IndexVersion LOGSB_OPTIONAL_SORTING_ON_HOST_NAME_BACKPORT = def(8_525_00_0, parseUnchecked("9.12.1"));
@@ -145,6 +146,8 @@ public class IndexVersions {
     public static final IndexVersion SOURCE_MAPPER_MODE_ATTRIBUTE_NOOP = def(9_007_00_0, Version.LUCENE_10_0_0);
     public static final IndexVersion UPGRADE_TO_LUCENE_10_1_0 = def(9_008_00_0, Version.LUCENE_10_1_0);
     public static final IndexVersion UPGRADE_TO_LUCENE_10_2_0 = def(9_009_00_0, Version.LUCENE_10_2_0);
+
+    public static final IndexVersion UPGRADE_TO_LUCENE_11_0_0 = def(10_000_00_0, Version.LUCENE_11_0_0);
 
     /*
      * STOP! READ THIS FIRST! No, really,

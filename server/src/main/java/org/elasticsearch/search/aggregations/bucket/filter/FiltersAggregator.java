@@ -417,7 +417,8 @@ public abstract class FiltersAggregator extends BucketsAggregator {
             boolean hasOtherBucket
         ) {
             super(sub, numFilters, totalNumKeys, false, hasOtherBucket);
-            filterIterators = filterWrappers.isEmpty() ? null : new DisiPriorityQueue(filterWrappers.size());
+            // LUCENE 11.0.0 API
+            filterIterators = filterWrappers.isEmpty() ? null : DisiPriorityQueue.ofMaxSize(filterWrappers.size());
             for (FilterMatchingDisiWrapper wrapper : filterWrappers) {
                 filterIterators.add(wrapper);
             }

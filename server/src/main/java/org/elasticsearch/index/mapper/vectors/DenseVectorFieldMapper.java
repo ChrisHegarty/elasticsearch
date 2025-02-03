@@ -47,6 +47,7 @@ import org.elasticsearch.index.codec.vectors.ES815BitFlatVectorFormat;
 import org.elasticsearch.index.codec.vectors.ES815HnswBitVectorsFormat;
 import org.elasticsearch.index.codec.vectors.es818.ES818BinaryQuantizedVectorsFormat;
 import org.elasticsearch.index.codec.vectors.es818.ES818HnswBinaryQuantizedVectorsFormat;
+import org.elasticsearch.index.codec.vectors.es902.ES902CuVSVectorsFormat;
 import org.elasticsearch.index.fielddata.FieldDataContext;
 import org.elasticsearch.index.fielddata.IndexFieldData;
 import org.elasticsearch.index.mapper.ArraySourceValueFetcher;
@@ -1420,6 +1421,24 @@ public class DenseVectorFieldMapper extends FieldMapper {
             public boolean supportsDimension(int dims) {
                 return dims >= BBQ_MIN_DIMS;
             }
+        },
+        CUVS("cuvs", true) {
+            @Override
+            public IndexOptions parseIndexOptions(String fieldName, Map<String, ?> indexOptionsMap) {
+                // TODO: parse custom options, if any, TBD
+                MappingParser.checkNoRemainingFields(fieldName, indexOptionsMap);
+                return new CuVSIndexOptions();
+            }
+
+            @Override
+            public boolean supportsElementType(ElementType elementType) {
+                return elementType == ElementType.FLOAT;
+            }
+
+            @Override
+            public boolean supportsDimension(int dims) {
+                return true;
+            }
         };
 
         static Optional<VectorIndexType> fromString(String type) {
@@ -1863,6 +1882,51 @@ public class DenseVectorFieldMapper extends FieldMapper {
         @Override
         boolean doEquals(IndexOptions other) {
             return other instanceof BBQFlatIndexOptions;
+        }
+
+        @Override
+        int doHashCode() {
+            return CLASS_NAME_HASH;
+        }
+
+        @Override
+        public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
+            builder.startObject();
+            builder.field("type", type);
+            builder.endObject();
+            return builder;
+        }
+
+        @Override
+        public void validateDimension(int dim) {
+            if (type.supportsDimension(dim)) {
+                return;
+            }
+            throw new IllegalArgumentException(type.name + " does not support dimensions fewer than " + BBQ_MIN_DIMS + "; provided=" + dim);
+        }
+    }
+
+    static class CuVSIndexOptions extends IndexOptions {
+        private final int CLASS_NAME_HASH = this.getClass().getName().hashCode();
+
+        CuVSIndexOptions() {
+            super(VectorIndexType.CUVS);
+        }
+
+        @Override
+        KnnVectorsFormat getVectorsFormat(ElementType elementType) {
+            assert elementType == ElementType.FLOAT;
+            return new ES902CuVSVectorsFormat();
+        }
+
+        @Override
+        boolean updatableTo(IndexOptions update) {
+            return update.type.equals(this.type);
+        }
+
+        @Override
+        boolean doEquals(IndexOptions other) {
+            return other instanceof CuVSIndexOptions;
         }
 
         @Override
