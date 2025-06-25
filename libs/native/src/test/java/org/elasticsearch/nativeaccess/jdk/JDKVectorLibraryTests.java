@@ -16,6 +16,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
 import java.lang.foreign.Arena;
+import java.lang.foreign.ValueLayout;
 import java.lang.foreign.MemorySegment;
 import java.util.stream.IntStream;
 
@@ -110,6 +111,23 @@ public class JDKVectorLibraryTests extends VectorSimilarityFunctionsTests {
         assertThat(e.getMessage(), containsString("greater than vector dimensions"));
     }
 
+    public void testInt4BitDot() {
+        assumeTrue(notSupportedMsg(), supported());
+
+        var query = new byte[32];
+        query[0] = (byte)0xFF;
+        var queryMS = MemorySegment.ofArray(query);
+        var dataBA = new byte[16];
+        dataBA[0] = (byte)0xFF;
+        var dataMS = MemorySegment.ofArray(dataBA);
+        var scoresMS = MemorySegment.ofArray(new float[32]);
+
+        int count = int4BitDot(queryMS, dataMS, 0L, scoresMS, 1 ,32);
+        System.out.println("testInt4BitDot count = " + count);
+        float value = scoresMS.get(ValueLayout.JAVA_FLOAT, 0);
+        System.out.println("testInt4BitDot scoresMS = " + value);
+    }
+
     int dotProduct7u(MemorySegment a, MemorySegment b, int length) {
         try {
             return (int) getVectorDistance().dotProductHandle7u().invokeExact(a, b, length);
@@ -127,6 +145,28 @@ public class JDKVectorLibraryTests extends VectorSimilarityFunctionsTests {
     int squareDistance7u(MemorySegment a, MemorySegment b, int length) {
         try {
             return (int) getVectorDistance().squareDistanceHandle7u().invokeExact(a, b, length);
+        } catch (Throwable e) {
+            if (e instanceof Error err) {
+                throw err;
+            } else if (e instanceof RuntimeException re) {
+                throw re;
+            } else {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    int int4BitDot(
+        MemorySegment queryVector,
+        MemorySegment dataVector,
+        long offset,
+        MemorySegment scores,
+        int count,
+        int dims
+    ) {
+        try {
+            return (int) getVectorDistance().int4BitDotProductHandle().invokeExact(
+                queryVector, dataVector, offset, scores, count, dims);
         } catch (Throwable e) {
             if (e instanceof Error err) {
                 throw err;
