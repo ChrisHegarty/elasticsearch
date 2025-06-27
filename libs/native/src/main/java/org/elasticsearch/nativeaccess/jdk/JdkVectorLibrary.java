@@ -137,9 +137,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
             return sqr7u(a, b, length);
         }
 
-        static int int4BitDotProd(MemorySegment a, MemorySegment b, long offset, MemorySegment s, int count, int length) {
-            assert length >= 0;
-            return int4Bit(a, b, offset, s, count, length);
+        static int int4BitDotProd(MemorySegment query, MemorySegment doc, long offset, MemorySegment scores, int count, int dims) {
+            assert dims >= 0;
+            return int4Bit(query, doc, offset, scores, count, dims);
         }
 
         private static int dot7u(MemorySegment a, MemorySegment b, int length) {
@@ -158,9 +158,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
             }
         }
 
-        private static int int4Bit(MemorySegment a, MemorySegment b, long offset, MemorySegment s, int count, int length) {
+        private static int int4Bit(MemorySegment query, MemorySegment doc, long offset, MemorySegment scores, int count, int dims) {
             try {
-                return (int) JdkVectorLibrary.int4Bit$mh.invokeExact(a, b, offset, s, count, length);
+                return (int) JdkVectorLibrary.int4Bit$mh.invokeExact(query, doc, offset, scores, count, dims);
             } catch (Throwable t) {
                 throw new AssertionError(t);
             }
