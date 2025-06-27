@@ -9,6 +9,7 @@
 
 package org.elasticsearch.simdvec;
 
+import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.hnsw.RandomVectorScorer;
@@ -53,4 +54,12 @@ public interface VectorScorerFactory {
      * @return an optional containing the vector scorer, or empty
      */
     Optional<RandomVectorScorer> getInt7SQVectorScorer(VectorSimilarityFunction sim, QuantizedByteVectorValues values, float[] queryVector);
+
+    Optional<RandomVectorScorerSupplier> getFloat32VectorScorerSupplier(
+        VectorSimilarityType similarityType,
+        IndexInput input,
+        FloatVectorValues values
+    );
+
+    Optional<RandomVectorScorer> getFloat32VectorScorer(VectorSimilarityFunction sim, FloatVectorValues values, float[] queryVector);
 }
