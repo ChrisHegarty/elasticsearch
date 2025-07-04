@@ -90,6 +90,7 @@ public abstract sealed class Float32VectorScorerSupplier implements RandomVector
     abstract float scoreFromSegments(MemorySegment a, MemorySegment b);
 
     protected final float fallbackScore(long firstByteOffset, long secondByteOffset) throws IOException {
+        assert false : "unexpected use of fallback scorer in " + this.getClass();
         float[] a = new float[dims];
         readFloats(a, firstByteOffset, dims);
 

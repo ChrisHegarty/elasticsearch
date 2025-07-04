@@ -70,6 +70,7 @@ public abstract sealed class Float32VectorScorer extends RandomVectorScorer.Abst
         MemorySegment seg = input.segmentSliceOrNull(byteOffset, vectorByteSize);
         if (seg == null) {
             if (scratch == null) {
+                assert false : "unexpected use by byte array in  " + this.getClass();
                 scratch = new byte[vectorByteSize];
             }
             input.readBytes(byteOffset, scratch, 0, vectorByteSize);
