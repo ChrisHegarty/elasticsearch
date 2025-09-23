@@ -69,4 +69,6 @@ public interface ESVectorUtilSupport {
     void transposeHalfByte(int[] q, byte[] quantQueryByte);
 
     int indexOf(byte[] bytes, int offset, int length, byte marker);
+
+    int scanAsciiRun(byte[] bytes, int offset, int length);
 }

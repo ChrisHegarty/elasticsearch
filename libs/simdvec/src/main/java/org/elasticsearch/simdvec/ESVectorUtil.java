@@ -418,4 +418,14 @@ public class ESVectorUtil {
         Objects.checkFromIndexSize(offset, length, bytes.length);
         return IMPL.indexOf(bytes, offset, length, marker);
     }
+
+    /**
+     * Scans a byte array starting at {@code offset} for ASCII characters that
+     * are not '"' or '\\'. Returns the number of bytes consumed before the first
+     * forbidden or non-ASCII character is found.
+     */
+    public static int scanAsciiRun(byte[] bytes, int offset, int length) {
+        Objects.checkFromIndexSize(offset, length, bytes.length);
+        return IMPL.scanAsciiRun(bytes, offset, length);
+    }
 }

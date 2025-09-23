@@ -1144,4 +1144,49 @@ public final class PanamaESVectorUtilSupport implements ESVectorUtilSupport {
         }
         return -1;
     }
+
+    private static final byte QUOTE = (byte) '"';     // 0x22
+    private static final byte BACKSLASH = (byte) '\\'; // 0x5C
+    private static final byte HIGH_BIT = (byte) 0x80;
+
+    @Override
+    public int scanAsciiRun(byte[] bytes, int offset, int length) {
+        int i = 0;
+        final int loopBound = ByteVector.SPECIES_PREFERRED.loopBound(length);
+        for (; i < loopBound; i += ByteVector.SPECIES_PREFERRED.length()) {
+            var v = ByteVector.fromArray(ByteVector.SPECIES_PREFERRED, bytes, offset + i);
+
+            // High bit set? (non-ASCII)
+            var nonAscii = v.and(HIGH_BIT).compare(VectorOperators.NE, 0);
+
+            // Match '"' or '\\'
+            var eqQuote = v.eq(QUOTE);
+            var eqBackslash = v.eq(BACKSLASH);
+            var specials = eqQuote.or(eqBackslash);
+
+            // Combine stop conditions
+            var stopMask = specials.or(nonAscii);
+
+            if (stopMask.anyTrue()) {
+                return i + stopMask.firstTrue();
+            }
+
+//            long bits = stopMask.toLong();
+//            if (bits != 0) {
+//                // Found first stop
+//                int first = Long.numberOfTrailingZeros(bits);
+//                return i + first;
+//            }
+        }
+
+        // Tail scalar loop
+        for (; i < length; i++) {
+            byte b = bytes[offset + i];
+            if ((b & 0x80) != 0 || b == QUOTE || b == BACKSLASH) {
+                return i;
+            }
+        }
+
+        return length;
+    }
 }

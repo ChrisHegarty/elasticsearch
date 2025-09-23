@@ -107,4 +107,13 @@ public class OptimizedTextBenchmark {
             bh.consume(mapper.parse(sources[i]));
         }
     }
+
+    @Benchmark
+    @Fork(jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
+    public void indexDocumentsVector(final Blackhole bh) {
+        final var mapper = mapperService.documentMapper();
+        for (int i = 0; i < nDocs; i++) {
+            bh.consume(mapper.parse(sources[i]));
+        }
+    }
 }

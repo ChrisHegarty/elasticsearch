@@ -527,4 +527,14 @@ public class ESVectorUtilTests extends BaseVectorizationTests {
         }
         return -1;
     }
+
+    public void testScanAsciiRunSimple() {
+        int iterations = atLeast(50);
+        for (int i = 0; i < iterations; i++) {
+            int size = random().nextInt(2, 5000);
+            var bytes = new byte[size];
+            assertEquals(bytes.length, defOrPanamaProvider.getVectorUtilSupport().scanAsciiRun(bytes, 0, bytes.length));
+
+        }
+    }
 }

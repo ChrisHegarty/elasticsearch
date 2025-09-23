@@ -408,4 +408,9 @@ final class DefaultESVectorUtilSupport implements ESVectorUtilSupport {
     public int indexOf(byte[] bytes, int offset, int length, byte marker) {
         return ByteArrayUtils.indexOf(bytes, offset, length, marker);
     }
+
+    @Override
+    public int scanAsciiRun(byte[] bytes, int offset, int length) {
+        return 0;  // effectively a no-op
+    }
 }

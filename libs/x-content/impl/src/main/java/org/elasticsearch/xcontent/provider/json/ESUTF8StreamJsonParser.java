@@ -16,16 +16,23 @@ import com.fasterxml.jackson.core.io.IOContext;
 import com.fasterxml.jackson.core.json.UTF8StreamJsonParser;
 import com.fasterxml.jackson.core.sym.ByteQuadsCanonicalizer;
 
+import org.elasticsearch.simdvec.ESVectorUtil;
 import org.elasticsearch.xcontent.Text;
 import org.elasticsearch.xcontent.XContentString;
 import org.elasticsearch.xcontent.provider.OptimizedTextCapable;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
 public class ESUTF8StreamJsonParser extends UTF8StreamJsonParser implements OptimizedTextCapable {
+    private static final VarHandle LONG_HANDLE_LE =
+        MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+
     protected int stringEnd = -1;
     protected int stringLength;
     protected byte[] lastOptimisedValue;
@@ -66,6 +73,10 @@ public class ESUTF8StreamJsonParser extends UTF8StreamJsonParser implements Opti
         return null;
     }
 
+    static boolean hasZeroByte(long v) {
+        return ((v - 0x0101010101010101L) & ~v & 0x8080808080808080L) != 0;
+    }
+
     protected Text _finishAndReturnText() throws IOException {
         int ptr = _inputPtr;
         if (ptr >= _inputEnd) {
@@ -79,6 +90,27 @@ public class ESUTF8StreamJsonParser extends UTF8StreamJsonParser implements Opti
         final byte[] inputBuffer = _inputBuffer;
         stringLength = 0;
         backslashes.clear();
+
+
+        var x = ESVectorUtil.scanAsciiRun(inputBuffer, ptr, max - ptr);
+        ptr += x;
+
+//        while (ptr + Long.BYTES <= max) {  // SWAR
+//            long word = (long) LONG_HANDLE_LE.get(inputBuffer, ptr);
+//
+//            // Fast reject: no high bits, no quote, no backslash
+//            if ((word & 0x8080808080808080L) == 0 &&
+//                hasZeroByte(word ^ 0x2222222222222222L) == false &&
+//                hasZeroByte(word ^ 0x5C5C5C5C5C5C5C5CL) == false ) {
+//                ptr += Long.BYTES;
+//                stringLength += Long.BYTES;
+//                // System.out.println("+8");
+//                continue;
+//            }
+//
+//            // Otherwise, fall back to slow path (per-byte with INPUT_CODES_UTF8)
+//            break;
+//        }
 
         loop: while (true) {
             if (ptr >= max) {
@@ -144,6 +176,114 @@ public class ESUTF8StreamJsonParser extends UTF8StreamJsonParser implements Opti
             lastOptimisedValue = buff;
             return new Text(new XContentString.UTF8Bytes(buff), stringLength);
         }
+    }
+
+    protected Text _finishAndReturnTextNEW() throws IOException {
+
+        ESVectorUtil.indexOf(new byte[] { 0, 0, 0 }, 5555, 1, (byte) 0x0A);
+
+        int ptr = _inputPtr;
+        if (ptr >= _inputEnd) {
+            _loadMoreGuaranteed();
+            ptr = _inputPtr;
+        }
+
+        int startPtr = ptr;
+        final int max = _inputEnd;
+        final byte[] inputBuffer = _inputBuffer;
+        stringLength = 0;
+        backslashes.clear();
+
+        while (ptr < max) {
+            int c = inputBuffer[ptr] & 0xFF;
+
+            int isQuote     = ((c ^ '"') - 1) >>> 31;
+            int isBackslash = ((c ^ '\\') - 1) >>> 31;
+            int isAscii     = (~c >>> 7) & 1;
+
+            // ASCII non-specials count toward length
+            stringLength += isAscii & ~(isQuote | isBackslash);
+
+            // Backslashes just increment length (assuming \" or \\ only)
+            stringLength += isBackslash;
+
+            // Mark completion if quote found
+            if (isQuote == 1) {
+                stringEnd = ptr + 1;
+                break;
+            }
+            ptr++;
+        }
+
+        return stringLength > 0 ? new Text(new XContentString.UTF8Bytes(inputBuffer, startPtr, ptr - startPtr), stringLength) : null;
+
+
+//        while (ptr < max) {
+//            int c = inputBuffer[ptr] & 0xFF;
+//
+//            //   // quote check: 0xFF if c == '"', else 0x00
+//            int isQuote = -(c ^ '"') >>> 31; // mask: 1 if equal, else 0
+//            if (isQuote != 0) {
+//                // found end
+//                stringEnd = ptr + 1;
+//                // if (backslashes.isEmpty()) {
+//                return new Text(new XContentString.UTF8Bytes(inputBuffer, startPtr, ptr - startPtr), stringLength);
+//            }
+//
+//            // Fast ASCII path (no branch for most characters)
+//            // if ((c & 0x80) == 0) {
+//            // mask-based equality check
+////            if (c == '"') {
+////                // Found terminating quote
+////                stringEnd = ptr + 1;
+////                // if (backslashes.isEmpty()) {
+////                return new Text(new XContentString.UTF8Bytes(inputBuffer, startPtr, ptr - startPtr), stringLength);
+////                // } else {
+////                // // rebuild string without backslashes
+////                // byte[] buff = new byte[ptr - startPtr - backslashes.size()];
+////                // int copyPtr = startPtr;
+////                // int destPtr = 0;
+////                // for (int backslash : backslashes) {
+////                // int length = backslash - copyPtr;
+////                // System.arraycopy(inputBuffer, copyPtr, buff, destPtr, length);
+////                // destPtr += length;
+////                // copyPtr = backslash + 1;
+////                // }
+////                // System.arraycopy(inputBuffer, copyPtr, buff, destPtr, ptr - copyPtr);
+////                // lastOptimisedValue = buff;
+////                // return new Text(new XContentString.UTF8Bytes(buff), stringLength);
+////                // }
+////            }
+//
+//            // if (c == '\\') {
+//            // // record backslash
+//            // backslashes.add(ptr);
+//            // ptr++;
+//            // if (ptr >= max) {
+//            // return null; // incomplete escape
+//            // }
+//            // int next = inputBuffer[ptr] & 0xFF;
+//            // // Only allow simple escapes in fast path
+//            // if (next == '"' || next == '/' || next == '\\') {
+//            // stringLength += 1;
+//            // ptr++;
+//            // continue;
+//            // }
+//            // return null; // fallback to slow path
+//            // }
+//
+//            // Normal ASCII char
+//            stringLength++;
+//            ptr++;
+//            continue;
+//            // }
+//
+//            // Non-ASCII: bail out to slow path
+//            // throw new AssertionError();
+//            // return null;
+//        }
+//
+//        return null; // unterminated string
     }
 
     @Override
