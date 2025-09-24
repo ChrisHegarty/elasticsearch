@@ -409,6 +409,13 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
                 request.ifPrimaryTerm()
             );
         } else {
+            var skipParsingAndIndexing = false; // experimenting: if we want to drop the request on the floor!
+            if (skipParsingAndIndexing) {
+                result = new Engine.IndexResult(1L, 1L, 1L, true, "1");
+                onComplete(result, context, updateResult);
+                return true;
+            }
+
             final IndexRequest request = context.getRequestToExecute();
 
             XContentMeteringParserDecorator meteringParserDecorator = documentParsingProvider.newMeteringParserDecorator(request);

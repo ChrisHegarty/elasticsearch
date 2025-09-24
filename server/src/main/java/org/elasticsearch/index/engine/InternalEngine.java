@@ -1245,7 +1245,7 @@ public class InternalEngine extends Engine {
                     assert index.seqNo() >= 0 : "ops should have an assigned seq no.; origin: " + index.origin();
 
                     if (plan.indexIntoLucene || plan.addStaleOpToLucene) {
-                        indexResult = indexIntoLucene(index, plan);
+                        indexResult = indexIntoLucene(index, plan);  // goes here, biggest %
                     } else {
                         indexResult = new IndexResult(
                             plan.versionForIndexing,
@@ -1442,7 +1442,7 @@ public class InternalEngine extends Engine {
             } else {
                 // document does not exists, we can optimize for create, but double check if assertions are running
                 assert assertDocDoesNotExist(index, canOptimizeAddDocument(index) == false);
-                addDocs(index.docs(), indexWriter);
+                addDocs(index.docs(), indexWriter);  // goes here
             }
             return new IndexResult(plan.versionForIndexing, index.primaryTerm(), index.seqNo(), plan.currentNotFoundOrDeleted, index.id());
         } catch (Exception ex) {

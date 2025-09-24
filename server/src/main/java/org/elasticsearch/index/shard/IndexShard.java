@@ -12,6 +12,8 @@ package org.elasticsearch.index.shard;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.DelegatingAnalyzerWrapper;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.index.CheckIndex;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FieldInfos;
@@ -48,6 +50,7 @@ import org.elasticsearch.cluster.routing.allocation.decider.DiskThresholdDecider
 import org.elasticsearch.cluster.service.ClusterApplierService;
 import org.elasticsearch.cluster.service.MasterService;
 import org.elasticsearch.common.UUIDs;
+import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.lucene.Lucene;
 import org.elasticsearch.common.lucene.index.ElasticsearchDirectoryReader;
@@ -106,14 +109,18 @@ import org.elasticsearch.index.get.GetStats;
 import org.elasticsearch.index.get.ShardGetService;
 import org.elasticsearch.index.mapper.DateFieldMapper;
 import org.elasticsearch.index.mapper.DocumentMapper;
+import org.elasticsearch.index.mapper.LuceneDocument;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.MapperMetrics;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.mapper.Mapping;
 import org.elasticsearch.index.mapper.MappingLookup;
 import org.elasticsearch.index.mapper.ParsedDocument;
+import org.elasticsearch.index.mapper.SeqNoFieldMapper;
+import org.elasticsearch.index.mapper.SourceFieldMapper;
 import org.elasticsearch.index.mapper.SourceToParse;
 import org.elasticsearch.index.mapper.Uid;
+import org.elasticsearch.index.mapper.VersionFieldMapper;
 import org.elasticsearch.index.merge.MergeStats;
 import org.elasticsearch.index.recovery.RecoveryStats;
 import org.elasticsearch.index.refresh.RefreshStats;
@@ -150,6 +157,7 @@ import org.elasticsearch.indices.recovery.RecoverySettings;
 import org.elasticsearch.indices.recovery.RecoveryState;
 import org.elasticsearch.indices.recovery.RecoveryTarget;
 import org.elasticsearch.plugins.IndexStorePlugin;
+import org.elasticsearch.plugins.internal.XContentMeteringParserDecorator;
 import org.elasticsearch.repositories.RepositoriesService;
 import org.elasticsearch.repositories.Repository;
 import org.elasticsearch.rest.RestStatus;
@@ -158,6 +166,7 @@ import org.elasticsearch.search.suggest.completion.CompletionStats;
 import org.elasticsearch.snapshots.Snapshot;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.Transports;
+import org.elasticsearch.xcontent.XContentType;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -1016,7 +1025,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         ensureWriteAllowed(origin);
         Engine.Index operation;
         try {
-            operation = prepareIndex(
+            operation = prepareIndex(  // entry point for large mapper % of cpu work
                 mapperService,
                 sourceToParse,
                 seqNo,
@@ -1042,7 +1051,12 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             verifyNotClosed(e);
             return new Engine.IndexResult(e, version, opPrimaryTerm, seqNo, sourceToParse.id());
         }
-        return index(engine, operation);
+        var skipIndex = false; // experimenting: if want to just drop on the floor!
+        if (skipIndex) {
+            return new Engine.IndexResult(1L, 1L, 1L, true, "1");
+        }
+
+        return index(engine, operation); // main entry point for large % of index cpu work
     }
 
     private static final VarHandle FIELD_INFOS;
@@ -1089,13 +1103,33 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             documentMapper = DocumentMapper.createEmpty(mapperService);
             mapping = documentMapper.mapping();
         }
-        ParsedDocument doc = documentMapper.parse(source);
+        ParsedDocument doc;
+        var skipParsingDoc = true;  // experimenting: skip parsing the document
+        if (skipParsingDoc) {
+            BytesReference byteRef = source.source();
+            LuceneDocument document = new LuceneDocument();
+            document.add(new StoredField(SourceFieldMapper.NAME, byteRef.array(), byteRef.arrayOffset(), byteRef.length()));
+
+            doc = new ParsedDocument(
+                VersionFieldMapper.versionField(),
+                SeqNoFieldMapper.SequenceIDFields.emptySeqID(SeqNoFieldMapper.SeqNoIndexOptions.DOC_VALUES_ONLY),
+                "1",
+                null,
+                List.of(document),
+                source.source(),
+                XContentType.JSON,
+                null,
+                XContentMeteringParserDecorator.UNKNOWN_SIZE
+            );
+        } else {
+        doc = documentMapper.parse(source);
         if (mapping != null) {
             // If we are indexing but there is no mapping we create one. This is to ensure that whenever at least a document is indexed
             // some mappings do exist. It covers for the case of indexing an empty doc (`{}`).
             // TODO this can be removed if we eagerly create mappings as soon as a new index is created, regardless of
             // whether mappings were provided or not.
             doc.addDynamicMappingsUpdate(mapping);
+        }
         }
         return new Engine.Index(
             Uid.encodeId(doc.id()),
@@ -1130,7 +1164,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                         preIndex.origin()
                     );
                 }
-                result = engine.index(preIndex);
+                result = engine.index(preIndex);  // <<<<< here
                 if (logger.isTraceEnabled()) {
                     logger.trace(
                         "index-done [{}] seq# [{}] allocation-id [{}] primaryTerm [{}] operationPrimaryTerm [{}] origin [{}] "
