@@ -109,6 +109,7 @@ import org.elasticsearch.index.get.GetStats;
 import org.elasticsearch.index.get.ShardGetService;
 import org.elasticsearch.index.mapper.DateFieldMapper;
 import org.elasticsearch.index.mapper.DocumentMapper;
+import org.elasticsearch.index.mapper.IdFieldMapper;
 import org.elasticsearch.index.mapper.LuceneDocument;
 import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.MapperMetrics;
@@ -1110,9 +1111,16 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             LuceneDocument document = new LuceneDocument();
             document.add(new StoredField(SourceFieldMapper.NAME, byteRef.array(), byteRef.arrayOffset(), byteRef.length()));
 
+            var idField = IdFieldMapper.standardIdField("1)");
+            document.add(idField);
+            Field versionField = VersionFieldMapper.versionField();
+//            document.add(versionField);
+            var seqIdFields = SeqNoFieldMapper.SequenceIDFields.emptySeqID(SeqNoFieldMapper.SeqNoIndexOptions.DOC_VALUES_ONLY);
+//            seqIdFields.addFields(document);
+
             doc = new ParsedDocument(
-                VersionFieldMapper.versionField(),
-                SeqNoFieldMapper.SequenceIDFields.emptySeqID(SeqNoFieldMapper.SeqNoIndexOptions.DOC_VALUES_ONLY),
+                versionField,
+                seqIdFields,
                 "1",
                 null,
                 List.of(document),
