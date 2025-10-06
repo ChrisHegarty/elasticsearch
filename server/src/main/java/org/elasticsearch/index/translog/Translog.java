@@ -610,6 +610,10 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
      * @throws IOException if adding the operation to the translog resulted in an I/O exception
      */
     public Location add(final Operation operation) throws IOException {
+        boolean skipTranslog = true;
+        if (skipTranslog) {
+            return null;
+        }
         try (ReleasableBytesStreamOutput out = new ReleasableBytesStreamOutput(bigArrays)) {
             writeOperationWithSize(out, operation);
             final BytesReference bytes = out.bytes();

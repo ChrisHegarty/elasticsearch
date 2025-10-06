@@ -489,7 +489,7 @@ public abstract class DocumentParserContext {
     }
 
     public boolean isCopyToDestinationField(String name) {
-        return copyToFields.contains(name);
+        return false; // copyToFields.contains(name);
     }
 
     public void processArrayOffsets(DocumentParserContext context) throws IOException {

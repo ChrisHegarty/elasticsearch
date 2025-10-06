@@ -1113,9 +1113,11 @@ public final class DocumentParser {
 
         @Override
         public Mapper getMapper(String name) {
-            Mapper mapper = getMetadataMapper(name);
-            if (mapper != null) {
-                return mapper;
+            if (name.charAt(0) == '_') {
+                Mapper mapper = getMetadataMapper(name);
+                if (mapper != null) {
+                    return mapper;
+                }
             }
             return super.getMapper(name);
         }

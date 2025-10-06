@@ -1218,7 +1218,7 @@ public class InternalEngine extends Engine {
                     assert indexResult.getResultType() == Result.Type.FAILURE : indexResult.getResultType();
                 } else {
                     // generate or register sequence number
-                    if (index.origin() == Operation.Origin.PRIMARY) {
+                    if (index.origin() == Operation.Origin.PRIMARY) { // We go here, may need to skip?
                         index = new Index(
                             index.uid(),
                             index.parsedDoc(),
@@ -1442,6 +1442,7 @@ public class InternalEngine extends Engine {
             } else {
                 // document does not exists, we can optimize for create, but double check if assertions are running
                 assert assertDocDoesNotExist(index, canOptimizeAddDocument(index) == false);
+                // I need to get here with my list of Lucene docs
                 addDocs(index.docs(), indexWriter);
             }
             return new IndexResult(plan.versionForIndexing, index.primaryTerm(), index.seqNo(), plan.currentNotFoundOrDeleted, index.id());

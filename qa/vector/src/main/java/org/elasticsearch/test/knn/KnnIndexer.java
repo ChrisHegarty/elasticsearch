@@ -104,8 +104,8 @@ class KnnIndexer {
     void createIndex(KnnIndexTester.Results result) throws IOException, InterruptedException, ExecutionException {
         IndexWriterConfig iwc = new IndexWriterConfig().setOpenMode(IndexWriterConfig.OpenMode.CREATE);
         iwc.setCodec(codec);
-        iwc.setRAMBufferSizeMB(WRITER_BUFFER_MB);
-        iwc.setUseCompoundFile(false);
+        iwc.setRAMBufferSizeMB(WRITER_BUFFER_MB);   <<<<
+        iwc.setUseCompoundFile(false); <<<<<
         if (mergePolicy != null) {
             iwc.setMergePolicy(mergePolicy);
         }
@@ -197,7 +197,7 @@ class KnnIndexer {
             }
             logger.info("KnnIndexer: indexed {} documents of desired {} numDocs", numDocsIndexed, numDocs);
             logger.debug("all indexing threads finished, now IndexWriter.commit()");
-            iw.commit();
+            iw.commit(); //// <<<<<<<
             ConcurrentMergeScheduler cms = (ConcurrentMergeScheduler) iwc.getMergeScheduler();
             cms.sync();
         }

@@ -96,7 +96,7 @@ public class ObjectMapper extends Mapper {
 
     public static class Defaults {
         public static final boolean ENABLED = true;
-        public static final Explicit<Subobjects> SUBOBJECTS = Explicit.implicit(Subobjects.ENABLED);
+        public static final Explicit<Subobjects> SUBOBJECTS = Explicit.implicit(Subobjects.ENABLED); // to disable subobjects
         public static final Explicit<Boolean> STORE_ARRAY_SOURCE = Explicit.IMPLICIT_FALSE;
         public static final Dynamic DYNAMIC = Dynamic.TRUE;
     }

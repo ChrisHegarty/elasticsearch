@@ -990,7 +990,7 @@ public class NumberFieldMapper extends FieldMapper {
         },
         SHORT("short", NumericType.SHORT) {
             @Override
-            public Short parse(Object value, boolean coerce) {
+            public Short parse(final Object value, boolean coerce) {
                 double doubleValue = objectToDouble(value);
 
                 if (doubleValue < Short.MIN_VALUE || doubleValue > Short.MAX_VALUE) {

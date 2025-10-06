@@ -54,7 +54,7 @@ public class JsonXContentImpl implements XContent {
         jsonFactory.configure(JsonFactory.Feature.FAIL_ON_SYMBOL_HASH_OVERFLOW, false); // this trips on many mappings now...
         // Do not automatically close unclosed objects/arrays in com.fasterxml.jackson.core.json.UTF8JsonGenerator#close() method
         jsonFactory.configure(JsonGenerator.Feature.AUTO_CLOSE_JSON_CONTENT, false);
-        jsonFactory.configure(JsonParser.Feature.STRICT_DUPLICATE_DETECTION, true);
+        jsonFactory.configure(JsonParser.Feature.STRICT_DUPLICATE_DETECTION, false);
         jsonFactory.configure(JsonParser.Feature.USE_FAST_DOUBLE_PARSER, true);
         // keeping existing behavior of including source, for now
         jsonFactory.configure(JsonParser.Feature.INCLUDE_SOURCE_IN_LOCATION, true);

@@ -1067,6 +1067,12 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         return res;
     }
 
+    static final boolean CSV_EXPERIMENT;
+
+    static {
+        CSV_EXPERIMENT = Boolean.getBoolean("csv.experiment");
+    }
+
     public static Engine.Index prepareIndex(
         MapperService mapperService,
         SourceToParse source,
@@ -1089,7 +1095,15 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             documentMapper = DocumentMapper.createEmpty(mapperService);
             mapping = documentMapper.mapping();
         }
-        ParsedDocument doc = documentMapper.parse(source);
+
+        ParsedDocument doc;
+        var skipParsingDoc = true;  // experimenting: skip parsing the document
+        if (skipParsingDoc && CSV_EXPERIMENT) {
+            doc = CSVParser.parseInput(source);   // HERE
+        } else {
+            doc = documentMapper.parse(source);
+        }
+
         if (mapping != null) {
             // If we are indexing but there is no mapping we create one. This is to ensure that whenever at least a document is indexed
             // some mappings do exist. It covers for the case of indexing an empty doc (`{}`).
