@@ -15,4 +15,14 @@ public class AggregatorBenchmarkTests extends ESTestCase {
     public void test() {
         AggregatorBenchmark.selfTest();
     }
+
+    public void testFoo() {
+        String grouping = "longs";
+        String op = "sum";
+        String blockType = "vector_longs";
+        String filter = "none";
+        int OP_COUNT = 1024;
+
+        AggregatorBenchmark.run(grouping, op, blockType, filter, OP_COUNT);
+    }
 }

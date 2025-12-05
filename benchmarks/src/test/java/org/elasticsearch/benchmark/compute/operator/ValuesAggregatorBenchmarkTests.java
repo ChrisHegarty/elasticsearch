@@ -15,4 +15,11 @@ public class ValuesAggregatorBenchmarkTests extends ESTestCase {
     public void test() {
         ValuesAggregatorBenchmark.selfTest();
     }
+
+    public void testIntWith1000Groups() {
+        var test = new ValuesAggregatorBenchmark();
+        test.groups = 1000;
+        test.dataType = "int";
+        test.run();
+    }
 }
