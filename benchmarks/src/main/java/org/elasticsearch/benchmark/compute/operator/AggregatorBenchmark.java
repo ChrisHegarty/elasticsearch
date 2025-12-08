@@ -9,7 +9,6 @@
 
 package org.elasticsearch.benchmark.compute.operator;
 
-import org.apache.logging.log4j.LogManager;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.breaker.NoopCircuitBreaker;
 import org.elasticsearch.common.logging.LogConfigurator;
@@ -75,7 +74,8 @@ import java.util.stream.Stream;
 public class AggregatorBenchmark {
     static final int BLOCK_LENGTH = 8 * 1024;
     private static final int OP_COUNT = 1024;
-    private static final int GROUPS = 1_000;    /// Hmmmm... 5 groups!!
+    private static final int GROUPS = 1_000;
+    /// Hmmmm... 5 groups!!
     private static final int TOP_N_LIMIT = 3;
 
     private static final BlockFactory blockFactory = BlockFactory.getInstance(
@@ -126,19 +126,19 @@ public class AggregatorBenchmark {
     }
 
     static void selfTest() {
-//        try {
-//            for (String grouping : AggregatorBenchmark.class.getField("grouping").getAnnotationsByType(Param.class)[0].value()) {
-//                for (String op : AggregatorBenchmark.class.getField("op").getAnnotationsByType(Param.class)[0].value()) {
-//                    for (String blockType : AggregatorBenchmark.class.getField("blockType").getAnnotationsByType(Param.class)[0].value()) {
-//                        for (String filter : AggregatorBenchmark.class.getField("filter").getAnnotationsByType(Param.class)[0].value()) {
-//                            run(grouping, op, blockType, filter, 10);
-//                        }
-//                    }
-//                }
-//            }
-//        } catch (NoSuchFieldException e) {
-//            throw new AssertionError();
-//        }
+        // try {
+        // for (String grouping : AggregatorBenchmark.class.getField("grouping").getAnnotationsByType(Param.class)[0].value()) {
+        // for (String op : AggregatorBenchmark.class.getField("op").getAnnotationsByType(Param.class)[0].value()) {
+        // for (String blockType : AggregatorBenchmark.class.getField("blockType").getAnnotationsByType(Param.class)[0].value()) {
+        // for (String filter : AggregatorBenchmark.class.getField("filter").getAnnotationsByType(Param.class)[0].value()) {
+        // run(grouping, op, blockType, filter, 10);
+        // }
+        // }
+        // }
+        // }
+        // } catch (NoSuchFieldException e) {
+        // throw new AssertionError();
+        // }
     }
 
     @Param(

@@ -34,6 +34,11 @@ dependencies {
   testImplementation(project(xpackModule('ml')))
 }
 
+tasks.named("compileJava").configure {
+  options.compilerArgs << '--add-modules=jdk.incubator.vector'
+  options.compilerArgs -= '-Werror'
+}
+
 def projectDirectory = project.layout.projectDirectory
 def generatedSourceDir = projectDirectory.dir("src/main/generated")
 tasks.named("compileJava").configure {

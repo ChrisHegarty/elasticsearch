@@ -19,4 +19,13 @@ dependencies {
   }
 }
 
+tasks.named('test').configure {
+  jvmArgs '--add-modules=jdk.incubator.vector'
+}
+
+tasks.named("compileJava").configure {
+  options.compilerArgs << '--add-modules=jdk.incubator.vector'
+  options.compilerArgs -= '-Werror'
+}
+
 

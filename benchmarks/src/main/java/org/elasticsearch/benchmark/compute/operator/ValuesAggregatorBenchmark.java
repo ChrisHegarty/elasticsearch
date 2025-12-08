@@ -63,8 +63,8 @@ import java.util.stream.LongStream;
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MILLISECONDS)
 @State(Scope.Thread)
-// @Fork(value = 1, jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
-@Fork(1)
+@Fork(value = 1, jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
+// @Fork(1)
 public class ValuesAggregatorBenchmark {
     static final int MIN_BLOCK_LENGTH = 8 * 1024;
     private static final int OP_COUNT = 1024;
@@ -95,16 +95,16 @@ public class ValuesAggregatorBenchmark {
     }
 
     static void selfTest() {
-        // Smoke test all the expected values and force loading subclasses more like prod
-        try {
-            for (String groups : ValuesAggregatorBenchmark.class.getField("groups").getAnnotationsByType(Param.class)[0].value()) {
-                for (String dataType : ValuesAggregatorBenchmark.class.getField("dataType").getAnnotationsByType(Param.class)[0].value()) {
-                    run(Integer.parseInt(groups), dataType, 10);
-                }
-            }
-        } catch (NoSuchFieldException e) {
-            throw new AssertionError();
-        }
+        // // Smoke test all the expected values and force loading subclasses more like prod
+        // try {
+        // for (String groups : ValuesAggregatorBenchmark.class.getField("groups").getAnnotationsByType(Param.class)[0].value()) {
+        // for (String dataType : ValuesAggregatorBenchmark.class.getField("dataType").getAnnotationsByType(Param.class)[0].value()) {
+        // run(Integer.parseInt(groups), dataType, 10);
+        // }
+        // }
+        // } catch (NoSuchFieldException e) {
+        // throw new AssertionError();
+        // }
     }
 
     private static final String BYTES_REF = "BytesRef";

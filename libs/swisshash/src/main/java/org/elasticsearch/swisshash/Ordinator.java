@@ -253,7 +253,8 @@ public abstract class Ordinator {
      * Shared superstructure for hash cores. Basically just page tracking
      * and {@link Releasable}.
      */
-    abstract class Core implements Releasable {
+    abstract sealed class Core implements Releasable permits Ordinator64.BigCore, Ordinator64.SmallCore, OrdinatorBytes.BigCore,
+        OrdinatorBytes.SmallCore {
         final List<Releasable> toClose = new ArrayList<>();
 
         byte[] grabPage() {

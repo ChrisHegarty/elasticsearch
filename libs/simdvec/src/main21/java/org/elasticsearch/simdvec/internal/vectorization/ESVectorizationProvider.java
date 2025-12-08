@@ -62,6 +62,7 @@ public abstract class ESVectorizationProvider {
         if (runtimeVersion <= 25) {
             // only use vector module with Hotspot VM
             if (Constants.IS_HOTSPOT_VM == false) {
+                System.out.println("HEGO - ESVectorizationProvider:lookup, IS_HOTSPOT_VM false ");
                 logger.warn("Java runtime is not using Hotspot VM; Java vector incubator API can't be enabled.");
                 return new DefaultESVectorizationProvider();
             }
@@ -69,6 +70,7 @@ public abstract class ESVectorizationProvider {
             // build with jlink)
             final var vectorMod = lookupVectorModule();
             if (vectorMod.isEmpty()) {
+                System.out.println("HEGO - ESVectorizationProvider:lookup, empty= " + vectorMod.isEmpty());
                 logger.warn(
                     "Java vector incubator module is not readable. "
                         + "For optimal vector performance, pass '--add-modules jdk.incubator.vector' to enable Vector API."
@@ -84,6 +86,7 @@ public abstract class ESVectorizationProvider {
                     PanamaESVectorUtilSupport.VECTOR_BITSIZE
                 )
             );
+            System.out.println("HEGO - ESVectorizationProvider:lookup, imlp= " + impl);
             return impl;
         } else {
             logger.warn(
