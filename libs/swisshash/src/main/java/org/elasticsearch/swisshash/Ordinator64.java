@@ -517,16 +517,24 @@ public final class Ordinator64 extends Ordinator implements Releasable {
 
                 var ctrl_matches = group.eq(control);
                 if (ctrl_matches.anyTrue()) {
-                    long bits = ctrl_matches.toLong();
-                    while (bits != 0) {
-                        final int bit = Long.numberOfTrailingZeros(bits);
-                        final int checkSlot = slot(slot + bit);
-                        if (key(checkSlot) == key) {
-                            return id(checkSlot);
+                    for (int i = 0; i < ctrl_matches.length(); i++) {
+                        if (ctrl_matches.laneIsSet(i)) {
+                            final int checkSlot = slot(slot + i);
+                            if (key(checkSlot) == key) {
+                                return id(checkSlot);
+                            }
                         }
-                        // Clear the first set bit and try again
-                        bits &= ~(1L << bit);
                     }
+//                    long bits = ctrl_matches.toLong();
+//                    while (bits != 0) {
+//                        final int bit = Long.numberOfTrailingZeros(bits);
+//                        final int checkSlot = slot(slot + bit);
+//                        if (key(checkSlot) == key) {
+//                            return id(checkSlot);
+//                        }
+//                        // Clear the first set bit and try again
+//                        bits &= ~(1L << bit);
+//                    }
                 }
 
                 var empty = group.eq(CONTROL_EMPTY);
@@ -632,21 +640,34 @@ public final class Ordinator64 extends Ordinator implements Releasable {
             }
         }
 
-        private void rehash(int items, BigCore newBigCore) {  // TODO: rework as size ?
+        private void rehash(int items, BigCore newBigCore) {
             int slot = 0;
             while (items > 0) {
-                long empty = controlMatches(slot, CONTROL_EMPTY);
-                for (int i = 0; i < BYTE_VECTOR_LANES; i++) {
-                    if ((empty & (1L << i)) != 0) {
-                        continue;
+//                long empty = controlMatches(slot, CONTROL_EMPTY);
+//                for (int i = 0; i < BYTE_VECTOR_LANES; i++) {
+//                    if ((empty & (1L << i)) != 0) {
+//                        continue;
+//                    }
+//                    int actualSlot = slot + i;
+//                    long key = key(actualSlot);
+//                    int id = id(actualSlot);
+//                    int hash = hash(key);
+//                    byte control = control(hash);
+//                    newBigCore.insert(key, hash, control, id);
+//                    items--;
+//                }
+                var group = ByteVector.fromArray(BS, controlData, slot);
+                var ctrl_matches = group.eq(CONTROL_EMPTY);
+                for (int i = 0; i < ctrl_matches.length(); i++) {
+                    if (ctrl_matches.laneIsSet(i) == false) {
+                        int actualSlot = slot + i;
+                        long key = key(actualSlot);
+                        int id = id(actualSlot);
+                        int hash = hash(key);
+                        byte control = control(hash);
+                        newBigCore.insert(key, hash, control, id);
+                        items--;
                     }
-                    int actualSlot = slot + i;
-                    long key = key(actualSlot);
-                    int id = id(actualSlot);
-                    int hash = hash(key);
-                    byte control = control(hash);
-                    newBigCore.insert(key, hash, control, id);
-                    items--;
                 }
                 slot += BYTE_VECTOR_LANES;
             }
