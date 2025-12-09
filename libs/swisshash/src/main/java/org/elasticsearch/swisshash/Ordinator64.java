@@ -11,6 +11,10 @@ package org.elasticsearch.swisshash;
 
 import com.carrotsearch.hppc.BitMixer;
 
+import jdk.incubator.vector.ByteVector;
+
+import jdk.incubator.vector.VectorSpecies;
+
 import org.elasticsearch.common.breaker.CircuitBreaker;
 import org.elasticsearch.common.util.PageCacheRecycler;
 import org.elasticsearch.core.Releasable;
@@ -53,6 +57,9 @@ import java.util.Arrays;
  * </p>
  */
 public final class Ordinator64 extends Ordinator implements Releasable {
+
+    static final VectorSpecies<Byte> BS = ByteVector.SPECIES_PREFERRED;
+
     private static final VectorComparisonUtils VECTOR_UTILS = ESVectorUtil.getVectorComparisonUtils();
 
     private static final int BYTE_VECTOR_LANES = VECTOR_UTILS.byteVectorLanes();
@@ -163,7 +170,7 @@ public final class Ordinator64 extends Ordinator implements Releasable {
      * it'll be assigned a new {@code id}.
      */
     public int add(long key) {
-        int hash = hash(key);
+        final int hash = hash(key);
         if (smallCore != null) {
             if (size < nextGrowSize) {
                 return smallCore.add(key, hash);
@@ -483,8 +490,8 @@ public final class Ordinator64 extends Ordinator implements Releasable {
             }
         }
 
-        int add(long key, int hash) {
-            byte control = control(hash);
+        int addOriginal(long key, int hash) {
+            final byte control = control(hash);
             int found = find(key, hash, control);
             if (found >= 0) {
                 return found;
@@ -501,27 +508,82 @@ public final class Ordinator64 extends Ordinator implements Releasable {
             return id;
         }
 
+        int add(long key, int hash) {
+            final byte control = control(hash);
+            int slotIncrement = 0; // initial increment  ... triangle TODO
+            int slot = slot(hash);
+            while (true) {
+                var group = ByteVector.fromArray(BS, controlData, slot);
+
+                var ctrl_matches = group.eq(control);
+                if (ctrl_matches.anyTrue()) {
+                    long bits = ctrl_matches.toLong();
+                    while (bits != 0) {
+                        final int bit = Long.numberOfTrailingZeros(bits);
+                        final int checkSlot = slot(slot + bit);
+                        if (key(checkSlot) == key) {
+                            return id(checkSlot);
+                        }
+                        // Clear the first set bit and try again
+                        bits &= ~(1L << bit);
+                    }
+                }
+
+                var empty = group.eq(CONTROL_EMPTY);
+                if (empty.anyTrue()) {
+                    //if (bits != 16) {  // TODO: here
+                    final int lowestSetBit = empty.firstTrue();
+                    final int insertSlot = slot(slot + lowestSetBit);
+                    final int keyOffset = keyOffset(insertSlot);
+                    final int idOffset = idOffset(insertSlot);
+                    final int id = idSpace.next();
+
+                    longHandle.set(keyPages[keyOffset >> PAGE_SHIFT], keyOffset & PAGE_MASK, key);
+                    intHandle.set(idPages[idOffset >> PAGE_SHIFT], idOffset & PAGE_MASK, id);
+                    controlData[insertSlot] = control;
+                    // mirror only if slot is within the first group size, to handle wraparound loads
+                    if (insertSlot < BYTE_VECTOR_LANES) {
+                        controlData[insertSlot + capacity] = control;
+                    }
+
+                    size++;
+                    if (size >= nextGrowSize) {
+                        // assert size == nextGrowSize;
+                        grow();
+                    }
+
+                    return id;
+                }
+                slotIncrement += BYTE_VECTOR_LANES;  // triangle
+                slot = slot(slot + slotIncrement);
+                // insertProbes++;
+            }
+        }
+
         /**
          * Insert the key into the first empty slot that allows it. Used by {@link #add}
          * after we verify that the key isn't in the index. And used by {@link #rehash}
          * because we know all keys are unique.
          */
-        void insert(long key, int hash, byte control, int id) {
+        void insert(final long key, final int hash, final byte control, final int id) {
             int slotIncrement = 0;
             int slot = slot(hash);
             while (true) {
-                long empty = controlMatches(slot, CONTROL_EMPTY);
-                if (VectorComparisonUtils.anyTrue(empty)) {
-                    slot = slot(slot + VectorComparisonUtils.firstSet(empty));
-                    int keyOffset = keyOffset(slot);
-                    int idOffset = idOffset(slot);
+                //                long empty = controlMatches(slot, CONTROL_EMPTY);
+                //                if (VectorComparisonUtils.anyTrue(empty)) {
+                //                    slot = slot(slot + VectorComparisonUtils.firstSet(empty));
+                int bit = lowestSetBit(slot, CONTROL_EMPTY);
+                if (bit != -1) {
+                    final int insertSlot = slot(slot + bit);
+                    int keyOffset = keyOffset(insertSlot);
+                    int idOffset = idOffset(insertSlot);
 
                     longHandle.set(keyPages[keyOffset >> PAGE_SHIFT], keyOffset & PAGE_MASK, key);
                     intHandle.set(idPages[idOffset >> PAGE_SHIFT], idOffset & PAGE_MASK, id);
-                    controlData[slot] = control;
+                    controlData[insertSlot] = control;
                     // mirror only if slot is within the first group size, to handle wraparound loads
-                    if (slot < BYTE_VECTOR_LANES) {
-                        controlData[slot + capacity] = control;
+                    if (insertSlot < BYTE_VECTOR_LANES) {
+                        controlData[insertSlot + capacity] = control;
                     }
                     return;
                 }
@@ -562,18 +624,19 @@ public final class Ordinator64 extends Ordinator implements Releasable {
         private void grow() {
             int oldCapacity = growTracking();
             try {
-                bigCore = new BigCore();
-                rehash(oldCapacity);
+                var newBigCore = new BigCore();
+                rehash(size, newBigCore);
+                bigCore = newBigCore;
             } finally {
                 close();
             }
         }
 
-        private void rehash(int oldCapacity) {
+        private void rehash(int items, BigCore newBigCore) {  // TODO: rework as size ?
             int slot = 0;
-            while (slot < oldCapacity) {
+            while (items > 0) {
                 long empty = controlMatches(slot, CONTROL_EMPTY);
-                for (int i = 0; i < BYTE_VECTOR_LANES && slot + i < oldCapacity; i++) {
+                for (int i = 0; i < BYTE_VECTOR_LANES; i++) {
                     if ((empty & (1L << i)) != 0) {
                         continue;
                     }
@@ -582,7 +645,8 @@ public final class Ordinator64 extends Ordinator implements Releasable {
                     int id = id(actualSlot);
                     int hash = hash(key);
                     byte control = control(hash);
-                    bigCore.insert(key, hash, control, id);
+                    newBigCore.insert(key, hash, control, id);
+                    items--;
                 }
                 slot += BYTE_VECTOR_LANES;
             }
@@ -597,6 +661,14 @@ public final class Ordinator64 extends Ordinator implements Releasable {
         private long controlMatches(int slot, byte control) {
             return VECTOR_UTILS.equalMask(controlData, slot, control);
             // return ByteVector.fromArray(BS, controlData, slot).eq(control).toLong();
+        }
+
+        private int lowestSetBit(int slot, byte control) {
+            var x = ByteVector.fromArray(BS, controlData, slot).eq(control);
+            if (x.anyTrue()) {
+                return x.firstTrue();
+            }
+            return -1;
         }
 
         private long key(int slot) {

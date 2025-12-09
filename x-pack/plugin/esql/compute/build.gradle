@@ -40,6 +40,11 @@ tasks.named("compileJava").configure {
   options.compilerArgumentProviders.add(new SourceDirectoryCommandLineArgumentProvider(generatedSourceDir))
 }
 
+tasks.named("compileJava").configure {
+  options.compilerArgs << '--add-modules=jdk.incubator.vector'
+  options.compilerArgs -= '-Werror'
+}
+
 tasks.named('checkstyleMain').configure {
   source = "src/main/java"
   excludes = ["**/*.java.st"]

@@ -14,6 +14,7 @@ module org.elasticsearch.swisshash {
     requires org.elasticsearch.xcontent;
     requires hppc;
     requires org.apache.lucene.core;
+    requires jdk.incubator.vector;
 
     exports org.elasticsearch.swisshash to org.elasticsearch.compute;
 }
