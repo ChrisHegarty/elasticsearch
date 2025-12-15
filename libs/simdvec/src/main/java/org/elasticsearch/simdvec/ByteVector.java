@@ -7,13 +7,20 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-module org.elasticsearch.swisshash {
-    requires org.elasticsearch.base;
-    requires org.elasticsearch.server;
-    requires org.elasticsearch.xcontent;
-    requires hppc;
-    requires org.apache.lucene.core;
-    requires org.elasticsearch.simdvec;
+package org.elasticsearch.simdvec;
 
-    exports org.elasticsearch.swisshash;
+public final class ByteVector {
+
+    public static int vectorByteSize() {
+        throw new UnsupportedOperationException();
+
+    }
+
+    public static ByteVector fromArray(byte[] a, int offset) {
+        throw new UnsupportedOperationException();
+    }
+
+    public long eq(byte e) {
+        throw new UnsupportedOperationException();
+    }
 }

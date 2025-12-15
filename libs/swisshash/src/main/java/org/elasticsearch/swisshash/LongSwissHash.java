@@ -9,9 +9,6 @@
 
 package org.elasticsearch.swisshash;
 
-import jdk.incubator.vector.ByteVector;
-import jdk.incubator.vector.VectorSpecies;
-
 import com.carrotsearch.hppc.BitMixer;
 
 import org.elasticsearch.common.breaker.CircuitBreaker;
@@ -19,6 +16,7 @@ import org.elasticsearch.common.recycler.Recycler;
 import org.elasticsearch.common.util.PageCacheRecycler;
 import org.elasticsearch.core.Releasable;
 import org.elasticsearch.core.Releasables;
+import org.elasticsearch.simdvec.ByteVector;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
@@ -60,9 +58,7 @@ import java.util.Objects;
  */
 public final class LongSwissHash extends SwissHash implements Releasable {
 
-    private static final VectorSpecies<Byte> BS = ByteVector.SPECIES_PREFERRED;
-
-    private static final int BYTE_VECTOR_LANES = BS.vectorByteSize();
+    private static final int BYTE_VECTOR_LANES = ByteVector.vectorByteSize();
 
     private static final int PAGE_SHIFT = 14;
 
@@ -451,8 +447,8 @@ public final class LongSwissHash extends SwissHash implements Releasable {
         private int find(final long key, final int hash, final byte control) {
             int group = hash & mask;
             for (;;) {
-                ByteVector vec = ByteVector.fromArray(BS, controlData, group);
-                long matches = vec.eq(control).toLong();
+                ByteVector vec = ByteVector.fromArray(controlData, group);
+                long matches = vec.eq(control);
                 while (matches != 0) {
                     final int checkSlot = slot(group + Long.numberOfTrailingZeros(matches));
                     final int id = id(checkSlot);
@@ -461,7 +457,7 @@ public final class LongSwissHash extends SwissHash implements Releasable {
                     }
                     matches &= matches - 1; // clear the first set bit and try again
                 }
-                long empty = vec.eq(EMPTY).toLong();
+                long empty = vec.eq(EMPTY);
                 if (empty != 0) {
                     return -1;
                 }
@@ -478,8 +474,8 @@ public final class LongSwissHash extends SwissHash implements Releasable {
             final byte control = control(hash);
             int group = hash & mask;
             for (;;) {
-                ByteVector vec = ByteVector.fromArray(BS, controlData, group);
-                long matches = vec.eq(control).toLong();
+                ByteVector vec = ByteVector.fromArray(controlData, group);
+                long matches = vec.eq(control);
                 while (matches != 0) {
                     final int checkSlot = slot(group + Long.numberOfTrailingZeros(matches));
                     final int id = id(checkSlot);
@@ -488,7 +484,7 @@ public final class LongSwissHash extends SwissHash implements Releasable {
                     }
                     matches &= matches - 1; // clear the first set bit and try again
                 }
-                long empty = vec.eq(EMPTY).toLong();
+                long empty = vec.eq(EMPTY);
                 if (empty != 0) {
                     final int insertSlot = slot(group + Long.numberOfTrailingZeros(empty));
                     final int id = size;
@@ -509,7 +505,7 @@ public final class LongSwissHash extends SwissHash implements Releasable {
         private void insert(final int hash, final byte control, final int id) {
             int group = hash & mask;
             for (;;) {
-                long empty = ByteVector.fromArray(BS, controlData, group).eq(EMPTY).toLong();
+                long empty = ByteVector.fromArray(controlData, group).eq(EMPTY);
                 if (empty != 0) {
                     final int insertSlot = slot(group + Long.numberOfTrailingZeros(empty));
                     insertAtSlot(insertSlot, control, id);
@@ -576,7 +572,7 @@ public final class LongSwissHash extends SwissHash implements Releasable {
         private void rehash(final int oldCapacity, BigCore newBigCore) {
             int slot = 0;
             while (slot < oldCapacity) {
-                long empty = ByteVector.fromArray(BS, controlData, slot).eq(EMPTY).toLong();
+                long empty = ByteVector.fromArray(controlData, slot).eq(EMPTY);
                 for (int i = 0; i < BYTE_VECTOR_LANES && slot + i < oldCapacity; i++) {
                     if ((empty & (1L << i)) != 0) {
                         continue;
