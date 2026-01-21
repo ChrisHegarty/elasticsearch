@@ -15,4 +15,5 @@ module org.elasticsearch.swisshash {
     requires org.apache.lucene.core;
 
     exports org.elasticsearch.swisshash;
+    exports org.elasticsearch.swisshash.xxhash; // TODO: just for now - do not export. or may it is ok, no MS in the method signatures.
 }
