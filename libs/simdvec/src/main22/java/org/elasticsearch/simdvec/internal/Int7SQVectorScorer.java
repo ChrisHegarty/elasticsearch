@@ -97,10 +97,10 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
 
     /**
      * Resolves native memory addresses for the given node ordinals and calls
-     * the gather scoring function. Returns true if addresses were resolved
+     * the sparse scoring function. Returns true if addresses were resolved
      * (via mmap or DirectAccessInput), false if fallback scoring is needed.
      */
-    final boolean bulkScoreWithGather(int[] nodes, float[] scores, int numNodes, GatherScorer gatherScorer) throws IOException {
+    final boolean bulkScoreWithSparse(int[] nodes, float[] scores, int numNodes, SparseScorer sparseScorer) throws IOException {
         if (bulkOffsets == null || bulkOffsets.length < numNodes) {
             bulkOffsets = new long[numNodes];
             bulkAddrs = new long[numNodes];
@@ -109,7 +109,7 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
             bulkOffsets[i] = (long) nodes[i] * vectorPitch;
         }
         return IndexInputUtils.withSliceAddresses(input, bulkOffsets, vectorByteSize, numNodes, bulkAddrs, addrs -> {
-            gatherScorer.score(MemorySegment.ofArray(addrs), query, vectorByteSize, numNodes, MemorySegment.ofArray(scores));
+            sparseScorer.score(MemorySegment.ofArray(addrs), query, vectorByteSize, numNodes, MemorySegment.ofArray(scores));
         });
     }
 
@@ -137,7 +137,7 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
 
         @Override
         public float bulkScore(int[] nodes, float[] scores, int numNodes) throws IOException {
-            if (bulkScoreWithGather(nodes, scores, numNodes, Similarities::dotProductI7uBulkGather)) {
+            if (bulkScoreWithSparse(nodes, scores, numNodes, Similarities::dotProductI7uBulkSparse)) {
                 float max = Float.NEGATIVE_INFINITY;
                 for (int i = 0; i < numNodes; ++i) {
                     var dotProduct = scores[i];
@@ -177,7 +177,7 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
 
         @Override
         public float bulkScore(int[] nodes, float[] scores, int numNodes) throws IOException {
-            if (bulkScoreWithGather(nodes, scores, numNodes, Similarities::squareDistanceI7uBulkGather)) {
+            if (bulkScoreWithSparse(nodes, scores, numNodes, Similarities::squareDistanceI7uBulkSparse)) {
                 float max = Float.NEGATIVE_INFINITY;
                 for (int i = 0; i < numNodes; ++i) {
                     var squareDistance = scores[i];
@@ -216,7 +216,7 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
 
         @Override
         public float bulkScore(int[] nodes, float[] scores, int numNodes) throws IOException {
-            if (bulkScoreWithGather(nodes, scores, numNodes, Similarities::dotProductI7uBulkGather)) {
+            if (bulkScoreWithSparse(nodes, scores, numNodes, Similarities::dotProductI7uBulkSparse)) {
                 float max = Float.NEGATIVE_INFINITY;
                 for (int i = 0; i < numNodes; ++i) {
                     var dotProduct = scores[i];

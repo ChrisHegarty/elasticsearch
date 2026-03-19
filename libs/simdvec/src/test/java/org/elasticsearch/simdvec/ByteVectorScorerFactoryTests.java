@@ -250,7 +250,7 @@ public class ByteVectorScorerFactoryTests extends AbstractVectorTestCase {
         assumeTrue(notSupportedMsg(), supported());
         assumeTrue("scorer only supported on JDK 22+", Runtime.version().feature() >= 22);
         // Small chunk size forces multi-segment mmap; segmentSliceOrNull(0, length) returns null,
-        // so bulkScoreWithGather falls back to super.bulkScore() (one-at-a-time scoring).
+        // so bulkScoreWithSparse falls back to super.bulkScore() (one-at-a-time scoring).
         try (var dir = new MMapDirectory(createTempDir("testScorerBulkFallback"), 32)) {
             testScorerBulkImpl(dir);
         }

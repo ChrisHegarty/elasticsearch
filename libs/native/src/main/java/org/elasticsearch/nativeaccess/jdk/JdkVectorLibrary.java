@@ -105,7 +105,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                     ADDRESS
                 );
 
-                FunctionDescriptor bulkGather = FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS);
+                FunctionDescriptor bulkSparse = FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS);
 
                 for (Function f : Function.values()) {
                     String funcName = switch (f) {
@@ -119,7 +119,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                             case SINGLE -> "";
                             case BULK -> "_bulk";
                             case BULK_OFFSETS -> "_bulk_offsets";
-                            case BULK_GATHER -> "_bulk_gather";
+                            case BULK_SPARSE -> "_bulk_sparse";
                         };
 
                         for (DataType type : DataType.values()) {
@@ -129,8 +129,8 @@ public final class JdkVectorLibrary implements VectorLibrary {
                             // Only DOT_PRODUCT is needed for int4 — other functions are computed by
                             // applying correction terms on top of the raw dot product result.
                             if (f != Function.DOT_PRODUCT && type == DataType.INT4) continue;
-                            // BULK_GATHER only for INT7U and INT8 — no native gather functions exist for FLOAT32 or INT4
-                            if (op == Operation.BULK_GATHER && (type == DataType.FLOAT32 || type == DataType.INT4)) continue;
+                            // BULK_SPARSE only for INT7U and INT8 — no native sparse functions exist for FLOAT32 or INT4
+                            if (op == Operation.BULK_SPARSE && (type == DataType.FLOAT32 || type == DataType.INT4)) continue;
 
                             String typeName = switch (type) {
                                 case INT7U -> "i7u";
@@ -144,7 +144,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                     case INT7U, INT4 -> intSingle;
                                     case INT8, FLOAT32 -> floatSingle;
                                 };
-                                case BULK, BULK_GATHER -> bulk;
+                                case BULK, BULK_SPARSE -> bulk;
                                 case BULK_OFFSETS -> bulkOffsets;
                             };
 
@@ -155,8 +155,8 @@ public final class JdkVectorLibrary implements VectorLibrary {
                         for (BBQType type : BBQType.values()) {
                             // not implemented yet...
                             if (f == Function.COSINE || f == Function.SQUARE_DISTANCE) continue;
-                            // BULK_GATHER not implemented for BBQ yet
-                            if (op == Operation.BULK_GATHER) continue;
+                            // BULK_SPARSE not yet implemented for BBQ
+                            if (op == Operation.BULK_SPARSE) continue;
 
                             String typeName = switch (type) {
                                 case D1Q4 -> "d1q4";
@@ -166,7 +166,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
 
                             FunctionDescriptor descriptor = switch (op) {
                                 case SINGLE -> longSingle;
-                                case BULK, BULK_GATHER -> bulk;
+                                case BULK, BULK_SPARSE -> bulk;
                                 case BULK_OFFSETS -> bulkOffsets;
                             };
 
@@ -296,7 +296,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
             return true;
         }
 
-        static boolean checkBulkGather(
+        static boolean checkBulkSparse(
             int elementBits,
             MemorySegment addresses,
             MemorySegment b,
@@ -674,12 +674,12 @@ public final class JdkVectorLibrary implements VectorLibrary {
 
                             handlesWithChecks.put(op.getKey(), handleWithChecks);
                         }
-                        case BULK_GATHER -> {
+                        case BULK_SPARSE -> {
                             MethodHandle handleWithChecks = switch (op.getKey().dataType()) {
                                 case DataType dt -> {
                                     MethodHandle checkMethod = lookup.findStatic(
                                         JdkVectorSimilarityFunctions.class,
-                                        "checkBulkGather",
+                                        "checkBulkSparse",
                                         MethodType.methodType(
                                             boolean.class,
                                             int.class,

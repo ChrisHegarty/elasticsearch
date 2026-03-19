@@ -150,7 +150,7 @@ public interface VectorSimilarityFunctions {
          *     <li>Score results, as 4-byte floats</li>
          * </ol>
          */
-        BULK_GATHER
+        BULK_SPARSE
     }
 
     MethodHandle getHandle(Function function, DataType dataType, Operation operation);

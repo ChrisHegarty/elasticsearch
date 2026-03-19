@@ -12,11 +12,11 @@ package org.elasticsearch.simdvec.internal;
 import java.lang.foreign.MemorySegment;
 
 /**
- * Functional interface for bulk-gather native scoring. Receives an array of
+ * Functional interface for bulk-sparse native scoring. Receives an array of
  * native memory addresses (one per vector) and computes similarity scores
  * for all vectors in a single native call.
  */
 @FunctionalInterface
-interface GatherScorer {
+interface SparseScorer {
     void score(MemorySegment addresses, MemorySegment query, int dims, int numNodes, MemorySegment scores);
 }

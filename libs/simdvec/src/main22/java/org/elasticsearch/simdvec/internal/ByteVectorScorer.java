@@ -90,10 +90,10 @@ public abstract sealed class ByteVectorScorer extends RandomVectorScorer.Abstrac
 
     /**
      * Resolves native memory addresses for the given node ordinals and calls
-     * the gather scoring function. Returns true if addresses were resolved
+     * the sparse scoring function. Returns true if addresses were resolved
      * (via mmap or DirectAccessInput), false if fallback scoring is needed.
      */
-    final boolean bulkScoreWithGather(int[] nodes, float[] scores, int numNodes, GatherScorer gatherScorer) throws IOException {
+    final boolean bulkScoreWithSparse(int[] nodes, float[] scores, int numNodes, SparseScorer sparseScorer) throws IOException {
         if (bulkOffsets == null || bulkOffsets.length < numNodes) {
             bulkOffsets = new long[numNodes];
             bulkAddrs = new long[numNodes];
@@ -102,7 +102,7 @@ public abstract sealed class ByteVectorScorer extends RandomVectorScorer.Abstrac
             bulkOffsets[i] = (long) nodes[i] * vectorByteSize;
         }
         return IndexInputUtils.withSliceAddresses(input, bulkOffsets, vectorByteSize, numNodes, bulkAddrs, addrs -> {
-            gatherScorer.score(MemorySegment.ofArray(addrs), query, dimensions, numNodes, MemorySegment.ofArray(scores));
+            sparseScorer.score(MemorySegment.ofArray(addrs), query, dimensions, numNodes, MemorySegment.ofArray(scores));
         });
     }
 
@@ -130,7 +130,7 @@ public abstract sealed class ByteVectorScorer extends RandomVectorScorer.Abstrac
 
         @Override
         public float bulkScore(int[] nodes, float[] scores, int numNodes) throws IOException {
-            if (bulkScoreWithGather(nodes, scores, numNodes, Similarities::dotProductI8BulkGather)) {
+            if (bulkScoreWithSparse(nodes, scores, numNodes, Similarities::dotProductI8BulkSparse)) {
                 float max = Float.NEGATIVE_INFINITY;
                 for (int i = 0; i < numNodes; ++i) {
                     scores[i] = normalize(scores[i]);
@@ -165,7 +165,7 @@ public abstract sealed class ByteVectorScorer extends RandomVectorScorer.Abstrac
 
         @Override
         public float bulkScore(int[] nodes, float[] scores, int numNodes) throws IOException {
-            if (bulkScoreWithGather(nodes, scores, numNodes, Similarities::cosineI8BulkGather)) {
+            if (bulkScoreWithSparse(nodes, scores, numNodes, Similarities::cosineI8BulkSparse)) {
                 float max = Float.NEGATIVE_INFINITY;
                 for (int i = 0; i < numNodes; ++i) {
                     scores[i] = normalize(scores[i]);
@@ -196,7 +196,7 @@ public abstract sealed class ByteVectorScorer extends RandomVectorScorer.Abstrac
 
         @Override
         public float bulkScore(int[] nodes, float[] scores, int numNodes) throws IOException {
-            if (bulkScoreWithGather(nodes, scores, numNodes, Similarities::squareDistanceI8BulkGather)) {
+            if (bulkScoreWithSparse(nodes, scores, numNodes, Similarities::squareDistanceI8BulkSparse)) {
                 float max = Float.NEGATIVE_INFINITY;
                 for (int i = 0; i < numNodes; ++i) {
                     scores[i] = VectorUtil.normalizeDistanceToUnitInterval(scores[i]);
@@ -227,7 +227,7 @@ public abstract sealed class ByteVectorScorer extends RandomVectorScorer.Abstrac
 
         @Override
         public float bulkScore(int[] nodes, float[] scores, int numNodes) throws IOException {
-            if (bulkScoreWithGather(nodes, scores, numNodes, Similarities::dotProductI8BulkGather)) {
+            if (bulkScoreWithSparse(nodes, scores, numNodes, Similarities::dotProductI8BulkSparse)) {
                 float max = Float.NEGATIVE_INFINITY;
                 for (int i = 0; i < numNodes; ++i) {
                     scores[i] = VectorUtil.scaleMaxInnerProductScore(scores[i]);

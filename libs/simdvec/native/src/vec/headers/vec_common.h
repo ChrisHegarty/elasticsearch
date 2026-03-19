@@ -39,14 +39,14 @@ static inline int64_t array_mapper(const int32_t i, const int32_t* offsets) {
 }
 
 // Interprets the offsets array as int64_t addresses. Used with a null base
-// pointer (a = 0) and pitch = 1 so that ptr_offset(a, gather_mapper(i, p) * 1)
+// pointer (a = 0) and pitch = 1 so that ptr_offset(a, sparse_mapper(i, p) * 1)
 // yields (T*)addresses[i].
-static inline int64_t gather_mapper(const int32_t i, const int32_t* offsets) {
+static inline int64_t sparse_mapper(const int32_t i, const int32_t* offsets) {
    return ((const int64_t*)offsets)[i];
 }
 
 // Computes base + byte_offset using integer arithmetic, avoiding undefined
-// behavior when base is null (as in the gather_mapper case).
+// behavior when base is null (as in the sparse_mapper case).
 template <typename T>
 static inline const T* ptr_offset(const T* base, int64_t byte_offset) {
     return reinterpret_cast<const T*>(reinterpret_cast<uintptr_t>(base) + byte_offset);
