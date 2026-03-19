@@ -56,8 +56,6 @@ public interface DirectAccessInput {
      * @return {@code true} if all ranges were available and the action was
      *         invoked; {@code false} otherwise
      */
-    default boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
-        throws IOException {
-        return false;
-    }
+    boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
+        throws IOException;
 }
