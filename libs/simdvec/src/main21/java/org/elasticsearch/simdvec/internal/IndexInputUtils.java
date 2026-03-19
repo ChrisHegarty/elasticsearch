@@ -244,16 +244,6 @@ public final class IndexInputUtils {
         IntFunction<byte[]> scratchSupplier,
         CheckedFunction<IntFunction<MemorySegment>, R, IOException> action
     ) throws IOException {
-        if (SUPPORTS_HEAP_SEGMENTS) {
-            byte[] buf = scratchSupplier.apply(length);
-            MemorySegment[] segs = new MemorySegment[count];
-            for (int i = 0; i < count; i++) {
-                in.seek(offsets[i]);
-                in.readBytes(buf, 0, length);
-                segs[i] = MemorySegment.ofArray(buf.clone()).asSlice(0, length); // TODO clone?
-            }
-            return action.apply(i -> segs[i]);
-        }
         try (Arena arena = Arena.ofConfined()) {
             byte[] buf = scratchSupplier.apply(length);
             MemorySegment[] segs = new MemorySegment[count];
