@@ -1415,6 +1415,74 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
             return result;
         }
 
+        /**
+         * Bulk variant of {@link #withByteBufferSlice}. Resolves {@code count} byte ranges to
+         * direct byte buffers, holding ref-counts on all distinct regions to prevent eviction,
+         * then invokes the action. Each individual range must fit within a single region.
+         */
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        public boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
+            throws IOException {
+            final CacheFileRegion<KeyType>[] held = new CacheFileRegion[count];
+            int heldCount = 0;
+            final ByteBuffer[] results = new ByteBuffer[count];
+            try {
+                for (int i = 0; i < count; i++) {
+                    final long offset = offsets[i];
+                    assert assertOffsetsWithinFileLength(offset, length, this.length);
+                    final int regionIdx = getRegion(offset);
+                    if (regionIdx != getEndingRegion(offset + length)) {
+                        return false;
+                    }
+
+                    final var entry = cache.get(cacheKey, this.length, regionIdx);
+                    final var region = entry.chunk;
+
+                    final long regionEnd = offset + length - getRegionStart(regionIdx);
+                    if (region.tracker.checkAvailable(regionEnd) == false) {
+                        return false;
+                    }
+
+                    SharedBytes.IO ioRef = region.nonVolatileIO();
+                    if (ioRef == null) {
+                        return false;
+                    }
+
+                    if (notAlreadyHeld(region, held, heldCount)) {
+                        if (region.tryIncRef() == false) {
+                            return false;
+                        }
+                        held[heldCount++] = region;
+                    }
+
+                    results[i] = ioRef.byteBufferSlice(getRegionRelativePosition(offset), length);
+                    if (results[i] == null) {
+                        return false;
+                    }
+                }
+                for (int i = 0; i < heldCount; i++) {
+                    if (held[i].isEvicted()) {
+                        return false;
+                    }
+                }
+                action.accept(results);
+                return true;
+            } finally {
+                for (int i = 0; i < heldCount; i++) {
+                    held[i].decRef();
+                }
+            }
+        }
+
+        private static boolean notAlreadyHeld(CacheFileRegion<?> region, CacheFileRegion<?>[] held, int heldCount) {
+            for (int i = 0; i < heldCount; i++) {
+                if (held[i] == region) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         public int populateAndRead(
             final ByteRange rangeToWrite,
             final ByteRange rangeToRead,

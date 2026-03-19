@@ -39,6 +39,16 @@ public class Similarities {
         DataType.INT7U,
         Operation.BULK_OFFSETS
     );
+    static final MethodHandle DOT_PRODUCT_I7U_BULK_GATHER = DISTANCE_FUNCS.getHandle(
+        Function.DOT_PRODUCT,
+        DataType.INT7U,
+        Operation.BULK_GATHER
+    );
+    static final MethodHandle SQUARE_DISTANCE_I7U_BULK_GATHER = DISTANCE_FUNCS.getHandle(
+        Function.SQUARE_DISTANCE,
+        DataType.INT7U,
+        Operation.BULK_GATHER
+    );
 
     static final MethodHandle DOT_PRODUCT_I4 = DISTANCE_FUNCS.getHandle(Function.DOT_PRODUCT, DataType.INT4, Operation.SINGLE);
     static final MethodHandle DOT_PRODUCT_I4_BULK = DISTANCE_FUNCS.getHandle(Function.DOT_PRODUCT, DataType.INT4, Operation.BULK);
@@ -67,6 +77,17 @@ public class Similarities {
         Function.SQUARE_DISTANCE,
         DataType.INT8,
         Operation.BULK_OFFSETS
+    );
+    static final MethodHandle COSINE_I8_BULK_GATHER = DISTANCE_FUNCS.getHandle(Function.COSINE, DataType.INT8, Operation.BULK_GATHER);
+    static final MethodHandle DOT_PRODUCT_I8_BULK_GATHER = DISTANCE_FUNCS.getHandle(
+        Function.DOT_PRODUCT,
+        DataType.INT8,
+        Operation.BULK_GATHER
+    );
+    static final MethodHandle SQUARE_DISTANCE_I8_BULK_GATHER = DISTANCE_FUNCS.getHandle(
+        Function.SQUARE_DISTANCE,
+        DataType.INT8,
+        Operation.BULK_GATHER
     );
 
     static final MethodHandle DOT_PRODUCT_D1Q4 = DISTANCE_FUNCS.getHandle(Function.DOT_PRODUCT, BBQType.D1Q4, Operation.SINGLE);
@@ -306,6 +327,46 @@ public class Similarities {
     ) {
         try {
             SQUARE_DISTANCE_I8_BULK_WITH_OFFSETS.invokeExact(a, b, length, pitch, offsets, count, scores);
+        } catch (Throwable e) {
+            throw rethrow(e);
+        }
+    }
+
+    static void cosineI8BulkGather(MemorySegment addresses, MemorySegment b, int length, int count, MemorySegment scores) {
+        try {
+            COSINE_I8_BULK_GATHER.invokeExact(addresses, b, length, count, scores);
+        } catch (Throwable e) {
+            throw rethrow(e);
+        }
+    }
+
+    static void dotProductI8BulkGather(MemorySegment addresses, MemorySegment b, int length, int count, MemorySegment scores) {
+        try {
+            DOT_PRODUCT_I8_BULK_GATHER.invokeExact(addresses, b, length, count, scores);
+        } catch (Throwable e) {
+            throw rethrow(e);
+        }
+    }
+
+    static void squareDistanceI8BulkGather(MemorySegment addresses, MemorySegment b, int length, int count, MemorySegment scores) {
+        try {
+            SQUARE_DISTANCE_I8_BULK_GATHER.invokeExact(addresses, b, length, count, scores);
+        } catch (Throwable e) {
+            throw rethrow(e);
+        }
+    }
+
+    static void dotProductI7uBulkGather(MemorySegment addresses, MemorySegment b, int length, int count, MemorySegment scores) {
+        try {
+            DOT_PRODUCT_I7U_BULK_GATHER.invokeExact(addresses, b, length, count, scores);
+        } catch (Throwable e) {
+            throw rethrow(e);
+        }
+    }
+
+    static void squareDistanceI7uBulkGather(MemorySegment addresses, MemorySegment b, int length, int count, MemorySegment scores) {
+        try {
+            SQUARE_DISTANCE_I7U_BULK_GATHER.invokeExact(addresses, b, length, count, scores);
         } catch (Throwable e) {
             throw rethrow(e);
         }

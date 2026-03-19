@@ -92,10 +92,10 @@ static inline void dotd1q4_inner_bulk(
     int c = 0;
 
     for (; c + 3 < count; c += 4) {
-        const int8_t* a0 = a + mapper(c, offsets) * pitch;
-        const int8_t* a1 = a + mapper(c + 1, offsets) * pitch;
-        const int8_t* a2 = a + mapper(c + 2, offsets) * pitch;
-        const int8_t* a3 = a + mapper(c + 3, offsets) * pitch;
+        const int8_t* a0 = ptr_offset(a, mapper(c, offsets) * pitch);
+        const int8_t* a1 = ptr_offset(a, mapper(c + 1, offsets) * pitch);
+        const int8_t* a2 = ptr_offset(a, mapper(c + 2, offsets) * pitch);
+        const int8_t* a3 = ptr_offset(a, mapper(c + 3, offsets) * pitch);
 
         int64_t subRet0_0 = 0;
         int64_t subRet1_0 = 0;
@@ -231,7 +231,7 @@ static inline void dotd1q4_inner_bulk(
     }
 
     for (; c < count; c++) {
-        const int8_t* a0 = a + mapper(c, offsets) * pitch;
+        const int8_t* a0 = ptr_offset(a, mapper(c, offsets) * pitch);
         results[c] = (f32_t)dotd1q4_inner(a0, query, length);
     }
 }

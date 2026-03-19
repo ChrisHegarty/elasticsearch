@@ -113,6 +113,19 @@ public final class FrozenIndexInput extends MetadataCachingIndexInput implements
     }
 
     @Override
+    public boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
+        throws IOException {
+        long[] adjusted = offsets;
+        if (this.offset != 0) {
+            adjusted = new long[count];
+            for (int i = 0; i < count; i++) {
+                adjusted[i] = offsets[i] + this.offset;
+            }
+        }
+        return cacheFile.withByteBufferSlices(adjusted, length, count, action);
+    }
+
+    @Override
     protected void readWithoutBlobCache(ByteBuffer b) throws Exception {
         final long position = getAbsolutePosition();
         final int length = b.remaining();

@@ -37,4 +37,27 @@ public interface DirectAccessInput {
      * @return {@code true} if a buffer was available and the action was invoked
      */
     boolean withByteBufferSlice(long offset, long length, CheckedConsumer<ByteBuffer, IOException> action) throws IOException;
+
+    /**
+     * Bulk variant of {@link #withByteBufferSlice}. Resolves {@code count}
+     * file ranges to direct byte buffers and invokes the action while all
+     * buffers are valid. All ref-counting and resource management is handled
+     * internally.
+     *
+     * <p> The byte buffers in the array passed to the action are read-only and
+     * valid only for the duration of the action. Callers must not retain
+     * references to them after the action returns.
+     *
+     * @param offsets file byte offsets for each range
+     * @param length  byte length of each range (same for all)
+     * @param count   number of ranges to resolve
+     * @param action  receives a {@code ByteBuffer[]} where entry {@code i}
+     *                corresponds to {@code offsets[i]}
+     * @return {@code true} if all ranges were available and the action was
+     *         invoked; {@code false} otherwise
+     */
+    default boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
+        throws IOException {
+        return false;
+    }
 }

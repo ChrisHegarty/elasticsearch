@@ -154,10 +154,10 @@ static inline void dot7u_inner_bulk(
     // Prefetching multiple memory locations while computing keeps the CPU
     // execution units busy.
     for (; c + 7 < count; c += 4) {
-        const int8_t* next_a0 = a + mapper(c + 4, offsets) * pitch;
-        const int8_t* next_a1 = a + mapper(c + 5, offsets) * pitch;
-        const int8_t* next_a2 = a + mapper(c + 6, offsets) * pitch;
-        const int8_t* next_a3 = a + mapper(c + 7, offsets) * pitch;
+        const int8_t* next_a0 = ptr_offset(a, mapper(c + 4, offsets) * pitch);
+        const int8_t* next_a1 = ptr_offset(a, mapper(c + 5, offsets) * pitch);
+        const int8_t* next_a2 = ptr_offset(a, mapper(c + 6, offsets) * pitch);
+        const int8_t* next_a3 = ptr_offset(a, mapper(c + 7, offsets) * pitch);
 
         prefetch(next_a0, lines_to_fetch);
         prefetch(next_a1, lines_to_fetch);
@@ -195,7 +195,7 @@ static inline void dot7u_inner_bulk(
 
     // Tail-handling: remaining vectors
     for (; c < count; c++) {
-        const int8_t* a0 = a + mapper(c, offsets) * pitch;
+        const int8_t* a0 = ptr_offset(a, mapper(c, offsets) * pitch);
         results[c] = (f32_t)vec_dot7u_2(a0, b, dims);
     }
 }
@@ -320,10 +320,10 @@ static inline void sqr7u_inner_bulk(
     // Prefetching multiple memory locations while computing keeps the CPU
     // execution units busy.
     for (; c + 7 < count; c += 4) {
-        const int8_t* next_a0 = a + mapper(c + 4, offsets) * pitch;
-        const int8_t* next_a1 = a + mapper(c + 5, offsets) * pitch;
-        const int8_t* next_a2 = a + mapper(c + 6, offsets) * pitch;
-        const int8_t* next_a3 = a + mapper(c + 7, offsets) * pitch;
+        const int8_t* next_a0 = ptr_offset(a, mapper(c + 4, offsets) * pitch);
+        const int8_t* next_a1 = ptr_offset(a, mapper(c + 5, offsets) * pitch);
+        const int8_t* next_a2 = ptr_offset(a, mapper(c + 6, offsets) * pitch);
+        const int8_t* next_a3 = ptr_offset(a, mapper(c + 7, offsets) * pitch);
 
         prefetch(next_a0, lines_to_fetch);
         prefetch(next_a1, lines_to_fetch);
@@ -366,7 +366,7 @@ static inline void sqr7u_inner_bulk(
 
     // Tail-handling: remaining vectors
     for (; c < count; c++) {
-        const int8_t* a0 = a + mapper(c, offsets) * pitch;
+        const int8_t* a0 = ptr_offset(a, mapper(c, offsets) * pitch);
         results[c] = (f32_t)vec_sqr7u_2(a0, b, dims);
     }
 }

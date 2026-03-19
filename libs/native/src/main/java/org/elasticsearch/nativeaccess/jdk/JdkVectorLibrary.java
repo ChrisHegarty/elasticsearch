@@ -105,6 +105,8 @@ public final class JdkVectorLibrary implements VectorLibrary {
                     ADDRESS
                 );
 
+                FunctionDescriptor bulkGather = FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS);
+
                 for (Function f : Function.values()) {
                     String funcName = switch (f) {
                         case COSINE -> "cos";
@@ -117,6 +119,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                             case SINGLE -> "";
                             case BULK -> "_bulk";
                             case BULK_OFFSETS -> "_bulk_offsets";
+                            case BULK_GATHER -> "_bulk_gather";
                         };
 
                         for (DataType type : DataType.values()) {
@@ -126,6 +129,8 @@ public final class JdkVectorLibrary implements VectorLibrary {
                             // Only DOT_PRODUCT is needed for int4 — other functions are computed by
                             // applying correction terms on top of the raw dot product result.
                             if (f != Function.DOT_PRODUCT && type == DataType.INT4) continue;
+                            // BULK_GATHER only for INT7U and INT8 — no native gather functions exist for FLOAT32 or INT4
+                            if (op == Operation.BULK_GATHER && (type == DataType.FLOAT32 || type == DataType.INT4)) continue;
 
                             String typeName = switch (type) {
                                 case INT7U -> "i7u";
@@ -139,7 +144,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                     case INT7U, INT4 -> intSingle;
                                     case INT8, FLOAT32 -> floatSingle;
                                 };
-                                case BULK -> bulk;
+                                case BULK, BULK_GATHER -> bulk;
                                 case BULK_OFFSETS -> bulkOffsets;
                             };
 
@@ -150,6 +155,8 @@ public final class JdkVectorLibrary implements VectorLibrary {
                         for (BBQType type : BBQType.values()) {
                             // not implemented yet...
                             if (f == Function.COSINE || f == Function.SQUARE_DISTANCE) continue;
+                            // BULK_GATHER not implemented for BBQ yet
+                            if (op == Operation.BULK_GATHER) continue;
 
                             String typeName = switch (type) {
                                 case D1Q4 -> "d1q4";
@@ -159,7 +166,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
 
                             FunctionDescriptor descriptor = switch (op) {
                                 case SINGLE -> longSingle;
-                                case BULK -> bulk;
+                                case BULK, BULK_GATHER -> bulk;
                                 case BULK_OFFSETS -> bulkOffsets;
                             };
 
@@ -285,6 +292,21 @@ public final class JdkVectorLibrary implements VectorLibrary {
             Objects.checkFromIndexSize(0L, (long) datasetVectorLengthInBytes * count, dataset.byteSize());
             // 1 bit data -> x4 bits query, 2 bit data -> x2 bits query
             Objects.checkFromIndexSize(0L, (long) datasetVectorLengthInBytes * (queryBits / dataBits), query.byteSize());
+            Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
+            return true;
+        }
+
+        static boolean checkBulkGather(
+            int elementBits,
+            MemorySegment addresses,
+            MemorySegment b,
+            int length,
+            int count,
+            MemorySegment result
+        ) {
+            assert elementBits % 8 == 0 : "requires byte-aligned element types";
+            Objects.checkFromIndexSize(0L, (long) count * Long.BYTES, addresses.byteSize());
+            Objects.checkFromIndexSize(0L, (long) length * elementBits / 8, b.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
             return true;
         }
@@ -631,6 +653,33 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                     MethodHandle checkMethod = lookup.findStatic(
                                         JdkVectorSimilarityFunctions.class,
                                         "checkBulk",
+                                        MethodType.methodType(
+                                            boolean.class,
+                                            int.class,
+                                            MemorySegment.class,
+                                            MemorySegment.class,
+                                            int.class,
+                                            int.class,
+                                            MemorySegment.class
+                                        )
+                                    );
+                                    yield MethodHandles.guardWithTest(
+                                        MethodHandles.insertArguments(checkMethod, 0, dt.bits()),
+                                        op.getValue(),
+                                        MethodHandles.empty(op.getValue().type())
+                                    );
+                                }
+                                default -> throw new IllegalArgumentException("Unknown handle type " + op.getKey().dataType());
+                            };
+
+                            handlesWithChecks.put(op.getKey(), handleWithChecks);
+                        }
+                        case BULK_GATHER -> {
+                            MethodHandle handleWithChecks = switch (op.getKey().dataType()) {
+                                case DataType dt -> {
+                                    MethodHandle checkMethod = lookup.findStatic(
+                                        JdkVectorSimilarityFunctions.class,
+                                        "checkBulkGather",
                                         MethodType.methodType(
                                             boolean.class,
                                             int.class,
