@@ -123,7 +123,12 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
             checkOrdinal(node);
             long byteOffset = (long) node * vectorPitch;
             input.seek(byteOffset);
-            int dotProduct = IndexInputUtils.withSlice(input, vectorByteSize, this::getScratch, seg -> dotProductI7u(query, seg, vectorByteSize));
+            int dotProduct = IndexInputUtils.withSlice(
+                input,
+                vectorByteSize,
+                this::getScratch,
+                seg -> dotProductI7u(query, seg, vectorByteSize)
+            );
             assert dotProduct >= 0;
             float nodeCorrection = Float.intBitsToFloat(input.readInt());
             float adjustedDistance = dotProduct * scoreCorrectionConstant + queryCorrection + nodeCorrection;
@@ -160,7 +165,12 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
             checkOrdinal(node);
             long byteOffset = (long) node * vectorPitch;
             input.seek(byteOffset);
-            int sqDist = IndexInputUtils.withSlice(input, vectorByteSize, this::getScratch, seg -> squareDistanceI7u(query, seg, vectorByteSize));
+            int sqDist = IndexInputUtils.withSlice(
+                input,
+                vectorByteSize,
+                this::getScratch,
+                seg -> squareDistanceI7u(query, seg, vectorByteSize)
+            );
             float adjustedDistance = sqDist * scoreCorrectionConstant;
             return VectorUtil.normalizeDistanceToUnitInterval(adjustedDistance);
         }
@@ -192,7 +202,12 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
             checkOrdinal(node);
             long byteOffset = (long) node * vectorPitch;
             input.seek(byteOffset);
-            int dotProduct = IndexInputUtils.withSlice(input, vectorByteSize, this::getScratch, seg -> dotProductI7u(query, seg, vectorByteSize));
+            int dotProduct = IndexInputUtils.withSlice(
+                input,
+                vectorByteSize,
+                this::getScratch,
+                seg -> dotProductI7u(query, seg, vectorByteSize)
+            );
             assert dotProduct >= 0;
             float nodeCorrection = Float.intBitsToFloat(input.readInt());
             float adjustedDistance = dotProduct * scoreCorrectionConstant + queryCorrection + nodeCorrection;

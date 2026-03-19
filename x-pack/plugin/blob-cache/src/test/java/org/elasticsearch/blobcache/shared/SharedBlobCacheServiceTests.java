@@ -2991,10 +2991,9 @@ public class SharedBlobCacheServiceTests extends ESTestCase {
             int freeBeforeCall = cacheService.freeRegionCount();
 
             long[] offsets = { 0, 50 };
-            IOException thrown = expectThrows(
-                IOException.class,
-                () -> cacheFile.withByteBufferSlices(offsets, 20, 2, slices -> { throw new IOException("test exception"); })
-            );
+            IOException thrown = expectThrows(IOException.class, () -> cacheFile.withByteBufferSlices(offsets, 20, 2, slices -> {
+                throw new IOException("test exception");
+            }));
             assertEquals("test exception", thrown.getMessage());
 
             assertEquals(freeBeforeCall, cacheService.freeRegionCount());
