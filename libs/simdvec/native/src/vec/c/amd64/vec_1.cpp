@@ -61,7 +61,8 @@ EXPORT int32_t vec_doti7u(const int8_t* a, const int8_t* b, const int32_t dims) 
 }
 
 template <
-    int64_t(*mapper)(int32_t, const int32_t*),
+    typename TData,
+    const int8_t*(*mapper)(const TData*, const int32_t, const int32_t*, const int32_t),
     int32_t(*inner_op)(const int8_t*, const int8_t*, const int32_t),
     int32_t(*scalar_op)(const int8_t, const int8_t),
     auto(*bulk_tail)(const int8_t*, const int8_t*, const int32_t),
@@ -69,7 +70,7 @@ template <
     int stride = STRIDE_BYTES_LEN
 >
 static inline void call_i8_bulk(
-    const int8_t* a,
+    const TData* a,
     const int8_t* b,
     const int32_t dims,
     const int32_t pitch,
@@ -83,9 +84,9 @@ static inline void call_i8_bulk(
 
     // Pointers to the current batch of input vectors, resolved via mapper.
     // current_vecs[0] points to the vector for index 0, [1] for index 1, etc.
-    // init_offsets fills the array at compile time using template recursion.
+    // init_pointers fills the array at compile time using template recursion.
     const int8_t* current_vecs[batches];
-    init_offsets<batches, int8_t, mapper>(current_vecs, a, pitch, offsets, count);
+    init_pointers<batches, TData, int8_t, mapper>(current_vecs, a, pitch, offsets, 0, count);
 
     // Process a batch of `batches` vectors at a time, after instructing the
     // CPU to prefetch the next batch.
@@ -100,7 +101,7 @@ static inline void call_i8_bulk(
         // cost -- it just lets the lambda reference local variables inline.
         const int8_t* next_vecs[batches];
         apply_indexed<batches>([&](auto I) {
-            next_vecs[I] = ptr_offset(a, mapper(c + batches + I, offsets) * pitch);
+            next_vecs[I] = mapper(a, c + batches + I, offsets, pitch);
             prefetch(next_vecs[I], lines_to_fetch);
         });
 
@@ -127,13 +128,13 @@ static inline void call_i8_bulk(
 
     // Tail-handling: remaining vectors
     for (; c < count; c++) {
-        const int8_t* a0 = ptr_offset(a, mapper(c, offsets) * pitch);
+        const int8_t* a0 = mapper(a, c, offsets, pitch);
         results[c] = (f32_t)bulk_tail(a0, b, dims);
     }
 }
 
 EXPORT void vec_doti7u_bulk(const int8_t* a, const int8_t* b, const int32_t dims, const int32_t count, f32_t* results) {
-    call_i8_bulk<identity_mapper, doti7u_inner, dot_scalar<int8_t>, vec_doti7u>(a, b, dims, dims, NULL, count, results);
+    call_i8_bulk<int8_t, identity_mapper, doti7u_inner, dot_scalar<int8_t>, vec_doti7u>(a, b, dims, dims, NULL, count, results);
 }
 
 EXPORT void vec_doti7u_bulk_offsets(
@@ -144,7 +145,7 @@ EXPORT void vec_doti7u_bulk_offsets(
     const int32_t* offsets,
     const int32_t count,
     f32_t* results) {
-    call_i8_bulk<array_mapper, doti7u_inner, dot_scalar<int8_t>, vec_doti7u>(a, b, dims, pitch, offsets, count, results);
+    call_i8_bulk<int8_t, array_mapper, doti7u_inner, dot_scalar<int8_t>, vec_doti7u>(a, b, dims, pitch, offsets, count, results);
 }
 
 EXPORT void vec_doti7u_bulk_sparse(
@@ -153,7 +154,7 @@ EXPORT void vec_doti7u_bulk_sparse(
     const int32_t dims,
     const int32_t count,
     f32_t* results) {
-    call_i8_bulk<sparse_mapper, doti7u_inner, dot_scalar<int8_t>, vec_doti7u>((const int8_t*)0, b, dims, 1, (const int32_t*)addresses, count, results);
+    call_i8_bulk<const int8_t*, sparse_mapper, doti7u_inner, dot_scalar<int8_t>, vec_doti7u>((const int8_t* const*)addresses, b, dims, 0, NULL, count, results);
 }
 
 static inline int32_t sqri7u_inner(const int8_t* a, const int8_t* b, const int32_t dims) {
@@ -193,7 +194,7 @@ EXPORT int32_t vec_sqri7u(const int8_t* a, const int8_t* b, const int32_t dims) 
 }
 
 EXPORT void vec_sqri7u_bulk(const int8_t* a, const int8_t* b, const int32_t dims, const int32_t count, f32_t* results) {
-    call_i8_bulk<identity_mapper, sqri7u_inner, sqr_scalar<int8_t>, vec_sqri7u>(a, b, dims, dims, NULL, count, results);
+    call_i8_bulk<int8_t, identity_mapper, sqri7u_inner, sqr_scalar<int8_t>, vec_sqri7u>(a, b, dims, dims, NULL, count, results);
 }
 
 EXPORT void vec_sqri7u_bulk_offsets(
@@ -204,7 +205,7 @@ EXPORT void vec_sqri7u_bulk_offsets(
     const int32_t* offsets,
     const int32_t count,
     f32_t* results) {
-    call_i8_bulk<array_mapper, sqri7u_inner, sqr_scalar<int8_t>, vec_sqri7u>(a, b, dims, pitch, offsets, count, results);
+    call_i8_bulk<int8_t, array_mapper, sqri7u_inner, sqr_scalar<int8_t>, vec_sqri7u>(a, b, dims, pitch, offsets, count, results);
 }
 
 EXPORT void vec_sqri7u_bulk_sparse(
@@ -213,7 +214,7 @@ EXPORT void vec_sqri7u_bulk_sparse(
     const int32_t dims,
     const int32_t count,
     f32_t* results) {
-    call_i8_bulk<sparse_mapper, sqri7u_inner, sqr_scalar<int8_t>, vec_sqri7u>((const int8_t*)0, b, dims, 1, (const int32_t*)addresses, count, results);
+    call_i8_bulk<const int8_t*, sparse_mapper, sqri7u_inner, sqr_scalar<int8_t>, vec_sqri7u>((const int8_t* const*)addresses, b, dims, 0, NULL, count, results);
 }
 
 // --- byte vectors
@@ -282,9 +283,9 @@ EXPORT f32_t vec_cosi8(const int8_t* a, const int8_t* b, const int32_t dims) {
     return (f32_t) ((double) res.sum / sqrt((double) res.norm1 * res.norm2));
 }
 
-template <int64_t(*mapper)(int32_t, const int32_t*), int batches = 2>
+template <typename TData, const int8_t*(*mapper)(const TData*, const int32_t, const int32_t*, const int32_t), int batches = 2>
 static inline void cosi8_inner_bulk(
-    const int8_t* a,
+    const TData* a,
     const int8_t* b,
     const int32_t dims,
     const int32_t pitch,
@@ -311,7 +312,7 @@ static inline void cosi8_inner_bulk(
     }
 
     const int8_t* current_vecs[batches];
-    init_offsets<batches, int8_t, mapper>(current_vecs, a, pitch, offsets, count);
+    init_pointers<batches, TData, int8_t, mapper>(current_vecs, a, pitch, offsets, 0, count);
 
     // Process a batch of `batches` vectors at a time, after instructing the
     // CPU to prefetch the next batch.
@@ -325,7 +326,7 @@ static inline void cosi8_inner_bulk(
         __m256i sums[batches];
         __m256i a_norms[batches];
         apply_indexed<batches>([&](auto I) {
-            next_vecs[I] = ptr_offset(a, mapper(c + batches + I, offsets) * pitch);
+            next_vecs[I] = mapper(a, c + batches + I, offsets, pitch);
             prefetch(next_vecs[I], lines_to_fetch);
             sums[I] = _mm256_setzero_si256();
             a_norms[I] = _mm256_setzero_si256();
@@ -389,13 +390,13 @@ static inline void cosi8_inner_bulk(
 
     // Tail-handling: remaining vectors
     for (; c < count; c++) {
-        const int8_t* a0 = ptr_offset(a, mapper(c, offsets) * pitch);
+        const int8_t* a0 = mapper(a, c, offsets, pitch);
         results[c] = vec_cosi8(a0, b, dims);
     }
 }
 
 EXPORT void vec_cosi8_bulk(const int8_t* a, const int8_t* b, const int32_t dims, const int32_t count, f32_t* results) {
-    cosi8_inner_bulk<identity_mapper>(a, b, dims, dims, NULL, count, results);
+    cosi8_inner_bulk<int8_t, identity_mapper>(a, b, dims, dims, NULL, count, results);
 }
 
 EXPORT void vec_cosi8_bulk_offsets(
@@ -406,7 +407,7 @@ EXPORT void vec_cosi8_bulk_offsets(
     const int32_t* offsets,
     const int32_t count,
     f32_t* results) {
-    cosi8_inner_bulk<array_mapper>(a, b, dims, pitch, offsets, count, results);
+    cosi8_inner_bulk<int8_t, array_mapper>(a, b, dims, pitch, offsets, count, results);
 }
 
 EXPORT void vec_cosi8_bulk_sparse(
@@ -415,7 +416,7 @@ EXPORT void vec_cosi8_bulk_sparse(
     const int32_t dims,
     const int32_t count,
     f32_t* results) {
-    cosi8_inner_bulk<sparse_mapper>((const int8_t*)0, b, dims, 1, (const int32_t*)addresses, count, results);
+    cosi8_inner_bulk<const int8_t*, sparse_mapper>((const int8_t* const*)addresses, b, dims, 0, NULL, count, results);
 }
 
 static inline int32_t doti8_inner(const int8_t* a, const int8_t* b, const int32_t dims) {
@@ -457,7 +458,7 @@ EXPORT f32_t vec_doti8(const int8_t* a, const int8_t* b, const int32_t dims) {
 }
 
 EXPORT void vec_doti8_bulk(const int8_t* a, const int8_t* b, const int32_t dims, const int32_t count, f32_t* results) {
-    call_i8_bulk<identity_mapper, doti8_inner, dot_scalar<int8_t>, vec_doti8, 2, sizeof(__m128i)>(
+    call_i8_bulk<int8_t, identity_mapper, doti8_inner, dot_scalar<int8_t>, vec_doti8, 2, sizeof(__m128i)>(
         a,
         b,
         dims,
@@ -476,7 +477,7 @@ EXPORT void vec_doti8_bulk_offsets(
     const int32_t* offsets,
     const int32_t count,
     f32_t* results) {
-    call_i8_bulk<array_mapper, doti8_inner, dot_scalar<int8_t>, vec_doti8, 2, sizeof(__m128i)>(
+    call_i8_bulk<int8_t, array_mapper, doti8_inner, dot_scalar<int8_t>, vec_doti8, 2, sizeof(__m128i)>(
         a,
         b,
         dims,
@@ -493,12 +494,12 @@ EXPORT void vec_doti8_bulk_sparse(
     const int32_t dims,
     const int32_t count,
     f32_t* results) {
-    call_i8_bulk<sparse_mapper, doti8_inner, dot_scalar<int8_t>, vec_doti8, 2, sizeof(__m128i)>(
-        (const int8_t*)0,
+    call_i8_bulk<const int8_t*, sparse_mapper, doti8_inner, dot_scalar<int8_t>, vec_doti8, 2, sizeof(__m128i)>(
+        (const int8_t* const*)addresses,
         b,
         dims,
-        1,
-        (const int32_t*)addresses,
+        0,
+        NULL,
         count,
         results
     );
@@ -543,7 +544,7 @@ EXPORT f32_t vec_sqri8(const int8_t* a, const int8_t* b, const int32_t dims) {
 }
 
 EXPORT void vec_sqri8_bulk(const int8_t* a, const int8_t* b, const int32_t dims, const int32_t count, f32_t* results) {
-    call_i8_bulk<identity_mapper, sqri8_inner, sqr_scalar<int8_t>, vec_sqri8, 2, sizeof(__m128i)>(
+    call_i8_bulk<int8_t, identity_mapper, sqri8_inner, sqr_scalar<int8_t>, vec_sqri8, 2, sizeof(__m128i)>(
         a,
         b,
         dims,
@@ -562,7 +563,7 @@ EXPORT void vec_sqri8_bulk_offsets(
     const int32_t* offsets,
     const int32_t count,
     f32_t* results) {
-    call_i8_bulk<array_mapper, sqri8_inner, sqr_scalar<int8_t>, vec_sqri8, 2, sizeof(__m128i)>(
+    call_i8_bulk<int8_t, array_mapper, sqri8_inner, sqr_scalar<int8_t>, vec_sqri8, 2, sizeof(__m128i)>(
         a,
         b,
         dims,
@@ -579,12 +580,12 @@ EXPORT void vec_sqri8_bulk_sparse(
     const int32_t dims,
     const int32_t count,
     f32_t* results) {
-    call_i8_bulk<sparse_mapper, sqri8_inner, sqr_scalar<int8_t>, vec_sqri8, 2, sizeof(__m128i)>(
-        (const int8_t*)0,
+    call_i8_bulk<const int8_t*, sparse_mapper, sqri8_inner, sqr_scalar<int8_t>, vec_sqri8, 2, sizeof(__m128i)>(
+        (const int8_t* const*)addresses,
         b,
         dims,
-        1,
-        (const int32_t*)addresses,
+        0,
+        NULL,
         count,
         results
     );
@@ -604,14 +605,15 @@ EXPORT void vec_sqri8_bulk_sparse(
  * This should compile to a single inline method, with no function callouts.
  */
 template <
-    int64_t(*mapper)(int32_t, const int32_t*),
+    typename TData,
+    const f32_t*(*mapper)(const TData*, const int32_t, const int32_t*, const int32_t),
     __m256(*inner_op)(const __m256, const __m256, const __m256),
     f32_t(*scalar_op)(const f32_t, const f32_t),
     f32_t(*bulk_tail)(const f32_t*, const f32_t*, const int32_t),
     int batches = 4
 >
 static inline void call_f32_bulk(
-    const f32_t* a,
+    const TData* a,
     const f32_t* b,
     const int32_t dims,
     const int32_t pitch,
@@ -619,7 +621,6 @@ static inline void call_f32_bulk(
     const int32_t count,
     f32_t* results
 ) {
-    const int vec_size = pitch / sizeof(f32_t);
     int c = 0;
 
     for (; c + batches - 1 < count; c += batches) {
@@ -628,13 +629,13 @@ static inline void call_f32_bulk(
         const f32_t* as[batches];
         __m256 sums[batches] = {};
         apply_indexed<batches>([&](auto I) {
-            as[I] = a + mapper(c + I, offsets) * vec_size;
+            as[I] = mapper(a, c + I, offsets, pitch);
             sums[I] = _mm256_setzero_ps();
         });
 
-        int32_t i = 0;
         // do <batches> vectors at a time, iterating through the dimensions in parallel
         // Each __m256 holds 8 floats
+        int32_t i = 0;
         constexpr int stride = sizeof(__m256) / sizeof(f32_t);
         for (; i < (dims & ~(stride - 1)); i += stride) {
             __m256 bi = _mm256_loadu_ps(b + i);
@@ -661,7 +662,7 @@ static inline void call_f32_bulk(
 
     // Tail-handling: remaining vectors
     for (; c < count; c++) {
-        const f32_t* a0 = a + mapper(c, offsets) * vec_size;
+        const f32_t* a0 = mapper(a, c, offsets, pitch);
         results[c] = bulk_tail(a0, b, dims);
     }
 }
@@ -699,7 +700,7 @@ EXPORT f32_t vec_dotf32(const f32_t* a, const f32_t* b, const int32_t elementCou
 }
 
 EXPORT void vec_dotf32_bulk(const f32_t* a, const f32_t* b, const int32_t dims, const int32_t count, f32_t* results) {
-    call_f32_bulk<identity_mapper, _mm256_fmadd_ps, dot_scalar<f32_t>, vec_dotf32>(a, b, dims, dims * sizeof(f32_t), NULL, count, results);
+    call_f32_bulk<f32_t, identity_mapper, _mm256_fmadd_ps, dot_scalar<f32_t>, vec_dotf32>(a, b, dims, dims, NULL, count, results);
 }
 
 EXPORT void vec_dotf32_bulk_offsets(
@@ -710,7 +711,7 @@ EXPORT void vec_dotf32_bulk_offsets(
     const int32_t* offsets,
     const int32_t count,
     f32_t* results) {
-    call_f32_bulk<array_mapper, _mm256_fmadd_ps, dot_scalar<f32_t>, vec_dotf32>(a, b, dims, pitch, offsets, count, results);
+    call_f32_bulk<f32_t, array_mapper, _mm256_fmadd_ps, dot_scalar<f32_t>, vec_dotf32>(a, b, dims, pitch / sizeof(f32_t), offsets, count, results);
 }
 
 static inline __m256 sqrf32_vector(__m256 a, __m256 b, __m256 sum) {
@@ -751,7 +752,7 @@ EXPORT f32_t vec_sqrf32(const f32_t* a, const f32_t* b, const int32_t elementCou
 }
 
 EXPORT void vec_sqrf32_bulk(const f32_t* a, const f32_t* b, const int32_t dims, const int32_t count, f32_t* results) {
-    call_f32_bulk<identity_mapper, sqrf32_vector, sqr_scalar<f32_t>, vec_sqrf32>(a, b, dims, dims * sizeof(f32_t), NULL, count, results);
+    call_f32_bulk<f32_t, identity_mapper, sqrf32_vector, sqr_scalar<f32_t>, vec_sqrf32>(a, b, dims, dims, NULL, count, results);
 }
 
 EXPORT void vec_sqrf32_bulk_offsets(
@@ -762,7 +763,7 @@ EXPORT void vec_sqrf32_bulk_offsets(
     const int32_t* offsets,
     const int32_t count,
     f32_t* results) {
-    call_f32_bulk<array_mapper, sqrf32_vector, sqr_scalar<f32_t>, vec_sqrf32>(a, b, dims, pitch, offsets, count, results);
+    call_f32_bulk<f32_t, array_mapper, sqrf32_vector, sqr_scalar<f32_t>, vec_sqrf32>(a, b, dims, pitch / sizeof(f32_t), offsets, count, results);
 }
 
 // Fast AVX2 popcount, based on "Faster Population Counts Using AVX2 Instructions"
@@ -859,7 +860,7 @@ EXPORT int64_t vec_dotd1q4(
     return dotd1q4_inner(a_ptr, query_ptr, length);
 }
 
-template <int64_t(*mapper)(const int32_t, const int32_t*)>
+template <const int8_t*(*mapper)(const int8_t*, const int32_t, const int32_t*, const int32_t)>
 static inline void dotd1q4_inner_bulk(
     const int8_t* a,
     const int8_t* query,
@@ -872,20 +873,20 @@ static inline void dotd1q4_inner_bulk(
     const int lines_to_fetch = length / CACHE_LINE_SIZE + 1;
     int c = 0;
 
-    const int8_t* a0 = safe_mapper_offset<int8_t, 0, mapper>(a, pitch, offsets, count);
-    const int8_t* a1 = safe_mapper_offset<int8_t, 1, mapper>(a, pitch, offsets, count);
-    const int8_t* a2 = safe_mapper_offset<int8_t, 2, mapper>(a, pitch, offsets, count);
-    const int8_t* a3 = safe_mapper_offset<int8_t, 3, mapper>(a, pitch, offsets, count);
+    const int8_t* a0 = count > 0 ? mapper(a, 0, offsets, pitch) : nullptr;
+    const int8_t* a1 = count > 1 ? mapper(a, 1, offsets, pitch) : nullptr;
+    const int8_t* a2 = count > 2 ? mapper(a, 2, offsets, pitch) : nullptr;
+    const int8_t* a3 = count > 3 ? mapper(a, 3, offsets, pitch) : nullptr;
 
     // Process a batch of 4 vectors at a time, after instructing the CPU to
     // prefetch the next batch.
     // Prefetching multiple memory locations while computing keeps the CPU
     // execution units busy.
     for (; c + 7 < count; c += 4) {
-        const int8_t* next_a0 = a + mapper(c + 4, offsets) * pitch;
-        const int8_t* next_a1 = a + mapper(c + 5, offsets) * pitch;
-        const int8_t* next_a2 = a + mapper(c + 6, offsets) * pitch;
-        const int8_t* next_a3 = a + mapper(c + 7, offsets) * pitch;
+        const int8_t* next_a0 = mapper(a, c + 4, offsets, pitch);
+        const int8_t* next_a1 = mapper(a, c + 5, offsets, pitch);
+        const int8_t* next_a2 = mapper(a, c + 6, offsets, pitch);
+        const int8_t* next_a3 = mapper(a, c + 7, offsets, pitch);
 
         prefetch(next_a0, lines_to_fetch);
         prefetch(next_a1, lines_to_fetch);
@@ -905,7 +906,7 @@ static inline void dotd1q4_inner_bulk(
 
     // Tail-handling: remaining vectors
     for (; c < count; c++) {
-        const int8_t* a0 = a + mapper(c, offsets) * pitch;
+        const int8_t* a0 = mapper(a, c, offsets, pitch);
         results[c] = (f32_t)dotd1q4_inner(a0, query, length);
     }
 }
@@ -940,7 +941,7 @@ EXPORT int64_t vec_dotd2q4(
     return lower + (upper << 1);
 }
 
-template <int64_t(*mapper)(const int32_t, const int32_t*)>
+template <const int8_t*(*mapper)(const int8_t*, const int32_t, const int32_t*, const int32_t)>
 static inline void dotd2q4_inner_bulk(
     const int8_t* a,
     const int8_t* query,
@@ -954,14 +955,14 @@ static inline void dotd2q4_inner_bulk(
     const int bit_length = length/2;
     int c = 0;
 
-    const int8_t* a0 = safe_mapper_offset<int8_t, 0, mapper>(a, pitch, offsets, count);
-    const int8_t* a1 = safe_mapper_offset<int8_t, 1, mapper>(a, pitch, offsets, count);
+    const int8_t* a0 = count > 0 ? mapper(a, 0, offsets, pitch) : nullptr;
+    const int8_t* a1 = count > 1 ? mapper(a, 1, offsets, pitch) : nullptr;
 
     // Process 2 vectors at a time, after instructing the CPU to
     // prefetch the next vectors (both stripes).
     for (; c + 2 < count; c+=2) {
-        const int8_t* next_a0 = a + mapper(c + 2, offsets) * pitch;
-        const int8_t* next_a1 = a + mapper(c + 3, offsets) * pitch;
+        const int8_t* next_a0 = mapper(a, c + 2, offsets, pitch);
+        const int8_t* next_a1 = mapper(a, c + 3, offsets, pitch);
 
         prefetch(next_a0, lines_to_fetch);
         prefetch(next_a0 + bit_length, lines_to_fetch);
@@ -982,7 +983,7 @@ static inline void dotd2q4_inner_bulk(
 
     // Tail-handling: remaining vectors
     for (; c < count; c++) {
-        const int8_t* a0 = a + mapper(c, offsets) * pitch;
+        const int8_t* a0 = mapper(a, c, offsets, pitch);
         int64_t lower = dotd1q4_inner(a0, query, bit_length);
         int64_t upper = dotd1q4_inner(a0 + bit_length, query, bit_length);
         results[c] = (f32_t)(lower + (upper << 1));
@@ -1018,7 +1019,7 @@ EXPORT int64_t vec_dotd4q4(const int8_t* a, const int8_t* query, const int32_t l
     return p0 + (p1 << 1) + (p2 << 2) + (p3 << 3);
 }
 
-template <int64_t(*mapper)(const int32_t, const int32_t*)>
+template <const int8_t*(*mapper)(const int8_t*, const int32_t, const int32_t*, const int32_t)>
 static inline void dotd4q4_inner_bulk(
     const int8_t* a,
     const int8_t* query,
@@ -1032,11 +1033,11 @@ static inline void dotd4q4_inner_bulk(
     const int32_t bit_length = length / 4;
     int c = 0;
 
-    const int8_t* a0 = safe_mapper_offset<int8_t, 0, mapper>(a, pitch, offsets, count);
+    const int8_t* a0 = count > 0 ? mapper(a, 0, offsets, pitch) : nullptr;
 
     // Process one vector, after instructing the CPU to prefetch the next vector
     for (; c + 1 < count; c++) {
-        const int8_t* next_a0 = a + mapper(c + 1, offsets) * pitch;
+        const int8_t* next_a0 = mapper(a, c + 1, offsets, pitch);
 
         // prefetch stripes 2 and 3 now
         prefetch(a0 + 2 * bit_length, lines_to_fetch);
@@ -1059,7 +1060,7 @@ static inline void dotd4q4_inner_bulk(
 
     // Tail-handling: remaining vector
     for (; c < count; c++) {
-        const int8_t* a0 = a + mapper(c, offsets) * pitch;
+        const int8_t* a0 = mapper(a, c, offsets, pitch);
 
         int64_t p0 = dotd1q4_inner(a0 + 0 * bit_length, query, bit_length);
         int64_t p1 = dotd1q4_inner(a0 + 1 * bit_length, query, bit_length);
