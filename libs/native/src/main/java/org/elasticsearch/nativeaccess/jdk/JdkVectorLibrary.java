@@ -301,10 +301,14 @@ public final class JdkVectorLibrary implements VectorLibrary {
         ) {
             long rowBytes = (long) length * elementBits / 8;
             if (pitch < rowBytes) throw new IllegalArgumentException("Pitch needs to be at least " + length);
-            Objects.checkFromIndexSize(0L, (long) pitch * count, a.byteSize());
             Objects.checkFromIndexSize(0L, rowBytes, b.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Integer.BYTES, offsets.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
+            long aSize = a.byteSize();
+            for (int i = 0; i < count; i++) {
+                int offset = offsets.getAtIndex(JAVA_INT, i);
+                Objects.checkFromIndexSize((long) offset * pitch, rowBytes, aSize);
+            }
             return true;
         }
 
@@ -322,11 +326,15 @@ public final class JdkVectorLibrary implements VectorLibrary {
             if (pitch < datasetVectorLengthInBytes) throw new IllegalArgumentException(
                 "Pitch needs to be at least " + datasetVectorLengthInBytes
             );
-            Objects.checkFromIndexSize(0L, (long) datasetVectorLengthInBytes * count, a.byteSize());
             // 1 bit data -> x4 bits query, 2 bit data -> x2 bits query
             Objects.checkFromIndexSize(0L, (long) datasetVectorLengthInBytes * (queryBits / dataBits), b.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Integer.BYTES, offsets.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
+            long aSize = a.byteSize();
+            for (int i = 0; i < count; i++) {
+                int offset = offsets.getAtIndex(JAVA_INT, i);
+                Objects.checkFromIndexSize((long) offset * pitch, datasetVectorLengthInBytes, aSize);
+            }
             return true;
         }
 
