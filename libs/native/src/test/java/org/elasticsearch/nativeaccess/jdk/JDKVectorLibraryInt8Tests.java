@@ -220,7 +220,7 @@ public class JDKVectorLibraryInt8Tests extends VectorSimilarityFunctionsTests {
         ex = expectThrows(IOOBE, () -> similarityBulkWithOffsets(vectorsSegment, query, dims, dims, offsetsSegment, numVecs, scores));
         assertThat(ex.getMessage(), containsString("out of bounds for length"));
     }
-  
+
     public void testBulkIllegalDims() {
         assumeTrue(notSupportedMsg(), supported());
         var segA = arena.allocate((long) size * 3);

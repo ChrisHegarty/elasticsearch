@@ -250,7 +250,7 @@ public class JDKVectorLibraryFloat32Tests extends VectorSimilarityFunctionsTests
         ex = expectThrows(IOOBE, () -> similarityBulkWithOffsets(vectorsSegment, query, dims, pitch, offsetsSegment, numVecs, scores));
         assertThat(ex.getMessage(), containsString("out of bounds for length"));
     }
-  
+
     public void testBulkIllegalDims() {
         assumeTrue(notSupportedMsg(), supported());
         var segA = arena.allocate((long) size * 3 * Float.BYTES);
