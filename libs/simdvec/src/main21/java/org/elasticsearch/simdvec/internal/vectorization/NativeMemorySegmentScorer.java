@@ -23,8 +23,8 @@ import java.lang.foreign.MemorySegment;
  * <p>Subclasses provide only the native dot-product function and bit-scale constants;
  * the scoring logic (quantize, bulk, corrections) is handled by template methods here.
  */
-abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVectorsScorer.MemorySegmentScorer
-    permits NativeBitToInt4Scorer, NativeDibitToInt4Scorer, NativeInt4SymmetricScorer {
+abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVectorsScorer.MemorySegmentScorer permits
+    NativeBitToInt4Scorer, NativeDibitToInt4Scorer, NativeInt4SymmetricScorer {
 
     NativeMemorySegmentScorer(IndexInput in, int dimensions, int dataLength, int bulkSize) {
         super(in, dimensions, dataLength, bulkSize);
@@ -51,12 +51,7 @@ abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVe
 
     @Override
     final long quantizeScore(byte[] q) throws IOException {
-        return IndexInputUtils.withSlice(
-            in,
-            length,
-            this::getScratch,
-            segment -> dotProduct(segment, MemorySegment.ofArray(q), length)
-        );
+        return IndexInputUtils.withSlice(in, length, this::getScratch, segment -> dotProduct(segment, MemorySegment.ofArray(q), length));
     }
 
     @Override

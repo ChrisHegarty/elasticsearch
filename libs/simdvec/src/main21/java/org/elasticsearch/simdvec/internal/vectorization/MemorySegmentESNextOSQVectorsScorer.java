@@ -44,16 +44,23 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
     private static final boolean USE_NATIVE = MemorySegmentScorer.NATIVE_SUPPORTED && MemorySegmentScorer.SUPPORTS_HEAP_SEGMENTS;
 
     private static final Map<Integer, ScorerFactory> NATIVE_SCORER_FACTORIES = Map.of(
-        key(4, 1), NativeBitToInt4Scorer::new,
-        key(4, 2), NativeDibitToInt4Scorer::new,
-        key(4, 4), NativeInt4SymmetricScorer::new
+        key(4, 1),
+        NativeBitToInt4Scorer::new,
+        key(4, 2),
+        NativeDibitToInt4Scorer::new,
+        key(4, 4),
+        NativeInt4SymmetricScorer::new
     );
 
     private static final Map<Integer, ScorerFactory> SCORER_FACTORIES = Map.of(
-        key(4, 1), MSBitToInt4ESNextOSQVectorsScorer::new,
-        key(4, 2), MSDibitToInt4ESNextOSQVectorsScorer::new,
-        key(4, 4), MSInt4SymmetricESNextOSQVectorsScorer::new,
-        key(7, 7), MSD7Q7ESNextOSQVectorsScorer::new
+        key(4, 1),
+        MSBitToInt4ESNextOSQVectorsScorer::new,
+        key(4, 2),
+        MSDibitToInt4ESNextOSQVectorsScorer::new,
+        key(4, 4),
+        MSInt4SymmetricESNextOSQVectorsScorer::new,
+        key(7, 7),
+        MSD7Q7ESNextOSQVectorsScorer::new
     );
 
     private static int key(int queryBits, int indexBits) {
