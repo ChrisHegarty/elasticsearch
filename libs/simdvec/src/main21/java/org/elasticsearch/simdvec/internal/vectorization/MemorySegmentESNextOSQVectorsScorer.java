@@ -48,9 +48,7 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
                 case (4 << 8) | 2 -> DIBIT_TO_INT4;
                 case (4 << 8) | 4 -> INT4_SYMMETRIC;
                 case (7 << 8) | 7 -> D7Q7;
-                default -> throw new IllegalArgumentException(
-                    "Unsupported query/index bits combination: " + queryBits + "/" + indexBits
-                );
+                default -> throw new IllegalArgumentException("Unsupported query/index bits combination: " + queryBits + "/" + indexBits);
             };
         }
     }
@@ -71,13 +69,7 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
             : createPanamaScorer(QuantEncoding.of(queryBits, indexBits), in, dimensions, dataLength, bulkSize);
     }
 
-    private static MemorySegmentScorer createNativeScorer(
-        QuantEncoding enc,
-        IndexInput in,
-        int dimensions,
-        int dataLength,
-        int bulkSize
-    ) {
+    private static MemorySegmentScorer createNativeScorer(QuantEncoding enc, IndexInput in, int dimensions, int dataLength, int bulkSize) {
         return switch (enc) {
             case BIT_TO_INT4 -> new NativeBitToInt4Scorer(in, dimensions, dataLength, bulkSize);
             case DIBIT_TO_INT4 -> new NativeDibitToInt4Scorer(in, dimensions, dataLength, bulkSize);
@@ -86,13 +78,7 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
         };
     }
 
-    private static MemorySegmentScorer createPanamaScorer(
-        QuantEncoding enc,
-        IndexInput in,
-        int dimensions,
-        int dataLength,
-        int bulkSize
-    ) {
+    private static MemorySegmentScorer createPanamaScorer(QuantEncoding enc, IndexInput in, int dimensions, int dataLength, int bulkSize) {
         return switch (enc) {
             case BIT_TO_INT4 -> new MSBitToInt4ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
             case DIBIT_TO_INT4 -> new MSDibitToInt4ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
