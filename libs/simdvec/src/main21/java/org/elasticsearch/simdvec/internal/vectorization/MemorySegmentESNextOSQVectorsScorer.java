@@ -27,8 +27,6 @@ import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteOrder;
-import java.util.Map;
-import java.util.Objects;
 
 import static org.apache.lucene.index.VectorSimilarityFunction.EUCLIDEAN;
 import static org.apache.lucene.index.VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT;
@@ -36,28 +34,25 @@ import static org.apache.lucene.index.VectorSimilarityFunction.MAXIMUM_INNER_PRO
 /** Panamized scorer for quantized vectors stored as a {@link MemorySegment}. */
 public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsScorer {
 
-    @FunctionalInterface
-    private interface ScorerFactory {
-        MemorySegmentScorer create(IndexInput in, int dimensions, int dataLength, int bulkSize);
-    }
-
     private static final boolean USE_NATIVE = MemorySegmentScorer.NATIVE_SUPPORTED && MemorySegmentScorer.SUPPORTS_HEAP_SEGMENTS;
 
-    private static final Map<Integer, ScorerFactory> NATIVE_SCORER_FACTORIES = Map.of(
-        key(4, 1), NativeBitToInt4Scorer::new,
-        key(4, 2), NativeDibitToInt4Scorer::new,
-        key(4, 4), NativeInt4SymmetricScorer::new
-    );
+    enum QuantEncoding {
+        BIT_TO_INT4,
+        DIBIT_TO_INT4,
+        INT4_SYMMETRIC,
+        D7Q7;
 
-    private static final Map<Integer, ScorerFactory> SCORER_FACTORIES = Map.of(
-        key(4, 1), MSBitToInt4ESNextOSQVectorsScorer::new,
-        key(4, 2), MSDibitToInt4ESNextOSQVectorsScorer::new,
-        key(4, 4), MSInt4SymmetricESNextOSQVectorsScorer::new,
-        key(7, 7), MSD7Q7ESNextOSQVectorsScorer::new
-    );
-
-    private static int key(int queryBits, int indexBits) {
-        return (queryBits << 8) | indexBits;
+        static QuantEncoding of(byte queryBits, byte indexBits) {
+            return switch ((queryBits << 8) | indexBits) {
+                case (4 << 8) | 1 -> BIT_TO_INT4;
+                case (4 << 8) | 2 -> DIBIT_TO_INT4;
+                case (4 << 8) | 4 -> INT4_SYMMETRIC;
+                case (7 << 8) | 7 -> D7Q7;
+                default -> throw new IllegalArgumentException(
+                    "Unsupported query/index bits combination: " + queryBits + "/" + indexBits
+                );
+            };
+        }
     }
 
     private final MemorySegmentScorer scorer;
@@ -71,15 +66,39 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
         int bulkSize
     ) {
         super(in, queryBits, indexBits, dimensions, dataLength);
-        int k = key(queryBits, indexBits);
-        ScorerFactory factory = USE_NATIVE && dataLength >= 16 ? NATIVE_SCORER_FACTORIES.get(k) : null;
-        if (factory == null) {
-            factory = Objects.requireNonNull(
-                SCORER_FACTORIES.get(k),
-                () -> "Unsupported query/index bits combination: " + queryBits + "/" + indexBits
-            );
-        }
-        this.scorer = factory.create(in, dimensions, dataLength, bulkSize);
+        this.scorer = USE_NATIVE
+            ? createNativeScorer(QuantEncoding.of(queryBits, indexBits), in, dimensions, dataLength, bulkSize)
+            : createPanamaScorer(QuantEncoding.of(queryBits, indexBits), in, dimensions, dataLength, bulkSize);
+    }
+
+    private static MemorySegmentScorer createNativeScorer(
+        QuantEncoding enc,
+        IndexInput in,
+        int dimensions,
+        int dataLength,
+        int bulkSize
+    ) {
+        return switch (enc) {
+            case BIT_TO_INT4 -> new NativeBitToInt4Scorer(in, dimensions, dataLength, bulkSize);
+            case DIBIT_TO_INT4 -> new NativeDibitToInt4Scorer(in, dimensions, dataLength, bulkSize);
+            case INT4_SYMMETRIC -> new NativeInt4SymmetricScorer(in, dimensions, dataLength, bulkSize);
+            case D7Q7 -> new MSD7Q7ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
+        };
+    }
+
+    private static MemorySegmentScorer createPanamaScorer(
+        QuantEncoding enc,
+        IndexInput in,
+        int dimensions,
+        int dataLength,
+        int bulkSize
+    ) {
+        return switch (enc) {
+            case BIT_TO_INT4 -> new MSBitToInt4ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
+            case DIBIT_TO_INT4 -> new MSDibitToInt4ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
+            case INT4_SYMMETRIC -> new MSInt4SymmetricESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
+            case D7Q7 -> new MSD7Q7ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
+        };
     }
 
     @Override
