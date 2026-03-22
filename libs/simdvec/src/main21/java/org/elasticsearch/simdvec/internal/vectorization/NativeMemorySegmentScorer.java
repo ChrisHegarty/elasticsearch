@@ -92,17 +92,13 @@ abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVe
     ) throws IOException {
         var qSeg = MemorySegment.ofArray(q);
         var sSeg = MemorySegment.ofArray(scores);
-        IndexInputUtils.withSlice(in, (long) length * bulkSize, this::getScratch, dSeg -> {
-            dotProductBulk(dSeg, qSeg, length, bulkSize, sSeg);
-            return null;
-        });
-        return IndexInputUtils.withSlice(
-            in,
-            16L * bulkSize,
-            this::getScratch,
-            cSeg -> ScoreCorrections.nativeApplyCorrectionsBulk(
+        long vectorBytes = (long) length * bulkSize;
+        long correctionBytes = 16L * bulkSize;
+        return IndexInputUtils.withSlice(in, vectorBytes + correctionBytes, this::getScratch, seg -> {
+            dotProductBulk(seg.asSlice(0, vectorBytes), qSeg, length, bulkSize, sSeg);
+            return ScoreCorrections.nativeApplyCorrectionsBulk(
                 similarityFunction,
-                cSeg,
+                seg.asSlice(vectorBytes, correctionBytes),
                 bulkSize,
                 dimensions,
                 queryLowerInterval,
@@ -113,8 +109,8 @@ abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVe
                 indexBitScale(),
                 centroidDp,
                 sSeg
-            )
-        );
+            );
+        });
     }
 
     @Override
@@ -134,15 +130,14 @@ abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVe
         var qSeg = MemorySegment.ofArray(q);
         var offsetsSeg = MemorySegment.ofArray(offsets);
         var sSeg = MemorySegment.ofArray(scores);
-        IndexInputUtils.withSlice(in, (long) length * count, this::getScratch, dSeg -> {
-            dotProductBulkWithOffsets(dSeg, qSeg, length, length, offsetsSeg, offsetsCount, sSeg);
-            return null;
-        });
-        repositionScoresMatchingOffsets(offsets, offsetsCount, scores);
-        IndexInputUtils.withSlice(in, 16L * count, this::getScratch, cSeg -> {
+        long vectorBytes = (long) length * count;
+        long correctionBytes = 16L * count;
+        IndexInputUtils.withSlice(in, vectorBytes + correctionBytes, this::getScratch, seg -> {
+            dotProductBulkWithOffsets(seg.asSlice(0, vectorBytes), qSeg, length, length, offsetsSeg, offsetsCount, sSeg);
+            repositionScoresMatchingOffsets(offsets, offsetsCount, scores);
             ScoreCorrections.nativeApplyCorrectionsBulk(
                 similarityFunction,
-                cSeg,
+                seg.asSlice(vectorBytes, correctionBytes),
                 count,
                 dimensions,
                 queryLowerInterval,
