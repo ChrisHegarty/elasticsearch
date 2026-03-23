@@ -24,7 +24,7 @@ import java.lang.foreign.MemorySegment;
  * the scoring logic (quantize, bulk, corrections) is handled by template methods here.
  */
 abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVectorsScorer.MemorySegmentScorer permits
-    NativeBitToInt4Scorer, NativeDibitToInt4Scorer, NativeInt4SymmetricScorer {
+        NativeD1Q4Scorer, NativeD2Q4Scorer, NativeD4Q4Scorer {
 
     NativeMemorySegmentScorer(IndexInput in, int dimensions, int dataLength, int bulkSize) {
         super(in, dimensions, dataLength, bulkSize);

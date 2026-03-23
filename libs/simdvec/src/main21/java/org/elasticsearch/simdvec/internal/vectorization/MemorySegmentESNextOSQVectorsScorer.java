@@ -71,9 +71,9 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
 
     private static MemorySegmentScorer createNativeScorer(QuantEncoding enc, IndexInput in, int dimensions, int dataLength, int bulkSize) {
         return switch (enc) {
-            case D1Q4 -> new NativeBitToInt4Scorer(in, dimensions, dataLength, bulkSize);
-            case D2Q4 -> new NativeDibitToInt4Scorer(in, dimensions, dataLength, bulkSize);
-            case D4Q4 -> new NativeInt4SymmetricScorer(in, dimensions, dataLength, bulkSize);
+            case D1Q4 -> new NativeD1Q4Scorer(in, dimensions, dataLength, bulkSize);
+            case D2Q4 -> new NativeD2Q4Scorer(in, dimensions, dataLength, bulkSize);
+            case D4Q4 -> new NativeD4Q4Scorer(in, dimensions, dataLength, bulkSize);
             case D7Q7 -> new MSD7Q7ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
         };
     }

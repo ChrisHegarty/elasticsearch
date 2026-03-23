@@ -12,25 +12,25 @@ import org.apache.lucene.store.IndexInput;
 
 import java.lang.foreign.MemorySegment;
 
-import static org.elasticsearch.simdvec.internal.Similarities.dotProductD1Q4;
-import static org.elasticsearch.simdvec.internal.Similarities.dotProductD1Q4Bulk;
-import static org.elasticsearch.simdvec.internal.Similarities.dotProductD1Q4BulkWithOffsets;
+import static org.elasticsearch.simdvec.internal.Similarities.dotProductD4Q4;
+import static org.elasticsearch.simdvec.internal.Similarities.dotProductD4Q4Bulk;
+import static org.elasticsearch.simdvec.internal.Similarities.dotProductD4Q4BulkWithOffsets;
 
-/** Native scorer for 1-bit index / 4-bit query quantization. */
-final class NativeBitToInt4Scorer extends NativeMemorySegmentScorer {
+/** Native scorer for 4-bit symmetric quantization. */
+final class NativeD4Q4Scorer extends NativeMemorySegmentScorer {
 
-    NativeBitToInt4Scorer(IndexInput in, int dimensions, int dataLength, int bulkSize) {
+    NativeD4Q4Scorer(IndexInput in, int dimensions, int dataLength, int bulkSize) {
         super(in, dimensions, dataLength, bulkSize);
     }
 
     @Override
     long dotProduct(MemorySegment dataset, MemorySegment query, int length) {
-        return dotProductD1Q4(dataset, query, length);
+        return dotProductD4Q4(dataset, query, length);
     }
 
     @Override
     void dotProductBulk(MemorySegment dataset, MemorySegment query, int length, int count, MemorySegment scores) {
-        dotProductD1Q4Bulk(dataset, query, length, count, scores);
+        dotProductD4Q4Bulk(dataset, query, length, count, scores);
     }
 
     @Override
@@ -43,7 +43,7 @@ final class NativeBitToInt4Scorer extends NativeMemorySegmentScorer {
         int offsetsCount,
         MemorySegment scores
     ) {
-        dotProductD1Q4BulkWithOffsets(dataset, query, dataLength, dataStride, offsets, offsetsCount, scores);
+        dotProductD4Q4BulkWithOffsets(dataset, query, dataLength, dataStride, offsets, offsetsCount, scores);
     }
 
     @Override
@@ -53,6 +53,6 @@ final class NativeBitToInt4Scorer extends NativeMemorySegmentScorer {
 
     @Override
     float indexBitScale() {
-        return ONE_BIT_SCALE;
+        return FOUR_BIT_SCALE;
     }
 }

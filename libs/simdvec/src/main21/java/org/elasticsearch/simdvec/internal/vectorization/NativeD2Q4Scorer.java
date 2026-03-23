@@ -17,9 +17,9 @@ import static org.elasticsearch.simdvec.internal.Similarities.dotProductD2Q4Bulk
 import static org.elasticsearch.simdvec.internal.Similarities.dotProductD2Q4BulkWithOffsets;
 
 /** Native scorer for 2-bit index / 4-bit query quantization. */
-final class NativeDibitToInt4Scorer extends NativeMemorySegmentScorer {
+final class NativeD2Q4Scorer extends NativeMemorySegmentScorer {
 
-    NativeDibitToInt4Scorer(IndexInput in, int dimensions, int dataLength, int bulkSize) {
+    NativeD2Q4Scorer(IndexInput in, int dimensions, int dataLength, int bulkSize) {
         super(in, dimensions, dataLength, bulkSize);
     }
 
