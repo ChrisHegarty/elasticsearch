@@ -214,7 +214,7 @@ EXPORT void vec_cosi8_bulk_offsets(
 }
 
 EXPORT void vec_cosi8_bulk_sparse(
-    const int64_t* addresses,
+    const void* const* addresses,
     const int8_t* b,
     const int32_t dims,
     const int32_t count,
@@ -367,7 +367,7 @@ EXPORT void vec_doti7u_bulk_offsets(
 }
 
 EXPORT void vec_doti7u_bulk_sparse(
-    const int64_t* addresses,
+    const void* const* addresses,
     const int8_t* b,
     const int32_t dims,
     const int32_t count,
@@ -391,7 +391,7 @@ EXPORT void vec_doti8_bulk_offsets(
 }
 
 EXPORT void vec_doti8_bulk_sparse(
-    const int64_t* addresses,
+    const void* const* addresses,
     const int8_t* b,
     const int32_t dims,
     const int32_t count,
@@ -476,7 +476,7 @@ EXPORT void vec_sqri7u_bulk_offsets(
 }
 
 EXPORT void vec_sqri7u_bulk_sparse(
-    const int64_t* addresses,
+    const void* const* addresses,
     const int8_t* b,
     const int32_t dims,
     const int32_t count,
@@ -500,7 +500,7 @@ EXPORT void vec_sqri8_bulk_offsets(
 }
 
 EXPORT void vec_sqri8_bulk_sparse(
-    const int64_t* addresses,
+    const void* const* addresses,
     const int8_t* b,
     const int32_t dims,
     const int32_t count,
