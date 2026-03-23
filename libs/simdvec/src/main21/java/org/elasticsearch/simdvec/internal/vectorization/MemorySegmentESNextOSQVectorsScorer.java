@@ -37,16 +37,16 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
     private static final boolean USE_NATIVE = MemorySegmentScorer.NATIVE_SUPPORTED && MemorySegmentScorer.SUPPORTS_HEAP_SEGMENTS;
 
     enum QuantEncoding {
-        BIT_TO_INT4,
-        DIBIT_TO_INT4,
-        INT4_SYMMETRIC,
+        D1Q4,
+        D2Q4,
+        D4Q4,
         D7Q7;
 
         static QuantEncoding of(byte queryBits, byte indexBits) {
             return switch ((queryBits << 8) | indexBits) {
-                case (4 << 8) | 1 -> BIT_TO_INT4;
-                case (4 << 8) | 2 -> DIBIT_TO_INT4;
-                case (4 << 8) | 4 -> INT4_SYMMETRIC;
+                case (4 << 8) | 1 -> D1Q4;
+                case (4 << 8) | 2 -> D2Q4;
+                case (4 << 8) | 4 -> D4Q4;
                 case (7 << 8) | 7 -> D7Q7;
                 default -> throw new IllegalArgumentException("Unsupported query/index bits combination: " + queryBits + "/" + indexBits);
             };
@@ -71,9 +71,9 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
 
     private static MemorySegmentScorer createNativeScorer(QuantEncoding enc, IndexInput in, int dimensions, int dataLength, int bulkSize) {
         return switch (enc) {
-            case BIT_TO_INT4 -> new NativeBitToInt4Scorer(in, dimensions, dataLength, bulkSize);
-            case DIBIT_TO_INT4 -> new NativeDibitToInt4Scorer(in, dimensions, dataLength, bulkSize);
-            case INT4_SYMMETRIC -> new NativeInt4SymmetricScorer(in, dimensions, dataLength, bulkSize);
+            case D1Q4 -> new NativeBitToInt4Scorer(in, dimensions, dataLength, bulkSize);
+            case D2Q4 -> new NativeDibitToInt4Scorer(in, dimensions, dataLength, bulkSize);
+            case D4Q4 -> new NativeInt4SymmetricScorer(in, dimensions, dataLength, bulkSize);
             case D7Q7 -> new MSD7Q7ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
         };
     }
