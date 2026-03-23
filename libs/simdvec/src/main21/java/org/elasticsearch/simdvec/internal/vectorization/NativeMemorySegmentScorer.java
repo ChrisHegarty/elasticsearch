@@ -26,9 +26,30 @@ import java.lang.foreign.MemorySegment;
 abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVectorsScorer.MemorySegmentScorer permits NativeD1Q4Scorer,
     NativeD2Q4Scorer, NativeD4Q4Scorer {
 
+    private byte[] cachedQueryArray;
+    private MemorySegment cachedQuerySeg;
+    private float[] cachedScoresArray;
+    private MemorySegment cachedScoresSeg;
+
     NativeMemorySegmentScorer(IndexInput in, int dimensions, int dataLength, int bulkSize) {
         super(in, dimensions, dataLength, bulkSize);
         assert dataLength >= 16 : "NativeMemorySegmentScorer requires dataLength >= 16, got " + dataLength;
+    }
+
+    private MemorySegment querySegment(byte[] q) {
+        if (q != cachedQueryArray) {
+            cachedQueryArray = q;
+            cachedQuerySeg = MemorySegment.ofArray(q);
+        }
+        return cachedQuerySeg;
+    }
+
+    private MemorySegment scoresSegment(float[] scores) {
+        if (scores != cachedScoresArray) {
+            cachedScoresArray = scores;
+            cachedScoresSeg = MemorySegment.ofArray(scores);
+        }
+        return cachedScoresSeg;
     }
 
     abstract long dotProduct(MemorySegment dataset, MemorySegment query, int length);
@@ -51,13 +72,13 @@ abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVe
 
     @Override
     final long quantizeScore(byte[] q) throws IOException {
-        return IndexInputUtils.withSlice(in, length, this::getScratch, segment -> dotProduct(segment, MemorySegment.ofArray(q), length));
+        return IndexInputUtils.withSlice(in, length, this::getScratch, segment -> dotProduct(segment, querySegment(q), length));
     }
 
     @Override
     final boolean quantizeScoreBulk(byte[] q, int count, float[] scores) throws IOException {
-        var qSeg = MemorySegment.ofArray(q);
-        var sSeg = MemorySegment.ofArray(scores);
+        var qSeg = querySegment(q);
+        var sSeg = scoresSegment(scores);
         IndexInputUtils.withSlice(in, (long) length * count, this::getScratch, dSeg -> {
             dotProductBulk(dSeg, qSeg, length, count, sSeg);
             return null;
@@ -67,9 +88,9 @@ abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVe
 
     @Override
     final boolean quantizeScoreBulkOffsets(byte[] q, int[] offsets, int offsetsCount, float[] scores, int count) throws IOException {
-        var qSeg = MemorySegment.ofArray(q);
+        var qSeg = querySegment(q);
         var offsetsSeg = MemorySegment.ofArray(offsets);
-        var sSeg = MemorySegment.ofArray(scores);
+        var sSeg = scoresSegment(scores);
         IndexInputUtils.withSlice(in, (long) length * count, this::getScratch, dSeg -> {
             dotProductBulkWithOffsets(dSeg, qSeg, length, length, offsetsSeg, offsetsCount, sSeg);
             return null;
@@ -90,8 +111,8 @@ abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVe
         float[] scores,
         int bulkSize
     ) throws IOException {
-        var qSeg = MemorySegment.ofArray(q);
-        var sSeg = MemorySegment.ofArray(scores);
+        var qSeg = querySegment(q);
+        var sSeg = scoresSegment(scores);
         long vectorBytes = (long) length * bulkSize;
         long correctionBytes = 16L * bulkSize;
         return IndexInputUtils.withSlice(in, vectorBytes + correctionBytes, this::getScratch, seg -> {
@@ -127,9 +148,9 @@ abstract sealed class NativeMemorySegmentScorer extends MemorySegmentESNextOSQVe
         float[] scores,
         int count
     ) throws IOException {
-        var qSeg = MemorySegment.ofArray(q);
+        var qSeg = querySegment(q);
         var offsetsSeg = MemorySegment.ofArray(offsets);
-        var sSeg = MemorySegment.ofArray(scores);
+        var sSeg = scoresSegment(scores);
         long vectorBytes = (long) length * count;
         long correctionBytes = 16L * count;
         IndexInputUtils.withSlice(in, vectorBytes + correctionBytes, this::getScratch, seg -> {
