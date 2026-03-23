@@ -37,8 +37,6 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
     final float scoreCorrectionConstant;
     final float queryCorrection;
     byte[] scratch;
-    long[] bulkOffsets;
-    long[] bulkAddrs;
 
     /** Return an optional whose value, if present, is the scorer. Otherwise, an empty optional is returned. */
     public static Optional<RandomVectorScorer> create(VectorSimilarityFunction sim, QuantizedByteVectorValues values, float[] queryVector) {
@@ -101,15 +99,12 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
      * (via mmap or DirectAccessInput), false if fallback scoring is needed.
      */
     final boolean bulkScoreWithSparse(int[] nodes, float[] scores, int numNodes, SparseScorer sparseScorer) throws IOException {
-        if (bulkOffsets == null || bulkOffsets.length < numNodes) {
-            bulkOffsets = new long[numNodes];
-            bulkAddrs = new long[numNodes];
-        }
+        long[] offsets = new long[numNodes];
         for (int i = 0; i < numNodes; i++) {
-            bulkOffsets[i] = (long) nodes[i] * vectorPitch;
+            offsets[i] = (long) nodes[i] * vectorPitch;
         }
-        return IndexInputUtils.withSliceAddresses(input, bulkOffsets, vectorByteSize, numNodes, bulkAddrs, addrs -> {
-            sparseScorer.score(MemorySegment.ofArray(addrs), query, vectorByteSize, numNodes, MemorySegment.ofArray(scores));
+        return IndexInputUtils.withSliceAddresses(input, offsets, vectorByteSize, numNodes, a -> {
+            sparseScorer.score(a, query, vectorByteSize, numNodes, MemorySegment.ofArray(scores));
         });
     }
 

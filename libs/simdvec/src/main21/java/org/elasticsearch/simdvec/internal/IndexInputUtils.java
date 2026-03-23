@@ -175,9 +175,9 @@ public final class IndexInputUtils {
      * @param offsets file byte offsets for each range (caller-owned, not modified)
      * @param length  byte length of each range (same for all)
      * @param count   number of ranges to resolve
-     * @param addrs   pre-allocated array of at least {@code count} elements;
-     *                filled with native addresses before the action is invoked
-     * @param action  receives the populated {@code addrs} array
+     * @param action  receives a {@link MemorySegment} of {@code count} pointer-width
+     *                addresses, allocated from a confined arena that is closed after
+     *                the action returns
      * @return {@code true} if addresses were resolved and the action was invoked
      */
     public static boolean withSliceAddresses(
@@ -185,37 +185,66 @@ public final class IndexInputUtils {
         long[] offsets,
         int length,
         int count,
-        long[] addrs,
-        CheckedConsumer<long[], IOException> action
+        CheckedConsumer<MemorySegment, IOException> action
     ) throws IOException {
         if (in instanceof MemorySegmentAccessInput msai) {
-            MemorySegment full = msai.segmentSliceOrNull(0, in.length());
-            if (full != null) {
-                long base = full.address();
-                for (int i = 0; i < count; i++) {
-                    addrs[i] = base + offsets[i];
-                }
-                try {
-                    action.accept(addrs);
-                } finally {
-                    Reference.reachabilityFence(full);
-                }
-                return true;
-            }
+            return resolveFromMmap(msai, offsets, length, count, action);
         }
         if (in instanceof DirectAccessInput dai) {
-            return dai.withByteBufferSlices(offsets, length, count, bbs -> {
+            return resolveFromDirectAccess(dai, offsets, length, count, action);
+        }
+        return false;
+    }
+
+    private static boolean resolveFromMmap(
+        MemorySegmentAccessInput msai,
+        long[] offsets,
+        int length,
+        int count,
+        CheckedConsumer<MemorySegment, IOException> action
+    ) throws IOException {
+        MemorySegment full = msai.segmentSliceOrNull(0, ((IndexInput) msai).length());
+        if (full == null) {
+            return false;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment addrs = allocateAddrs(arena, count);
+            for (int i = 0; i < count; i++) {
+                addrs.setAtIndex(ValueLayout.ADDRESS, i, full.asSlice(offsets[i], length));
+            }
+            try {
+                action.accept(addrs);
+            } finally {
+                Reference.reachabilityFence(full);
+            }
+        }
+        return true;
+    }
+
+    private static boolean resolveFromDirectAccess(
+        DirectAccessInput dai,
+        long[] offsets,
+        int length,
+        int count,
+        CheckedConsumer<MemorySegment, IOException> action
+    ) throws IOException {
+        return dai.withByteBufferSlices(offsets, length, count, bbs -> {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment addrs = allocateAddrs(arena, count);
                 for (int i = 0; i < count; i++) {
-                    addrs[i] = MemorySegment.ofBuffer(bbs[i]).address();
+                    addrs.setAtIndex(ValueLayout.ADDRESS, i, MemorySegment.ofBuffer(bbs[i]));
                 }
                 try {
                     action.accept(addrs);
                 } finally {
                     Reference.reachabilityFence(bbs);
                 }
-            });
-        }
-        return false;
+            }
+        });
+    }
+
+    private static MemorySegment allocateAddrs(Arena arena, int count) {
+        return arena.allocate(ValueLayout.ADDRESS.byteSize() * count, ValueLayout.ADDRESS.byteAlignment());
     }
 
     /**

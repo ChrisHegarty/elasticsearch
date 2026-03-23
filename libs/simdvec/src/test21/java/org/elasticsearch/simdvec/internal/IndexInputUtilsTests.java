@@ -231,10 +231,13 @@ public class IndexInputUtilsTests extends ESTestCase {
                 assertFalse(in instanceof MemorySegmentAccessInput);
                 assertFalse(in instanceof DirectAccessInput);
                 long[] offsets = { 0, 64, 128, 192 };
-                long[] addrs = new long[4];
-                boolean result = IndexInputUtils.withSliceAddresses(in, offsets, 64, 4, addrs, a -> {
-                    fail("action should not be called for plain IndexInput");
-                });
+                boolean result = IndexInputUtils.withSliceAddresses(
+                    in,
+                    offsets,
+                    64,
+                    4,
+                    a -> { fail("action should not be called for plain IndexInput"); }
+                );
                 assertFalse(result);
             }
         }
@@ -246,11 +249,11 @@ public class IndexInputUtilsTests extends ESTestCase {
         for (int i = 0; i < count; i++) {
             offsets[i] = (long) i * sliceLen * 2;
         }
-        long[] addrs = new long[count];
-        boolean result = IndexInputUtils.withSliceAddresses(in, offsets, sliceLen, count, addrs, a -> {
+        boolean result = IndexInputUtils.withSliceAddresses(in, offsets, sliceLen, count, a -> {
             for (int i = 0; i < count; i++) {
-                assertTrue("address should be non-zero", a[i] != 0);
-                MemorySegment seg = MemorySegment.ofAddress(a[i]).reinterpret(sliceLen);
+                MemorySegment addr = a.getAtIndex(ValueLayout.ADDRESS, i);
+                assertTrue("address should be non-null", addr != MemorySegment.NULL);
+                MemorySegment seg = addr.reinterpret(sliceLen);
                 byte[] actual = new byte[sliceLen];
                 MemorySegment.ofArray(actual).copyFrom(seg);
                 int off = (int) offsets[i];
