@@ -32,19 +32,19 @@ static inline auto sqr_scalar(const T a, const T b) {
 
 // --- Mapper functions ---
 // Each mapper resolves the i-th document vector to a direct pointer.
-// All three share the same signature so they can be passed as a template
+// All share the same signature so they can be passed as a template
 // parameter to the bulk scoring templates (call_i8_bulk, call_f32_bulk, etc.).
 
 // Contiguous layout: vectors are packed sequentially, each `pitch` elements apart.
 template <typename T>
-static inline const T* identity_mapper(const T* data, const int32_t i, const int32_t* offsets, const int32_t pitch) {
+static inline const T* sequential_mapper(const T* data, const int32_t i, const int32_t* offsets, const int32_t pitch) {
     return data + (int64_t)i * pitch;
 }
 
 // Offset layout: vectors share a common base but are at non-sequential positions
 // given by offsets[i], each `pitch` elements from the base.
 template <typename T>
-static inline const T* array_mapper(const T* data, const int32_t i, const int32_t* offsets, const int32_t pitch) {
+static inline const T* offsets_mapper(const T* data, const int32_t i, const int32_t* offsets, const int32_t pitch) {
     return data + (int64_t)offsets[i] * pitch;
 }
 
