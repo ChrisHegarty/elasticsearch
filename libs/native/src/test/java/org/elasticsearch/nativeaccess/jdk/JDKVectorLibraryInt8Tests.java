@@ -142,16 +142,15 @@ public class JDKVectorLibraryInt8Tests extends VectorSimilarityFunctionsTests {
         var ordinals = new int[numVecs];
         var vectors = new byte[numVecs][];
         var vectorsSegment = arena.allocate((long) dims * numVecs);
-        var addressesSeg = arena.allocate((long) numVecs * Long.BYTES);
+        var addressesSeg = arena.allocate(ValueLayout.ADDRESS.byteSize() * numVecs, ValueLayout.ADDRESS.byteAlignment());
         for (int i = 0; i < numVecs; i++) {
             ordinals[i] = randomInt(numVecs - 1);
             vectors[i] = randomByteArrayOfLength(dims);
             long dstOffset = (long) i * dims;
             MemorySegment.copy(MemorySegment.ofArray(vectors[i]), JAVA_BYTE, 0L, vectorsSegment, JAVA_BYTE, dstOffset, dims);
         }
-        long baseAddr = vectorsSegment.address();
         for (int i = 0; i < numVecs; i++) {
-            addressesSeg.setAtIndex(ValueLayout.JAVA_LONG, i, baseAddr + (long) ordinals[i] * dims);
+            addressesSeg.setAtIndex(ValueLayout.ADDRESS, i, vectorsSegment.asSlice((long) ordinals[i] * dims, dims));
         }
         int queryOrd = randomInt(numVecs - 1);
         float[] expectedScores = new float[numVecs];
@@ -183,9 +182,9 @@ public class JDKVectorLibraryInt8Tests extends VectorSimilarityFunctionsTests {
         float[] expectedScores = new float[numVecs];
         scalarSimilarityBulkWithOffsets(vectors[queryOrd], vectors, ordinals, expectedScores);
 
-        var addressesSeg = arena.allocate((long) numVecs * Long.BYTES);
+        var addressesSeg = arena.allocate(ValueLayout.ADDRESS.byteSize() * numVecs, ValueLayout.ADDRESS.byteAlignment());
         for (int i = 0; i < numVecs; i++) {
-            addressesSeg.setAtIndex(ValueLayout.JAVA_LONG, i, segments[ordinals[i]].address());
+            addressesSeg.setAtIndex(ValueLayout.ADDRESS, i, segments[ordinals[i]]);
         }
         var nativeQuerySeg = segments[queryOrd];
         var bulkScoresSeg = arena.allocate((long) numVecs * Float.BYTES);
@@ -293,12 +292,12 @@ public class JDKVectorLibraryInt8Tests extends VectorSimilarityFunctionsTests {
     public void testBulkSparseIllegalArgs() {
         assumeTrue(notSupportedMsg(), supported());
         int count = 3;
-        var addresses = arena.allocate((long) count * Long.BYTES);
+        var addresses = arena.allocate(ValueLayout.ADDRESS.byteSize() * count, ValueLayout.ADDRESS.byteAlignment());
         var query = arena.allocate(size);
         var scores = arena.allocate((long) count * Float.BYTES);
 
         // addresses segment too small for the given count
-        var tooSmallAddrs = arena.allocate((long) count * Long.BYTES - 1);
+        var tooSmallAddrs = arena.allocate(ValueLayout.ADDRESS.byteSize() * count - 1);
         Exception ex = expectThrows(IOOBE, () -> similarityBulkSparse(tooSmallAddrs, query, size, count, scores));
         assertThat(ex.getMessage(), containsString("out of bounds for length"));
 
