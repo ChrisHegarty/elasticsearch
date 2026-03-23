@@ -21,14 +21,14 @@ import org.elasticsearch.core.DirectAccessInput;
 import org.elasticsearch.test.ESTestCase;
 
 import java.io.IOException;
-
-import static org.hamcrest.Matchers.instanceOf;
-import static org.hamcrest.Matchers.not;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+
+import static org.hamcrest.Matchers.instanceOf;
+import static org.hamcrest.Matchers.not;
 
 /**
  * Tests that {@link IndexInputUtils#withSlice} correctly handles all
