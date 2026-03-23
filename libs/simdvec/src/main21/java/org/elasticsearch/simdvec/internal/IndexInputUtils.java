@@ -262,8 +262,9 @@ public final class IndexInputUtils {
             if (i > 0) {
                 MemorySegment prev = addrs.getAtIndex(ValueLayout.ADDRESS, i - 1);
                 if (addr.address() == prev.address()) {
-                    throw new AssertionError("duplicate address at indices " + (i - 1) + " and " + i
-                        + ": 0x" + Long.toHexString(addr.address()));
+                    throw new AssertionError(
+                        "duplicate address at indices " + (i - 1) + " and " + i + ": 0x" + Long.toHexString(addr.address())
+                    );
                 }
             }
         }
