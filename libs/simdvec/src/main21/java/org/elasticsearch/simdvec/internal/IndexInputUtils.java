@@ -212,6 +212,7 @@ public final class IndexInputUtils {
             for (int i = 0; i < count; i++) {
                 addrs.setAtIndex(ValueLayout.ADDRESS, i, full.asSlice(offsets[i], length));
             }
+            assert validateAddresses(addrs, count, length);
             try {
                 action.accept(addrs);
             } finally {
@@ -234,6 +235,7 @@ public final class IndexInputUtils {
                 for (int i = 0; i < count; i++) {
                     addrs.setAtIndex(ValueLayout.ADDRESS, i, MemorySegment.ofBuffer(bbs[i]));
                 }
+                assert validateAddresses(addrs, count, length);
                 try {
                     action.accept(addrs);
                 } finally {
@@ -245,6 +247,27 @@ public final class IndexInputUtils {
 
     private static MemorySegment allocateAddrs(Arena arena, int count) {
         return arena.allocate(ValueLayout.ADDRESS.byteSize() * count, ValueLayout.ADDRESS.byteAlignment());
+    }
+
+    private static boolean validateAddresses(MemorySegment addrs, int count, int length) {
+        for (int i = 0; i < count; i++) {
+            MemorySegment addr = addrs.getAtIndex(ValueLayout.ADDRESS, i);
+            if (addr.equals(MemorySegment.NULL)) {
+                throw new AssertionError("null address at index " + i);
+            }
+            long raw = addr.address();
+            if (raw <= 0) {
+                throw new AssertionError("non-positive address at index " + i + ": 0x" + Long.toHexString(raw));
+            }
+            if (i > 0) {
+                MemorySegment prev = addrs.getAtIndex(ValueLayout.ADDRESS, i - 1);
+                if (addr.address() == prev.address()) {
+                    throw new AssertionError("duplicate address at indices " + (i - 1) + " and " + i
+                        + ": 0x" + Long.toHexString(addr.address()));
+                }
+            }
+        }
+        return true;
     }
 
     /**
