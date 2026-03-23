@@ -80,9 +80,9 @@ public final class MemorySegmentESNextOSQVectorsScorer extends ESNextOSQVectorsS
 
     private static MemorySegmentScorer createPanamaScorer(QuantEncoding enc, IndexInput in, int dimensions, int dataLength, int bulkSize) {
         return switch (enc) {
-            case BIT_TO_INT4 -> new MSBitToInt4ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
-            case DIBIT_TO_INT4 -> new MSDibitToInt4ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
-            case INT4_SYMMETRIC -> new MSInt4SymmetricESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
+            case D1Q4 -> new MSBitToInt4ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
+            case D2Q4 -> new MSDibitToInt4ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
+            case D4Q4 -> new MSInt4SymmetricESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
             case D7Q7 -> new MSD7Q7ESNextOSQVectorsScorer(in, dimensions, dataLength, bulkSize);
         };
     }
