@@ -20,6 +20,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.ref.Reference;
+import java.nio.ByteBuffer;
 import java.util.function.IntFunction;
 
 /**
@@ -187,6 +188,7 @@ public final class IndexInputUtils {
         int count,
         CheckedConsumer<MemorySegment, IOException> action
     ) throws IOException {
+        assert validateInputs(in, offsets, length, count);
         if (in instanceof MemorySegmentAccessInput msai) {
             return resolveFromMmap(msai, offsets, length, count, action);
         }
@@ -207,12 +209,13 @@ public final class IndexInputUtils {
         if (full == null) {
             return false;
         }
+        assert validateNativeSegment(full, "mmap segment");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment addrs = allocateAddrs(arena, count);
             for (int i = 0; i < count; i++) {
                 addrs.setAtIndex(ValueLayout.ADDRESS, i, full.asSlice(offsets[i], length));
             }
-            assert validateAddresses(addrs, count, length);
+            assert validateAddresses(addrs, count);
             try {
                 action.accept(addrs);
             } finally {
@@ -230,12 +233,13 @@ public final class IndexInputUtils {
         CheckedConsumer<MemorySegment, IOException> action
     ) throws IOException {
         return dai.withByteBufferSlices(offsets, length, count, bbs -> {
+            assert validateByteBuffers(bbs, count, length);
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment addrs = allocateAddrs(arena, count);
                 for (int i = 0; i < count; i++) {
                     addrs.setAtIndex(ValueLayout.ADDRESS, i, MemorySegment.ofBuffer(bbs[i]));
                 }
-                assert validateAddresses(addrs, count, length);
+                assert validateAddresses(addrs, count);
                 try {
                     action.accept(addrs);
                 } finally {
@@ -249,23 +253,45 @@ public final class IndexInputUtils {
         return arena.allocate(ValueLayout.ADDRESS.byteSize() * count, ValueLayout.ADDRESS.byteAlignment());
     }
 
-    private static boolean validateAddresses(MemorySegment addrs, int count, int length) {
+    private static boolean validateInputs(IndexInput in, long[] offsets, int length, int count) {
+        assert count > 0 : "count must be positive, got " + count;
+        assert length > 0 : "length must be positive, got " + length;
+        assert offsets.length >= count : "offsets array too small: " + offsets.length + " < " + count;
+        long fileLength = in.length();
+        for (int i = 0; i < count; i++) {
+            assert offsets[i] >= 0 : "negative offset at index " + i + ": " + offsets[i];
+            assert offsets[i] + length <= fileLength
+                : "offset[" + i + "]=" + offsets[i] + " + length=" + length + " exceeds file length " + fileLength;
+        }
+        return true;
+    }
+
+    private static boolean validateNativeSegment(MemorySegment seg, String label) {
+        assert seg.isNative() : label + " is not a native (off-heap) segment";
+        assert seg.scope().isAlive() : label + " scope is closed";
+        assert seg.address() > 0 : label + " has non-positive address: 0x" + Long.toHexString(seg.address());
+        return true;
+    }
+
+    private static boolean validateByteBuffers(ByteBuffer[] bbs, int count, int length) {
+        assert bbs.length >= count : "ByteBuffer array too small: " + bbs.length + " < " + count;
+        for (int i = 0; i < count; i++) {
+            assert bbs[i] != null : "null ByteBuffer at index " + i;
+            assert bbs[i].isDirect() : "ByteBuffer at index " + i + " is not direct (heap-backed)";
+            assert bbs[i].remaining() >= length : "ByteBuffer at index " + i + " too small: " + bbs[i].remaining() + " < " + length;
+        }
+        return true;
+    }
+
+    private static boolean validateAddresses(MemorySegment addrs, int count) {
         for (int i = 0; i < count; i++) {
             MemorySegment addr = addrs.getAtIndex(ValueLayout.ADDRESS, i);
-            if (addr.equals(MemorySegment.NULL)) {
-                throw new AssertionError("null address at index " + i);
-            }
-            long raw = addr.address();
-            if (raw <= 0) {
-                throw new AssertionError("non-positive address at index " + i + ": 0x" + Long.toHexString(raw));
-            }
+            assert addr.equals(MemorySegment.NULL) == false : "null address at index " + i;
+            assert addr.address() > 0 : "non-positive address at index " + i + ": 0x" + Long.toHexString(addr.address());
             if (i > 0) {
                 MemorySegment prev = addrs.getAtIndex(ValueLayout.ADDRESS, i - 1);
-                if (addr.address() == prev.address()) {
-                    throw new AssertionError(
-                        "duplicate address at indices " + (i - 1) + " and " + i + ": 0x" + Long.toHexString(addr.address())
-                    );
-                }
+                assert addr.address() != prev.address()
+                    : "duplicate address at indices " + (i - 1) + " and " + i + ": 0x" + Long.toHexString(addr.address());
             }
         }
         return true;
