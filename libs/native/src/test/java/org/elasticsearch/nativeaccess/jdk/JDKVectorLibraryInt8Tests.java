@@ -324,6 +324,10 @@ public class JDKVectorLibraryInt8Tests extends VectorSimilarityFunctionsTests {
         // negative dims
         ex = expectThrows(IOOBE, () -> similarityBulkSparse(addresses, query, -1, count, scores));
         assertThat(ex.getMessage(), containsString("out of bounds for length"));
+
+        // null (zero) address in the addresses segment
+        ex = expectThrows(IAE, () -> similarityBulkSparse(addresses, query, size, count, scores));
+        assertThat(ex.getMessage(), containsString("null"));
     }
 
     float similarity(MemorySegment a, MemorySegment b, int length) {

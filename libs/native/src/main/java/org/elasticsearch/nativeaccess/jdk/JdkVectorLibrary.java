@@ -308,6 +308,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
             Objects.checkFromIndexSize(0L, (long) count * Long.BYTES, addresses.byteSize());
             Objects.checkFromIndexSize(0L, (long) length * elementBits / 8, b.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
+            assert validateBulkSparse(addresses, count, length, elementBits, result);
             return true;
         }
 
@@ -350,6 +351,29 @@ public final class JdkVectorLibrary implements VectorLibrary {
             Objects.checkFromIndexSize(0L, (long) count * Integer.BYTES, offsets.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
             return true;
+        }
+
+        static boolean validateBulkSparse(MemorySegment addresses, int count, int length, int elementBits, MemorySegment result) {
+            if (count < 0) throw new IllegalArgumentException("count must be non-negative: " + count);
+            if (length <= 0) throw new IllegalArgumentException("length must be positive: " + length);
+            checkSegmentAlignment(addresses, Long.BYTES, "addresses", "long");
+            checkSegmentAlignment(result, Float.BYTES, "result", "float");
+            long vectorBytes = (long) length * elementBits / 8;
+            for (int i = 0; i < count; i++) {
+                long addr = addresses.getAtIndex(JAVA_LONG, i);
+                if (addr == 0) {
+                    throw new IllegalArgumentException("address at index " + i + " is null");
+                }
+                MemorySegment vec = MemorySegment.ofAddress(addr).reinterpret(vectorBytes);
+                Objects.checkFromIndexSize(0L, vectorBytes, vec.byteSize());
+            }
+            return true;
+        }
+
+        private static void checkSegmentAlignment(MemorySegment segment, int alignment, String name, String type) {
+            if (segment.address() % alignment != 0) {
+                throw new IllegalArgumentException(name + " segment not aligned to " + type + " boundary");
+            }
         }
 
         private static final MethodHandle dotI7uHandle = HANDLES.get(

@@ -376,6 +376,10 @@ public class JDKVectorLibraryInt7uTests extends VectorSimilarityFunctionsTests {
 
         ex = expectThrows(IOOBE, () -> similarityBulkSparse(addresses, query, -1, count, scores));
         assertThat(ex.getMessage(), containsString("out of bounds for length"));
+
+        // null (zero) address in the addresses segment
+        ex = expectThrows(IAE, () -> similarityBulkSparse(addresses, query, size, count, scores));
+        assertThat(ex.getMessage(), containsString("null"));
     }
 
     int similarity(MemorySegment a, MemorySegment b, int length) {
