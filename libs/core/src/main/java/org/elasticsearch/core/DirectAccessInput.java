@@ -58,4 +58,20 @@ public interface DirectAccessInput {
      */
     boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
         throws IOException;
+
+    /**
+     * Validates the {@code offsets} and {@code count} arguments for
+     * {@link #withByteBufferSlices}. Throws on negative count or an
+     * undersized offsets array. Returns {@code true} if count is zero
+     * (caller should treat as a no-op), {@code false} otherwise.
+     */
+    static boolean checkSlicesArgs(long[] offsets, int count) {
+        if (count < 0) {
+            throw new IllegalArgumentException("count must not be negative, got " + count);
+        }
+        if (offsets.length < count) {
+            throw new IllegalArgumentException("offsets array length " + offsets.length + " is less than count " + count);
+        }
+        return count == 0;
+    }
 }

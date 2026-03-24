@@ -115,6 +115,9 @@ public final class FrozenIndexInput extends MetadataCachingIndexInput implements
     @Override
     public boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
         throws IOException {
+        if (DirectAccessInput.checkSlicesArgs(offsets, count)) {
+            return false;
+        }
         long[] adjusted = offsets;
         if (this.offset != 0) {
             adjusted = new long[count];

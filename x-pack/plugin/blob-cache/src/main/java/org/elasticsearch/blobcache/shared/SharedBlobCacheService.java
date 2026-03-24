@@ -34,6 +34,7 @@ import org.elasticsearch.common.util.concurrent.ThrottledTaskRunner;
 import org.elasticsearch.core.AbstractRefCounted;
 import org.elasticsearch.core.Assertions;
 import org.elasticsearch.core.CheckedConsumer;
+import org.elasticsearch.core.DirectAccessInput;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Releasable;
 import org.elasticsearch.core.Releasables;
@@ -1423,6 +1424,9 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
         @SuppressWarnings({ "unchecked", "rawtypes" })
         public boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
             throws IOException {
+            if (DirectAccessInput.checkSlicesArgs(offsets, count)) {
+                return false;
+            }
             final CacheFileRegion<KeyType>[] held = new CacheFileRegion[count];
             int heldCount = 0;
             final ByteBuffer[] results = new ByteBuffer[count];
