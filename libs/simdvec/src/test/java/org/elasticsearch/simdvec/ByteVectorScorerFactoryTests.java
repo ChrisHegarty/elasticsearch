@@ -304,6 +304,36 @@ public class ByteVectorScorerFactoryTests extends AbstractVectorTestCase {
         }
     }
 
+    // Verifies that bulkScore with zero nodes returns NEGATIVE_INFINITY without throwing,
+    // as Lucene's exactSearch path can call bulkScore with an empty batch when filters exclude all docs.
+    public void testScorerBulkWithZeroNodes() throws IOException {
+        assumeTrue(notSupportedMsg(), supported());
+        assumeTrue("scorer only supported on JDK 22+", Runtime.version().feature() >= 22);
+        var factory = AbstractVectorTestCase.factory.get();
+        final int dims = randomIntBetween(64, 4096);
+        final int size = randomIntBetween(2, 100);
+        final byte[] queryVector = randomByteArrayOfLength(dims);
+
+        try (var dir = new MMapDirectory(createTempDir("testScorerBulkWithZeroNodes"))) {
+            String fileName = "testScorerBulkWithZeroNodes-" + dims;
+            try (IndexOutput out = dir.createOutput(fileName, IOContext.DEFAULT)) {
+                for (int i = 0; i < size; i++) {
+                    byte[] vec = randomByteArrayOfLength(dims);
+                    out.writeBytes(vec, vec.length);
+                }
+                CodecUtil.writeFooter(out);
+            }
+            try (IndexInput in = dir.openInput(fileName, IOContext.DEFAULT)) {
+                for (var sim : List.of(DOT_PRODUCT, EUCLIDEAN, COSINE, MAXIMUM_INNER_PRODUCT)) {
+                    var values = vectorValues(dims, size, in, sim.function());
+                    var scorer = factory.getByteVectorScorer(sim.function(), values, queryVector).get();
+                    float result = scorer.bulkScore(new int[0], new float[0], 0);
+                    assertEquals(Float.NEGATIVE_INFINITY, result, 0f);
+                }
+            }
+        }
+    }
+
     static ByteVectorValues vectorValues(int dims, int size, IndexInput in, VectorSimilarityFunction sim) {
         return new OffHeapByteVectorValues.DenseOffHeapVectorValues(dims, size, in, dims, null, sim);
     }

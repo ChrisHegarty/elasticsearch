@@ -99,6 +99,9 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
      * (via mmap or DirectAccessInput), false if fallback scoring is needed.
      */
     final boolean bulkScoreWithSparse(int[] nodes, float[] scores, int numNodes, SparseScorer sparseScorer) throws IOException {
+        if (numNodes == 0) {
+            return false;
+        }
         long[] offsets = new long[numNodes];
         for (int i = 0; i < numNodes; i++) {
             offsets[i] = (long) nodes[i] * vectorPitch;
