@@ -266,14 +266,13 @@ public final class JdkVectorLibrary implements VectorLibrary {
             return new AssertionError(msg, t);
         }
 
-        static boolean checkBulk(int elementBits, MemorySegment a, MemorySegment b, int length, int count, MemorySegment result) {
+        static void checkBulk(int elementBits, MemorySegment a, MemorySegment b, int length, int count, MemorySegment result) {
             Objects.checkFromIndexSize(0L, (long) length * count * elementBits / 8, a.byteSize());
             Objects.checkFromIndexSize(0L, length, b.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
-            return true;
         }
 
-        static boolean checkBBQBulk(
+        static void checkBBQBulk(
             int dataBits,
             MemorySegment dataset,
             MemorySegment query,
@@ -286,10 +285,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
             // 1 bit data -> x4 bits query, 2 bit data -> x2 bits query
             Objects.checkFromIndexSize(0L, (long) datasetVectorLengthInBytes * (queryBits / dataBits), query.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
-            return true;
         }
 
-        static boolean checkBulkOffsets(
+        static void checkBulkOffsets(
             int elementBits,
             MemorySegment a,
             MemorySegment b,
@@ -305,10 +303,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
             Objects.checkFromIndexSize(0L, rowBytes, b.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Integer.BYTES, offsets.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
-            return true;
         }
 
-        static boolean checkBBQBulkOffsets(
+        static void checkBBQBulkOffsets(
             int dataBits,
             MemorySegment a,
             MemorySegment b,
@@ -323,11 +320,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
                 "Pitch needs to be at least " + datasetVectorLengthInBytes
             );
             Objects.checkFromIndexSize(0L, (long) datasetVectorLengthInBytes * count, a.byteSize());
-            // 1 bit data -> x4 bits query, 2 bit data -> x2 bits query
             Objects.checkFromIndexSize(0L, (long) datasetVectorLengthInBytes * (queryBits / dataBits), b.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Integer.BYTES, offsets.byteSize());
             Objects.checkFromIndexSize(0L, (long) count * Float.BYTES, result.byteSize());
-            return true;
         }
 
         private static final MethodHandle dotI7uHandle = HANDLES.get(
@@ -612,7 +607,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                         JdkVectorSimilarityFunctions.class,
                                         "checkBBQBulk",
                                         MethodType.methodType(
-                                            boolean.class,
+                                            void.class,
                                             int.class,
                                             MemorySegment.class,
                                             MemorySegment.class,
@@ -621,10 +616,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                             MemorySegment.class
                                         )
                                     );
-                                    yield MethodHandles.guardWithTest(
-                                        MethodHandles.insertArguments(checkMethod, 0, bbq.dataBits()),
+                                    yield MethodHandles.foldArguments(
                                         op.getValue(),
-                                        MethodHandles.empty(op.getValue().type())
+                                        MethodHandles.insertArguments(checkMethod, 0, bbq.dataBits())
                                     );
                                 }
                                 case DataType dt -> {
@@ -632,7 +626,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                         JdkVectorSimilarityFunctions.class,
                                         "checkBulk",
                                         MethodType.methodType(
-                                            boolean.class,
+                                            void.class,
                                             int.class,
                                             MemorySegment.class,
                                             MemorySegment.class,
@@ -641,10 +635,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                             MemorySegment.class
                                         )
                                     );
-                                    yield MethodHandles.guardWithTest(
-                                        MethodHandles.insertArguments(checkMethod, 0, dt.bits()),
+                                    yield MethodHandles.foldArguments(
                                         op.getValue(),
-                                        MethodHandles.empty(op.getValue().type())
+                                        MethodHandles.insertArguments(checkMethod, 0, dt.bits())
                                     );
                                 }
                                 default -> throw new IllegalArgumentException("Unknown handle type " + op.getKey().dataType());
@@ -659,7 +652,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                         JdkVectorSimilarityFunctions.class,
                                         "checkBBQBulkOffsets",
                                         MethodType.methodType(
-                                            boolean.class,
+                                            void.class,
                                             int.class,
                                             MemorySegment.class,
                                             MemorySegment.class,
@@ -670,10 +663,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                             MemorySegment.class
                                         )
                                     );
-                                    yield MethodHandles.guardWithTest(
-                                        MethodHandles.insertArguments(checkMethod, 0, bbq.dataBits()),
+                                    yield MethodHandles.foldArguments(
                                         op.getValue(),
-                                        MethodHandles.empty(op.getValue().type())
+                                        MethodHandles.insertArguments(checkMethod, 0, bbq.dataBits())
                                     );
                                 }
                                 case DataType dt -> {
@@ -681,7 +673,7 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                         JdkVectorSimilarityFunctions.class,
                                         "checkBulkOffsets",
                                         MethodType.methodType(
-                                            boolean.class,
+                                            void.class,
                                             int.class,
                                             MemorySegment.class,
                                             MemorySegment.class,
@@ -692,10 +684,9 @@ public final class JdkVectorLibrary implements VectorLibrary {
                                             MemorySegment.class
                                         )
                                     );
-                                    yield MethodHandles.guardWithTest(
-                                        MethodHandles.insertArguments(checkMethod, 0, dt.bits()),
+                                    yield MethodHandles.foldArguments(
                                         op.getValue(),
-                                        MethodHandles.empty(op.getValue().type())
+                                        MethodHandles.insertArguments(checkMethod, 0, dt.bits())
                                     );
                                 }
                                 default -> throw new IllegalArgumentException("Unknown handle type " + op.getKey().dataType());
