@@ -44,9 +44,7 @@ tasks.withType(CheckForbiddenApisTask).configureEach {
 }
 
 tasks.named('test').configure {
-  if (buildParams.getRuntimeJavaVersion().map{ it.majorVersion.toInteger() }.get() >= 21) {
-    jvmArgs '--add-modules=jdk.incubator.vector'
-  }
+  dependsOn 'testJava21'
 }
 
 tasks.withType(CheckForbiddenApisTask).configureEach {
@@ -68,10 +66,6 @@ tasks.register('testJava21', Test) {
   onlyIf('runtime JDK is not already 21') {
     buildParams.getRuntimeJavaVersion().get().majorVersion.toInteger() > 21
   }
-}
-
-tasks.named('check').configure {
-  dependsOn 'testJava21'
 }
 
 // hack for now, fix the jarhell check for MRJar
