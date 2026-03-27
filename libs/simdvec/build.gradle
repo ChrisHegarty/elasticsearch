@@ -67,6 +67,3 @@ tasks.register('testJava21', Test) {
     buildParams.getRuntimeJavaVersion().get().majorVersion.toInteger() > 21
   }
 }
-
-// hack for now, fix the jarhell check for MRJar
-tasks.named("jarHell").configure { enabled = false }
