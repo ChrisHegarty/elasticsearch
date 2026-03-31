@@ -157,9 +157,12 @@ public class MemorySegmentAccessInputAccessTests extends ESTestCase {
             try (IndexInput in = dir.openInput(FILE_NAME, IOContext.DEFAULT)) {
                 MemorySegmentAccessInput msai = (MemorySegmentAccessInput) in;
 
-                MemorySegmentAccessInputAccess.withByteBufferSlice(msai, 0, 64, buf -> {
-                    assertTrue("buffer should be read-only", buf.isReadOnly());
-                });
+                MemorySegmentAccessInputAccess.withByteBufferSlice(
+                    msai,
+                    0,
+                    64,
+                    buf -> { assertTrue("buffer should be read-only", buf.isReadOnly()); }
+                );
             }
         }
     }
