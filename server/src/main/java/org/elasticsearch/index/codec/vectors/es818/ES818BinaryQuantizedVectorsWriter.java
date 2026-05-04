@@ -429,14 +429,13 @@ public class ES818BinaryQuantizedVectorsWriter extends FlatVectorsWriter {
             final float[] mergedCentroid = new float[fieldInfo.getVectorDimension()];
             int vectorCount = mergeAndRecalculateCentroids(mergeState, fieldInfo, mergedCentroid);
 
-            // Don't need access to the random vectors, we can just use the merged
-            rawVectorDelegate.mergeOneField(fieldInfo, mergeState);
+            var rawScorerSupplier = rawVectorDelegate.mergeOneFieldToIndex(fieldInfo, mergeState);
             centroid = mergedCentroid;
             cDotC = vectorCount > 0 ? ESVectorUtil.dotProduct(centroid, centroid) : 0;
             if (segmentWriteState.infoStream.isEnabled(BINARIZED_VECTOR_COMPONENT)) {
                 segmentWriteState.infoStream.message(BINARIZED_VECTOR_COMPONENT, "Vectors' count:" + vectorCount);
             }
-            return mergeOneFieldToIndex(segmentWriteState, fieldInfo, mergeState, centroid, cDotC);
+            return mergeOneFieldToIndex(segmentWriteState, fieldInfo, mergeState, centroid, cDotC, rawScorerSupplier);
         }
         return rawVectorDelegate.mergeOneFieldToIndex(fieldInfo, mergeState);
     }
@@ -446,7 +445,8 @@ public class ES818BinaryQuantizedVectorsWriter extends FlatVectorsWriter {
         FieldInfo fieldInfo,
         MergeState mergeState,
         float[] centroid,
-        float cDotC
+        float cDotC,
+        CloseableRandomVectorScorerSupplier rawScorerSupplier
     ) throws IOException {
         long vectorDataOffset = binarizedVectorData.alignFilePointer(Float.BYTES);
         IndexInput binarizedDataInput = null;
@@ -531,7 +531,7 @@ public class ES818BinaryQuantizedVectorsWriter extends FlatVectorsWriter {
                     tempQuantizedVectorDataName,
                     tempScoreQuantizedVectorDataName
                 );
-            });
+            }, rawScorerSupplier);
         } finally {
             if (success == false) {
                 IOUtils.closeWhileHandlingException(
@@ -890,11 +890,22 @@ public class ES818BinaryQuantizedVectorsWriter extends FlatVectorsWriter {
         private final RandomVectorScorerSupplier supplier;
         private final KnnVectorValues vectorValues;
         private final Closeable onClose;
+        private final CloseableRandomVectorScorerSupplier rawVectorScorerSupplier;
 
         BinarizedCloseableRandomVectorScorerSupplier(RandomVectorScorerSupplier supplier, KnnVectorValues vectorValues, Closeable onClose) {
+            this(supplier, vectorValues, onClose, null);
+        }
+
+        BinarizedCloseableRandomVectorScorerSupplier(
+            RandomVectorScorerSupplier supplier,
+            KnnVectorValues vectorValues,
+            Closeable onClose,
+            CloseableRandomVectorScorerSupplier rawVectorScorerSupplier
+        ) {
             this.supplier = supplier;
             this.onClose = onClose;
             this.vectorValues = vectorValues;
+            this.rawVectorScorerSupplier = rawVectorScorerSupplier;
         }
 
         @Override
@@ -909,12 +920,21 @@ public class ES818BinaryQuantizedVectorsWriter extends FlatVectorsWriter {
 
         @Override
         public void close() throws IOException {
-            onClose.close();
+            IOUtils.close(onClose, rawVectorScorerSupplier);
         }
 
         @Override
         public int totalVectorCount() {
             return vectorValues.size();
+        }
+
+        /**
+         * Returns the raw (unquantized) float vector scorer supplier, if available.
+         * This provides access to the original float vectors written by the raw vector delegate,
+         * which can be used for GPU graph building.
+         */
+        public CloseableRandomVectorScorerSupplier rawVectorScorerSupplier() {
+            return rawVectorScorerSupplier;
         }
     }
 

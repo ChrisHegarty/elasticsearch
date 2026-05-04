@@ -10,7 +10,6 @@
 package org.elasticsearch.index.codec.vectors.reflect;
 
 import org.apache.lucene.codecs.lucene95.HasIndexSlice;
-import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.util.hnsw.CloseableRandomVectorScorerSupplier;
 import org.apache.lucene.util.hnsw.RandomVectorScorerSupplier;
 import org.elasticsearch.index.codec.vectors.Lucene99ScalarQuantizedVectorsWriter;
@@ -22,13 +21,11 @@ import java.lang.invoke.VarHandle;
 public class VectorsFormatReflectionUtils {
     private static final VarHandle FLOAT_SUPPLIER_HANDLE;
     private static final VarHandle BYTE_SUPPLIER_HANDLE;
-    private static final VarHandle L99_FLOAT_VECTORS_HANDLE;
-    private static final VarHandle DEFAULT_FLOAT_VECTORS_HANDLE;
+    private static final VarHandle BINARIZED_RAW_SCORER_HANDLE;
 
     private static final Class<?> FLAT_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS;
     private static final Class<?> SCALAR_QUANTIZED_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS;
-    private static final Class<?> L99_FLOAT_SCORING_SUPPLIER_CLASS;
-    private static final Class<?> DEFAULT_FLOAT_SCORING_SUPPLIER_CLASS;
+    private static final Class<?> BINARIZED_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS;
 
     static {
         try {
@@ -42,18 +39,6 @@ public class VectorsFormatReflectionUtils {
                 RandomVectorScorerSupplier.class
             );
 
-            L99_FLOAT_SCORING_SUPPLIER_CLASS = Class.forName(
-                "org.apache.lucene.internal.vectorization.Lucene99MemorySegmentFloatVectorScorerSupplier"
-            );
-            lookup = MethodHandles.privateLookupIn(L99_FLOAT_SCORING_SUPPLIER_CLASS, MethodHandles.lookup());
-            L99_FLOAT_VECTORS_HANDLE = lookup.findVarHandle(L99_FLOAT_SCORING_SUPPLIER_CLASS, "values", FloatVectorValues.class);
-
-            DEFAULT_FLOAT_SCORING_SUPPLIER_CLASS = Class.forName(
-                "org.apache.lucene.codecs.hnsw.DefaultFlatVectorScorer$FloatScoringSupplier"
-            );
-            lookup = MethodHandles.privateLookupIn(DEFAULT_FLOAT_SCORING_SUPPLIER_CLASS, MethodHandles.lookup());
-            DEFAULT_FLOAT_VECTORS_HANDLE = lookup.findVarHandle(DEFAULT_FLOAT_SCORING_SUPPLIER_CLASS, "vectors", FloatVectorValues.class);
-
             SCALAR_QUANTIZED_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS = Class.forName(
                 Lucene99ScalarQuantizedVectorsWriter.class.getCanonicalName() + "$ScalarQuantizedCloseableRandomVectorScorerSupplier"
             );
@@ -62,6 +47,16 @@ public class VectorsFormatReflectionUtils {
                 SCALAR_QUANTIZED_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS,
                 "supplier",
                 RandomVectorScorerSupplier.class
+            );
+
+            BINARIZED_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS = Class.forName(
+                "org.elasticsearch.index.codec.vectors.es818.ES818BinaryQuantizedVectorsWriter$BinarizedCloseableRandomVectorScorerSupplier"
+            );
+            lookup = MethodHandles.privateLookupIn(BINARIZED_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS, MethodHandles.lookup());
+            BINARIZED_RAW_SCORER_HANDLE = lookup.findVarHandle(
+                BINARIZED_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS,
+                "rawVectorScorerSupplier",
+                CloseableRandomVectorScorerSupplier.class
             );
 
         } catch (IllegalAccessException e) {
@@ -75,6 +70,12 @@ public class VectorsFormatReflectionUtils {
         if (scorerSupplier.getClass().equals(FLAT_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS)) {
             return (RandomVectorScorerSupplier) FLOAT_SUPPLIER_HANDLE.get(scorerSupplier);
         }
+        if (BINARIZED_CLOSEABLE_RANDOM_VECTOR_SCORER_SUPPLIER_CLASS.isInstance(scorerSupplier)) {
+            var rawScorer = (CloseableRandomVectorScorerSupplier) BINARIZED_RAW_SCORER_HANDLE.get(scorerSupplier);
+            if (rawScorer != null) {
+                return getFlatRandomVectorScorerInnerSupplier(rawScorer);
+            }
+        }
         return null;
     }
 
@@ -87,25 +88,11 @@ public class VectorsFormatReflectionUtils {
         return null;
     }
 
-    public static HasIndexSlice getFloatScoringSupplierVectorOrNull(RandomVectorScorerSupplier scorerSupplier) {
-        if (L99_FLOAT_SCORING_SUPPLIER_CLASS.isAssignableFrom(scorerSupplier.getClass())) {
-            var vectorValues = L99_FLOAT_VECTORS_HANDLE.get(scorerSupplier);
-            if (vectorValues instanceof HasIndexSlice indexSlice) {
-                return indexSlice;
-            }
-        } else if (DEFAULT_FLOAT_SCORING_SUPPLIER_CLASS.isAssignableFrom(scorerSupplier.getClass())) {
-            var vectorValues = DEFAULT_FLOAT_VECTORS_HANDLE.get(scorerSupplier);
-            if (vectorValues instanceof HasIndexSlice indexSlice) {
-                return indexSlice;
-            }
-        }
-        return null;
-    }
-
     public static HasIndexSlice getByteScoringSupplierVectorOrNull(RandomVectorScorerSupplier scorerSupplier) {
         if (scorerSupplier instanceof QuantizedByteVectorValuesAccess quantizedByteVectorValuesAccess) {
             return quantizedByteVectorValuesAccess.get();
         }
         return null;
     }
+
 }

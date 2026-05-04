@@ -24,7 +24,9 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 
+import static org.hamcrest.Matchers.hasToString;
 import static org.hamcrest.Matchers.instanceOf;
+import static org.hamcrest.Matchers.startsWith;
 
 public class GPUDenseVectorFieldMapperTests extends DenseVectorFieldMapperTests {
 
@@ -67,11 +69,10 @@ public class GPUDenseVectorFieldMapperTests extends DenseVectorFieldMapperTests 
     @Override
     public void testKnnBBQHNSWVectorsFormat() throws IOException {
         // TOD improve the test with custom parameters
-        // TODO: why beamWidth=19
         KnnVectorsFormat knnVectorsFormat = getKnnVectorsFormat("bbq_hnsw");
         String expectedStr = "Lucene99HnswVectorsFormat(name=Lucene99HnswVectorsFormat, "
-            + "maxConn=12, beamWidth=19, flatVectorFormat=ES93BinaryQuantizedVectorsFormat(";
-        assertTrue(knnVectorsFormat.toString().startsWith(expectedStr));
+            + "maxConn=12, beamWidth=22, flatVectorFormat=ES93BinaryQuantizedVectorsFormat(";
+        assertThat(knnVectorsFormat, hasToString(startsWith(expectedStr)));
     }
 
     private KnnVectorsFormat getKnnVectorsFormat(String indexOptionsType) throws IOException {

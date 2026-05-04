@@ -16,6 +16,7 @@ import com.nvidia.cuvs.CuVSMatrix;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.KnnFieldVectorsWriter;
 import org.apache.lucene.codecs.KnnVectorsWriter;
+import org.apache.lucene.codecs.lucene95.HasIndexSlice;
 import org.apache.lucene.codecs.hnsw.FlatFieldVectorsWriter;
 import org.apache.lucene.codecs.hnsw.FlatVectorsWriter;
 import org.apache.lucene.index.ByteVectorValues;
@@ -34,6 +35,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MemorySegmentAccessInput;
 import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.hnsw.HasKnnVectorValues;
 import org.apache.lucene.util.hnsw.HnswGraph;
 import org.apache.lucene.util.hnsw.HnswGraph.NodesIterator;
 import org.apache.lucene.util.hnsw.RandomVectorScorerSupplier;
@@ -708,9 +710,13 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         RandomVectorScorerSupplier randomScorerSupplier,
         final int numVectors
     ) throws IOException, InterruptedException {
-        var vectorValues = randomScorerSupplier == null
-            ? null
-            : VectorsFormatReflectionUtils.getFloatScoringSupplierVectorOrNull(randomScorerSupplier);
+        HasIndexSlice vectorValues = null;
+        if (randomScorerSupplier != null) {
+            var scorer = randomScorerSupplier.scorer();
+            if (scorer instanceof HasKnnVectorValues hasValues && hasValues.values() instanceof HasIndexSlice indexSlice) {
+                vectorValues = indexSlice;
+            }
+        }
         CagraIndexParams cagraIndexParams = createCagraIndexParams(
             fieldInfo.getVectorSimilarityFunction(),
             numVectors,
