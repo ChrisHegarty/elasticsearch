@@ -1,0 +1,47 @@
+[
+  {
+    "dataset": {"gcp": {"name": "ann-gist-1M"}},
+    "index_type": "hnsw",
+    "quantize_bits": 1,
+    "hnsw_m": 16,
+    "hnsw_ef_construction": 200,
+    "force_merge": true,
+    "reindex": true,
+    "index_threads": 8,
+    "search_params": [
+      { "k": 10, "num_candidates": 100 },
+      { "k": 10, "num_candidates": 200 },
+      { "k": 10, "num_candidates": 500 }
+    ]
+  },
+  {
+    "dataset": {"gcp": {"name": "ann-gist-1M"}},
+    "index_type": "gpu_hnsw",
+    "quantize_bits": 1,
+    "hnsw_m": 16,
+    "hnsw_ef_construction": 200,
+    "force_merge": true,
+    "reindex": true,
+    "index_threads": 8,
+    "search_params": [
+      { "k": 10, "num_candidates": 100 },
+      { "k": 10, "num_candidates": 200 },
+      { "k": 10, "num_candidates": 500 }
+    ]
+  },
+  {
+    "dataset": {"gcp": {"name": "ann-gist-1M"}},
+    "index_type": "gpu_hnsw",
+    "quantize_bits": 7,
+    "hnsw_m": 16,
+    "hnsw_ef_construction": 200,
+    "force_merge": true,
+    "reindex": true,
+    "index_threads": 8,
+    "search_params": [
+      { "k": 10, "num_candidates": 100 },
+      { "k": 10, "num_candidates": 200 },
+      { "k": 10, "num_candidates": 500 }
+    ]
+  }
+]

@@ -19,6 +19,7 @@ import org.elasticsearch.xcontent.XContentType;
 import java.util.List;
 
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 
@@ -318,6 +319,107 @@ public class TestConfigurationTests extends ESTestCase {
         try (XContentParser parser = createParser(XContentType.JSON.xContent(), json)) {
             // Distribution is validated at parse time via the enum
             expectThrows(IllegalArgumentException.class, () -> TestConfiguration.fromXContent(parser));
+        }
+    }
+
+    public void testGpuHnswCreateCodecWithBBQ() throws Exception {
+        String json = """
+            {
+              "doc_vectors": ["/path/to/docs"],
+              "dimensions": 128,
+              "num_docs": 1000,
+              "index_type": "gpu_hnsw",
+              "quantize_bits": 1
+            }
+            """;
+        try (XContentParser parser = createParser(XContentType.JSON.xContent(), json)) {
+            TestConfiguration config = TestConfiguration.fromXContent(parser);
+            var codec = KnnIndexTester.createCodec(config, null);
+            assertNotNull(codec);
+        }
+    }
+
+    public void testGpuHnswCreateCodecWithSQ() throws Exception {
+        String json = """
+            {
+              "doc_vectors": ["/path/to/docs"],
+              "dimensions": 128,
+              "num_docs": 1000,
+              "index_type": "gpu_hnsw",
+              "quantize_bits": 7
+            }
+            """;
+        try (XContentParser parser = createParser(XContentType.JSON.xContent(), json)) {
+            TestConfiguration config = TestConfiguration.fromXContent(parser);
+            var codec = KnnIndexTester.createCodec(config, null);
+            assertNotNull(codec);
+        }
+    }
+
+    public void testGpuHnswCreateCodecWithNoQuantization() throws Exception {
+        String json = """
+            {
+              "doc_vectors": ["/path/to/docs"],
+              "dimensions": 128,
+              "num_docs": 1000,
+              "index_type": "gpu_hnsw"
+            }
+            """;
+        try (XContentParser parser = createParser(XContentType.JSON.xContent(), json)) {
+            TestConfiguration config = TestConfiguration.fromXContent(parser);
+            var codec = KnnIndexTester.createCodec(config, null);
+            assertNotNull(codec);
+        }
+    }
+
+    public void testGpuHnswCreateCodecWithUnsupportedBitsThrows() throws Exception {
+        String json = """
+            {
+              "doc_vectors": ["/path/to/docs"],
+              "dimensions": 128,
+              "num_docs": 1000,
+              "index_type": "gpu_hnsw",
+              "quantize_bits": 4
+            }
+            """;
+        try (XContentParser parser = createParser(XContentType.JSON.xContent(), json)) {
+            TestConfiguration config = TestConfiguration.fromXContent(parser);
+            var e = expectThrows(IllegalArgumentException.class, () -> KnnIndexTester.createCodec(config, null));
+            assertThat(e.getMessage(), containsString("GPU HNSW index type only supports 1 or 7 bits quantization"));
+        }
+    }
+
+    public void testGpuHnswCheckQuantizeBitsAcceptsBBQ() throws Exception {
+        String json = """
+            {
+              "doc_vectors": ["/path/to/docs"],
+              "dimensions": 128,
+              "num_docs": 1000,
+              "index_type": "gpu_hnsw",
+              "quantize_bits": 1
+            }
+            """;
+        try (XContentParser parser = createParser(XContentType.JSON.xContent(), json)) {
+            TestConfiguration config = TestConfiguration.fromXContent(parser);
+            assertEquals(KnnIndexTester.IndexType.GPU_HNSW, config.indexType());
+            assertEquals(Integer.valueOf(1), config.quantizeBits());
+        }
+    }
+
+    public void testGpuHnswCheckQuantizeBitsRejectsInvalid() throws Exception {
+        String json = """
+            {
+              "doc_vectors": ["/path/to/docs"],
+              "dimensions": 128,
+              "num_docs": 1000,
+              "index_type": "gpu_hnsw",
+              "quantize_bits": 2
+            }
+            """;
+        try (XContentParser parser = createParser(XContentType.JSON.xContent(), json)) {
+            TestConfiguration config = TestConfiguration.fromXContent(parser);
+            var e = expectThrows(IllegalArgumentException.class, () -> KnnIndexTester.createCodec(config, null));
+            assertThat(e.getMessage(), containsString("GPU HNSW index type only supports 1 or 7 bits quantization"));
         }
     }
 

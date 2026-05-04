@@ -64,6 +64,16 @@ public class GPUDenseVectorFieldMapperTests extends DenseVectorFieldMapperTests 
         assertTrue(knnVectorsFormat.toString().startsWith(expectedStr));
     }
 
+    @Override
+    public void testKnnBBQHNSWVectorsFormat() throws IOException {
+        // TOD improve the test with custom parameters
+        // TODO: why beamWidth=19
+        KnnVectorsFormat knnVectorsFormat = getKnnVectorsFormat("bbq_hnsw");
+        String expectedStr = "Lucene99HnswVectorsFormat(name=Lucene99HnswVectorsFormat, "
+            + "maxConn=12, beamWidth=19, flatVectorFormat=ES93BinaryQuantizedVectorsFormat(";
+        assertTrue(knnVectorsFormat.toString().startsWith(expectedStr));
+    }
+
     private KnnVectorsFormat getKnnVectorsFormat(String indexOptionsType) throws IOException {
         final int dims = randomIntBetween(128, 4096);
         MapperService mapperService = createMapperService(fieldMapping(b -> {

@@ -2503,6 +2503,14 @@ public class DenseVectorFieldMapper extends FieldMapper {
             return false;
         }
 
+        public int m() {
+            return m;
+        }
+
+        public int efConstruction() {
+            return efConstruction;
+        }
+
         public int flatIndexThreshold() {
             return flatIndexThreshold;
         }
