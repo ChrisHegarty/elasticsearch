@@ -17,12 +17,14 @@ import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.MemorySegmentAccessInput;
 import org.elasticsearch.gpu.CuVSGPUSupport;
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.test.ESTestCase.WithoutEntitlements;
 import org.junit.Before;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteOrder;
 
+@WithoutEntitlements // CuVS native library loading is not covered by gpu-codec test entitlements
 public class DatasetUtilsTests extends ESTestCase {
 
     DatasetUtils datasetUtils;

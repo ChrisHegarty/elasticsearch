@@ -28,6 +28,8 @@ import org.elasticsearch.gpu.GPUSupport;
 import org.elasticsearch.index.codec.vectors.es93.ES93HnswBinaryQuantizedVectorsFormat;
 import org.elasticsearch.index.mapper.vectors.DenseVectorFieldMapper;
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.test.ESTestCase.WithoutEntitlements;
+
 import org.junit.BeforeClass;
 
 import java.io.IOException;
@@ -40,7 +42,7 @@ import static org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat.DEFAULT_MAX_C
  * Lucene's {@link PerFieldKnnVectorsFormat} resolves the correct reader at
  * search time via {@link KnnVectorsFormat#forName(String)}.
  */
-@ESTestCase.WithoutEntitlements
+@WithoutEntitlements // CuVS native library loading is not covered by gpu-codec test entitlements
 public class GpuFormatNameCompatibilityTests extends ESTestCase {
 
     static {

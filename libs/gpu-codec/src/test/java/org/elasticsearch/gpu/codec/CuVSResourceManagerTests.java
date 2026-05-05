@@ -18,6 +18,7 @@ import com.nvidia.cuvs.CuVSResources;
 import org.elasticsearch.logging.LogManager;
 import org.elasticsearch.logging.Logger;
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.test.ESTestCase.WithoutEntitlements;
 
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
@@ -31,6 +32,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.Matchers.not;
 
+@WithoutEntitlements // CuVS native library loading is not covered by gpu-codec test entitlements
 public class CuVSResourceManagerTests extends ESTestCase {
 
     private static final Logger log = LogManager.getLogger(CuVSResourceManagerTests.class);

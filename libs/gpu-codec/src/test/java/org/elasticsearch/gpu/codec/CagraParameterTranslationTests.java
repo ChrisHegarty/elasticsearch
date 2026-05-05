@@ -15,6 +15,7 @@ import com.nvidia.cuvs.CuVSMatrix;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.elasticsearch.common.logging.LogConfigurator;
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.test.ESTestCase.WithoutEntitlements;
 
 import static java.util.Locale.ROOT;
 
@@ -25,6 +26,7 @@ import static java.util.Locale.ROOT;
  * Step 1: ES92GpuHnswVectorsFormat translates (m, ef_construction) to (graphDegree, intermediateGraphDegree)
  * Step 2: ES92GpuHnswVectorsWriter creates CagraIndexParams from those translated values
  */
+@WithoutEntitlements // CuVS native library loading is not covered by gpu-codec test entitlements
 public class CagraParameterTranslationTests extends ESTestCase {
 
     static {
