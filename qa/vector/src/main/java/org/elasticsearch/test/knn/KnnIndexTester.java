@@ -604,6 +604,14 @@ public class KnnIndexTester {
         for (int i = 0; i < results.length; i++) {
             KnnSearcher knnSearcher = new KnnSearcher(indexPath, testConfiguration);
             var setup = dataGenerator.createSearchSetup(knnSearcher, testConfiguration.searchParams().get(i));
+            if (testConfiguration.skipRecall()) {
+                setup = new KnnSearcher.SearchSetup(
+                    setup.floatQueries(),
+                    setup.byteQueries(),
+                    setup.provider(),
+                    (resultIds, r, p) -> logger.info("skipping recall (skip_recall=true)")
+                );
+            }
             knnSearcher.search(results[i], testConfiguration.searchParams().get(i), dir, setup);
         }
     }
@@ -659,6 +667,9 @@ public class KnnIndexTester {
         for (var leaf : reader.leaves()) {
             if (leaf.reader() instanceof CodecReader codecReader) {
                 KnnVectorsReader vectorReader = codecReader.getVectorReader();
+                if (vectorReader instanceof org.apache.lucene.codecs.perfield.PerFieldKnnVectorsFormat.FieldsReader perFieldReader) {
+                    vectorReader = perFieldReader.getFieldReader(KnnIndexer.VECTOR_FIELD);
+                }
                 if (vectorReader instanceof HnswGraphProvider graphProvider) {
                     HnswGraph graph = graphProvider.getGraph(KnnIndexer.VECTOR_FIELD);
                     if (graph == null) {
