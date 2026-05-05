@@ -394,9 +394,12 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         CuVSMatrix.DataType dataType,
         long totalDeviceMemory
     ) {
-        // CAGRA constraints: graphDegree < intermediateGraphDegree <= (numVectors - 1).
-        // Clamp to dataset size first, then enforce ordering, to avoid native warnings.
-        intermediateGraphDegree = Math.min(intermediateGraphDegree, Math.max(1, numVectors - 1));
+        // CAGRA/nn-descent constraints: intermediateGraphDegree must not exceed the number of
+        // rows in the nn-descent working set, which is (numVectors - 1). Then CAGRA further
+        // requires intermediateGraphDegree < that row count, so the effective max is
+        // (numVectors - 2). graphDegree must be strictly less than intermediateGraphDegree.
+        int maxIntermediateDegree = Math.max(2, numVectors - 2);
+        intermediateGraphDegree = Math.min(intermediateGraphDegree, maxIntermediateDegree);
         graphDegree = Math.min(graphDegree, Math.max(1, intermediateGraphDegree - 1));
         intermediateGraphDegree = Math.max(graphDegree + 1, intermediateGraphDegree);
 
