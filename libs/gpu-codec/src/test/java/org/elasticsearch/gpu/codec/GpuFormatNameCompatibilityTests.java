@@ -20,12 +20,15 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.tests.util.LuceneTestCase;
 import org.apache.lucene.tests.util.TestUtil;
 import org.elasticsearch.common.logging.LogConfigurator;
 import org.elasticsearch.gpu.CuVSGPUSupport;
+import org.elasticsearch.gpu.GPUSupport;
 import org.elasticsearch.index.codec.vectors.es93.ES93HnswBinaryQuantizedVectorsFormat;
 import org.elasticsearch.index.mapper.vectors.DenseVectorFieldMapper;
 import org.elasticsearch.test.ESTestCase;
+import org.junit.BeforeClass;
 
 import java.io.IOException;
 
@@ -37,6 +40,7 @@ import static org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat.DEFAULT_MAX_C
  * Lucene's {@link PerFieldKnnVectorsFormat} resolves the correct reader at
  * search time via {@link KnnVectorsFormat#forName(String)}.
  */
+@ESTestCase.WithoutEntitlements
 public class GpuFormatNameCompatibilityTests extends ESTestCase {
 
     static {
@@ -44,40 +48,60 @@ public class GpuFormatNameCompatibilityTests extends ESTestCase {
         LogConfigurator.configureESLogging();
     }
 
+    static GPUSupport gpuSupport;
+    static boolean gpuSupported;
+
+    @BeforeClass
+    public static void beforeClass() {
+        gpuSupport = CuVSGPUSupport.instance();
+        gpuSupported = gpuSupport.isSupported();
+    }
+
     public void testGpuBBQFormatNameMatchesCpuBBQ() {
-        var gpuFormat = new ES92GpuHnswBBQVectorsFormat(1024, DEFAULT_MAX_CONN, DEFAULT_BEAM_WIDTH,
-            DenseVectorFieldMapper.ElementType.FLOAT, false);
-        var cpuFormat = new ES93HnswBinaryQuantizedVectorsFormat();
-        assertEquals(cpuFormat.getName(), gpuFormat.getName());
+        assertEquals(ES93HnswBinaryQuantizedVectorsFormat.NAME, ES92GpuHnswBBQVectorsFormat.NAME);
     }
 
     public void testGpuSQFormatNameMatchesCpuSQ() {
-        var gpuFormat = new ES92GpuHnswSQVectorsFormat(1024, DEFAULT_MAX_CONN, DEFAULT_BEAM_WIDTH, null, 7, false);
-        assertEquals("ES814HnswScalarQuantizedVectorsFormat", gpuFormat.getName());
-        var resolved = KnnVectorsFormat.forName(gpuFormat.getName());
-        assertEquals(gpuFormat.getName(), resolved.getName());
+        assertEquals("ES814HnswScalarQuantizedVectorsFormat", ES92GpuHnswSQVectorsFormat.NAME);
     }
 
-    public void testGpuFloatFormatNameMatchesLuceneHnsw() {
-        var gpuFormat = new ES92GpuHnswVectorsFormat(CuVSResourceManager::pooling, 1024, DEFAULT_MAX_CONN, DEFAULT_BEAM_WIDTH);
-        assertEquals("Lucene99HnswVectorsFormat", gpuFormat.getName());
+    public void testGpuFloatFormatName() {
+        assertEquals("Lucene99HnswVectorsFormat", ES92GpuHnswVectorsFormat.NAME);
+    }
+
+    // -- the remainder of the tests require a GPU to be present
+
+    public void testGpuBBQFormatNameMatchesCpuBBQ2() {
+        assumeTrue("cuvs not supported", gpuSupported);
+        assertEquals(ES93HnswBinaryQuantizedVectorsFormat.NAME, (new ES92GpuHnswBBQVectorsFormat()).getName());
+    }
+
+    public void testGpuSQFormatNameMatchesCpuSQ2() {
+        assumeTrue("cuvs not supported", gpuSupported);
+        assertEquals("ES814HnswScalarQuantizedVectorsFormat", (new ES92GpuHnswSQVectorsFormat()).getName());
+    }
+
+    public void testGpuFloatFormatName2() {
+        assumeTrue("cuvs not supported", gpuSupported);
+        assertEquals("Lucene99HnswVectorsFormat", (new ES92GpuHnswVectorsFormat()).getName());
     }
 
     public void testForNameResolvesCpuBBQFormat() {
+        assumeTrue("cuvs not supported", gpuSupported);
         var resolved = KnnVectorsFormat.forName(ES92GpuHnswBBQVectorsFormat.NAME);
         assertNotNull(resolved);
         assertEquals(ES93HnswBinaryQuantizedVectorsFormat.NAME, resolved.getName());
     }
 
     public void testForNameResolvesCpuSQFormat() {
+        assumeTrue("cuvs not supported", gpuSupported);
         var resolved = KnnVectorsFormat.forName(ES92GpuHnswSQVectorsFormat.NAME);
         assertNotNull(resolved);
         assertEquals("ES814HnswScalarQuantizedVectorsFormat", resolved.getName());
     }
 
     public void testBBQFieldInfoFormatNameAfterIndexing() throws IOException {
-        var gpuSupport = CuVSGPUSupport.instance();
-        assumeTrue("cuvs not supported", gpuSupport.isSupported());
+        assumeTrue("cuvs not supported", gpuSupported);
         doTestFieldInfoFormatName(
             new ES92GpuHnswBBQVectorsFormat(
                 gpuSupport.getTotalGpuMemory(), DEFAULT_MAX_CONN, DEFAULT_BEAM_WIDTH,
@@ -88,8 +112,7 @@ public class GpuFormatNameCompatibilityTests extends ESTestCase {
     }
 
     public void testSQFieldInfoFormatNameAfterIndexing() throws IOException {
-        var gpuSupport = CuVSGPUSupport.instance();
-        assumeTrue("cuvs not supported", gpuSupport.isSupported());
+        assumeTrue("cuvs not supported", gpuSupported);
         doTestFieldInfoFormatName(
             new ES92GpuHnswSQVectorsFormat(
                 gpuSupport.getTotalGpuMemory(), DEFAULT_MAX_CONN, DEFAULT_BEAM_WIDTH, null, 7, false
