@@ -264,7 +264,11 @@ public record TestConfiguration(
                 "string",
                 "Directory type: default (mmap), frozen (searchable snapshot), or custom types registered by external wrappers."
             ),
-            new ParameterHelp("skip_recall", "boolean", "Skip brute-force exact NN computation and recall checking; useful for QPS-only runs.")
+            new ParameterHelp(
+                "skip_recall",
+                "boolean",
+                "Skip brute-force exact NN computation and recall checking; useful for QPS-only runs."
+            )
         );
 
         int[] lengths = new int[] { "parameter".length(), "type".length(), "description".length() };

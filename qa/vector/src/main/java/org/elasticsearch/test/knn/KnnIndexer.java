@@ -172,9 +172,7 @@ public class KnnIndexer {
             try (ExecutorService exec = Executors.newFixedThreadPool(numIndexThreads, r -> new Thread(r, "KnnIndexer-Thread"))) {
                 List<Future<?>> futures = new ArrayList<>();
                 for (int i = 0; i < numIndexThreads; i++) {
-                    futures.add(
-                        exec.submit(new IndexerThread(iw, vectorReader, vectorEncoding, fieldType, documentFactory, totalDocs))
-                    );
+                    futures.add(exec.submit(new IndexerThread(iw, vectorReader, vectorEncoding, fieldType, documentFactory, totalDocs)));
                 }
                 for (Future<?> future : futures) {
                     future.get();
