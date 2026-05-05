@@ -174,7 +174,14 @@ public class KnnIndexTester {
         List<String> suffix = new ArrayList<>();
         switch (args.indexType()) {
             case FLAT -> suffix.add("flat");
-            case GPU_HNSW -> suffix.add("gpu_hnsw");
+            case GPU_HNSW -> {
+                suffix.add("gpu_hnsw");
+                suffix.add(Integer.toString(args.hnswM()));
+                suffix.add(Integer.toString(args.hnswEfConstruction()));
+                if (args.quantizeBits() != null) {
+                    suffix.add(Integer.toString(args.quantizeBits()));
+                }
+            }
             case IVF -> {
                 suffix.add("ivf");
                 suffix.add(Integer.toString(args.ivfClusterSize()));
