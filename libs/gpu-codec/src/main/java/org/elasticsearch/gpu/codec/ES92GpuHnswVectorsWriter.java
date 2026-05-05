@@ -394,10 +394,10 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         CuVSMatrix.DataType dataType,
         long totalDeviceMemory
     ) {
-        // Clamp to dataset size to avoid CAGRA warnings when the dataset is small
-        graphDegree = Math.min(graphDegree, numVectors);
-        intermediateGraphDegree = Math.min(intermediateGraphDegree, numVectors);
-        // CAGRA requires the intermediate graph degree to be strictly larger than the graph degree
+        // CAGRA constraints: graphDegree < intermediateGraphDegree <= (numVectors - 1).
+        // Clamp to dataset size first, then enforce ordering, to avoid native warnings.
+        intermediateGraphDegree = Math.min(intermediateGraphDegree, Math.max(1, numVectors - 1));
+        graphDegree = Math.min(graphDegree, Math.max(1, intermediateGraphDegree - 1));
         intermediateGraphDegree = Math.max(graphDegree + 1, intermediateGraphDegree);
 
         CagraIndexParams.CuvsDistanceType distanceType = switch (similarityFunction) {
