@@ -11,9 +11,13 @@ import org.apache.lucene.codecs.KnnVectorsFormat;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.gpu.GPUSupport;
 import org.elasticsearch.gpu.codec.ES92GpuHnswBBQVectorsFormat;
+import org.elasticsearch.gpu.codec.ES92GpuHnswSQVectorsFormat;
 import org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat;
+import org.elasticsearch.index.codec.vectors.ES814HnswScalarQuantizedVectorsFormat;
+import org.elasticsearch.index.codec.vectors.es93.ES93HnswBinaryQuantizedVectorsFormat;
 import org.elasticsearch.index.mapper.vectors.DenseVectorFieldMapper;
 import org.elasticsearch.index.mapper.vectors.DenseVectorFieldMapper.BBQHnswIndexOptions;
+import org.elasticsearch.index.mapper.vectors.DenseVectorFieldMapper.Int8HnswIndexOptions;
 import org.elasticsearch.index.mapper.vectors.VectorsFormatProvider;
 import org.elasticsearch.test.ESTestCase;
 
@@ -116,6 +120,94 @@ public class GPUPluginFormatProviderTests extends ESTestCase {
         assertEquals(m, options.m());
         assertEquals(efConstruction, options.efConstruction());
         assertEquals(500, options.flatIndexThreshold());
+    }
+
+    public void testInt8HnswReturnsGpuSQFormat() {
+        GPUPlugin plugin = createPlugin(GPUPlugin.GpuMode.TRUE);
+        VectorsFormatProvider provider = plugin.getVectorsFormatProvider();
+
+        Int8HnswIndexOptions indexOptions = new Int8HnswIndexOptions(16, 100, false, null, -1);
+        KnnVectorsFormat format = provider.getKnnVectorsFormat(
+            null,
+            indexOptions,
+            DenseVectorFieldMapper.VectorSimilarity.COSINE,
+            DenseVectorFieldMapper.ElementType.FLOAT,
+            null,
+            0
+        );
+
+        assertNotNull(format);
+        assertThat(format, instanceOf(ES92GpuHnswSQVectorsFormat.class));
+    }
+
+    public void testInt8HnswReturnsNullWhenGpuDisabled() {
+        GPUPlugin plugin = createPlugin(GPUPlugin.GpuMode.FALSE);
+        VectorsFormatProvider provider = plugin.getVectorsFormatProvider();
+
+        Int8HnswIndexOptions indexOptions = new Int8HnswIndexOptions(16, 100, false, null, -1);
+        KnnVectorsFormat format = provider.getKnnVectorsFormat(
+            null,
+            indexOptions,
+            DenseVectorFieldMapper.VectorSimilarity.COSINE,
+            DenseVectorFieldMapper.ElementType.FLOAT,
+            null,
+            0
+        );
+
+        assertThat(format, nullValue());
+    }
+
+    public void testInt8HnswByteElementTypeReturnsNull() {
+        GPUPlugin plugin = createPlugin(GPUPlugin.GpuMode.TRUE);
+        VectorsFormatProvider provider = plugin.getVectorsFormatProvider();
+
+        Int8HnswIndexOptions indexOptions = new Int8HnswIndexOptions(16, 100, false, null, -1);
+        KnnVectorsFormat format = provider.getKnnVectorsFormat(
+            null,
+            indexOptions,
+            DenseVectorFieldMapper.VectorSimilarity.COSINE,
+            DenseVectorFieldMapper.ElementType.BYTE,
+            null,
+            0
+        );
+
+        assertThat(format, nullValue());
+    }
+
+    public void testGpuSQFormatNameMatchesCpuEquivalent() {
+        GPUPlugin plugin = createPlugin(GPUPlugin.GpuMode.TRUE);
+        VectorsFormatProvider provider = plugin.getVectorsFormatProvider();
+
+        Int8HnswIndexOptions indexOptions = new Int8HnswIndexOptions(16, 100, false, null, -1);
+        KnnVectorsFormat format = provider.getKnnVectorsFormat(
+            null,
+            indexOptions,
+            DenseVectorFieldMapper.VectorSimilarity.COSINE,
+            DenseVectorFieldMapper.ElementType.FLOAT,
+            null,
+            0
+        );
+
+        assertNotNull(format);
+        assertEquals(ES814HnswScalarQuantizedVectorsFormat.NAME, format.getName());
+    }
+
+    public void testGpuBBQFormatNameMatchesCpuEquivalent() {
+        GPUPlugin plugin = createPlugin(GPUPlugin.GpuMode.TRUE);
+        VectorsFormatProvider provider = plugin.getVectorsFormatProvider();
+
+        BBQHnswIndexOptions indexOptions = new BBQHnswIndexOptions(16, 100, false, null, -1);
+        KnnVectorsFormat format = provider.getKnnVectorsFormat(
+            null,
+            indexOptions,
+            DenseVectorFieldMapper.VectorSimilarity.COSINE,
+            DenseVectorFieldMapper.ElementType.FLOAT,
+            null,
+            0
+        );
+
+        assertNotNull(format);
+        assertEquals(ES93HnswBinaryQuantizedVectorsFormat.NAME, format.getName());
     }
 
     private record MockGPUSupport() implements GPUSupport {
