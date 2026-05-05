@@ -8,4 +8,3 @@
 #
 
 org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat
-org.elasticsearch.gpu.codec.ES92GpuHnswSQVectorsFormat

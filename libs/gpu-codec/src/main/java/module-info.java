@@ -21,7 +21,5 @@ module org.elasticsearch.gpu {
 
     provides org.apache.lucene.codecs.KnnVectorsFormat
         with
-            org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat,
-            org.elasticsearch.gpu.codec.ES92GpuHnswSQVectorsFormat,
-            org.elasticsearch.gpu.codec.ES92GpuHnswBBQVectorsFormat;
+            org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat;
 }
