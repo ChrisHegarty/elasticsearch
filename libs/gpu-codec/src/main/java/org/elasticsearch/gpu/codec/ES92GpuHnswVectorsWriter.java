@@ -199,19 +199,31 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                 // Will not be indexed on the GPU
                 generateMockGraphAndWriteMeta(fieldInfo, numVectors);
             } else {
+                boolean centroidSubtract = shouldCentroidSubtract(fieldInfo);
+                if (centroidSubtract) {
+                    cagraIndexParams = createCagraIndexParamsWithDistanceOverride(
+                        fieldInfo.getVectorSimilarityFunction(),
+                        numVectors,
+                        fieldInfo.getVectorDimension(),
+                        CagraIndexParams.CuvsDistanceType.CosineExpanded
+                    );
+                }
                 try (
                     var resourcesHolder = new ResourcesHolder(
                         cuVSResourceManager,
                         cuVSResourceManager.acquire(numVectors, fieldInfo.getVectorDimension(), CuVSMatrix.DataType.FLOAT, cagraIndexParams)
                     )
                 ) {
+                    List<float[]> vectors = centroidSubtract
+                        ? centroidSubtract(vectorsInSortedOrder, fieldInfo.getVectorDimension())
+                        : vectorsInSortedOrder;
                     var builder = CuVSMatrix.deviceBuilder(
                         resourcesHolder.resources(),
                         numVectors,
                         fieldInfo.getVectorDimension(),
                         CuVSMatrix.DataType.FLOAT
                     );
-                    for (var vector : vectorsInSortedOrder) {
+                    for (var vector : vectors) {
                         builder.addVector(vector);
                     }
                     try (var dataset = builder.build()) {
@@ -222,6 +234,41 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             var elapsed = System.nanoTime() - started;
             logger.debug("Flushed [{}] vectors in [{}ms]", numVectors, elapsed / 1_000_000.0);
         }
+    }
+
+    /**
+     * BBQ with DOT_PRODUCT requires centroid subtraction before CAGRA graph building.
+     * CPU BBQ builds its HNSW graph using a centroid-aware binary scorer, so the graph
+     * structure reflects centroid-relative distances. Without centroid subtraction, the
+     * GPU-built graph captures raw magnitude-based similarity, which misaligns with the
+     * centroid-relative binary scorer used at search time, causing recall collapse on
+     * unnormalized DOT_PRODUCT datasets.
+     */
+    private boolean shouldCentroidSubtract(FieldInfo fieldInfo) {
+        return quantizationType == GpuHnswQuantizationType.BBQ
+            && fieldInfo.getVectorSimilarityFunction() == VectorSimilarityFunction.DOT_PRODUCT;
+    }
+
+    static List<float[]> centroidSubtract(List<float[]> vectors, int dims) {
+        float[] centroid = new float[dims];
+        for (float[] vector : vectors) {
+            for (int j = 0; j < dims; j++) {
+                centroid[j] += vector[j];
+            }
+        }
+        int count = vectors.size();
+        for (int j = 0; j < dims; j++) {
+            centroid[j] /= count;
+        }
+        List<float[]> result = new ArrayList<>(count);
+        for (float[] vector : vectors) {
+            float[] subtracted = new float[dims];
+            for (int j = 0; j < dims; j++) {
+                subtracted[j] = vector[j] - centroid[j];
+            }
+            result.add(subtracted);
+        }
+        return result;
     }
 
     private List<float[]> getVectorsInSortedOrder(FieldWriter field, Sorter.DocMap sortMap, List<float[]> originalVectors)
@@ -384,8 +431,64 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         );
     }
 
+    private CagraIndexParams createCagraIndexParamsWithDistanceOverride(
+        VectorSimilarityFunction similarityFunction,
+        int numVectors,
+        int dims,
+        CagraIndexParams.CuvsDistanceType distanceOverride
+    ) {
+        int nnDescentNumIterations = ES92GpuHnswVectorsFormat.cagraNNDescentNumIterations(beamWidth);
+        return createCagraIndexParamsWithDistance(
+            distanceOverride,
+            numVectors,
+            dims,
+            M,
+            beamWidth,
+            nnDescentNumIterations,
+            quantizationType,
+            totalDeviceMemory
+        );
+    }
+
     static CagraIndexParams createCagraIndexParams(
         VectorSimilarityFunction similarityFunction,
+        int numVectors,
+        int dims,
+        int graphDegree,
+        int intermediateGraphDegree,
+        int nnDescentNumIterations,
+        GpuHnswQuantizationType quantizationType,
+        long totalDeviceMemory
+    ) {
+        CagraIndexParams.CuvsDistanceType distanceType = switch (similarityFunction) {
+            case COSINE -> CagraIndexParams.CuvsDistanceType.CosineExpanded;
+            case EUCLIDEAN -> CagraIndexParams.CuvsDistanceType.L2Expanded;
+            case DOT_PRODUCT -> {
+                if (quantizationType == GpuHnswQuantizationType.INT8_SQ) {
+                    yield CagraIndexParams.CuvsDistanceType.CosineExpanded;
+                }
+                yield CagraIndexParams.CuvsDistanceType.InnerProduct;
+            }
+            case MAXIMUM_INNER_PRODUCT -> {
+                assert quantizationType != GpuHnswQuantizationType.INT8_SQ;
+                yield CagraIndexParams.CuvsDistanceType.InnerProduct;
+            }
+        };
+
+        return createCagraIndexParamsWithDistance(
+            distanceType,
+            numVectors,
+            dims,
+            graphDegree,
+            intermediateGraphDegree,
+            nnDescentNumIterations,
+            quantizationType,
+            totalDeviceMemory
+        );
+    }
+
+    static CagraIndexParams createCagraIndexParamsWithDistance(
+        CagraIndexParams.CuvsDistanceType distanceType,
         int numVectors,
         int dims,
         int graphDegree,
@@ -398,21 +501,6 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         intermediateGraphDegree = Math.max(graphDegree + 1, intermediateGraphDegree);
 
         CuVSMatrix.DataType dataType = quantizationType.cagraDataType();
-        CagraIndexParams.CuvsDistanceType distanceType = switch (similarityFunction) {
-            case COSINE -> CagraIndexParams.CuvsDistanceType.CosineExpanded;
-            case EUCLIDEAN -> CagraIndexParams.CuvsDistanceType.L2Expanded;
-            case DOT_PRODUCT -> {
-                if (quantizationType.isQuantized()) {
-                    yield CagraIndexParams.CuvsDistanceType.CosineExpanded;
-                }
-                yield CagraIndexParams.CuvsDistanceType.InnerProduct;
-            }
-            case MAXIMUM_INNER_PRODUCT -> {
-                assert quantizationType != GpuHnswQuantizationType.INT8_SQ;
-                yield CagraIndexParams.CuvsDistanceType.InnerProduct;
-            }
-        };
-
         int numCPUThreads = 1; // TODO: how many CPU threads we can use?
         CagraIndexParams params;
 
@@ -707,6 +795,75 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
     }
 
     private void mergeFloatVectorField(
+        FieldInfo fieldInfo,
+        MergeState mergeState,
+        RandomVectorScorerSupplier randomScorerSupplier,
+        final int numVectors
+    ) throws IOException, InterruptedException {
+        boolean centroidSubtract = shouldCentroidSubtract(fieldInfo);
+        if (centroidSubtract) {
+            mergeFloatVectorFieldWithCentroidSubtraction(fieldInfo, mergeState, numVectors);
+        } else {
+            mergeFloatVectorFieldDirect(fieldInfo, mergeState, randomScorerSupplier, numVectors);
+        }
+    }
+
+    private void mergeFloatVectorFieldWithCentroidSubtraction(FieldInfo fieldInfo, MergeState mergeState, final int numVectors)
+        throws IOException, InterruptedException {
+        int dims = fieldInfo.getVectorDimension();
+        var dataType = quantizationType.cagraDataType();
+
+        // Compute centroid (mean of all vectors)
+        float[] centroid = new float[dims];
+        FloatVectorValues vectorValues = MergedVectorValues.mergeFloatVectorValues(fieldInfo, mergeState);
+        KnnVectorValues.DocIndexIterator iterator = vectorValues.iterator();
+        int count = 0;
+        for (int doc = iterator.nextDoc(); doc != NO_MORE_DOCS; doc = iterator.nextDoc()) {
+            float[] vector = vectorValues.vectorValue(iterator.index());
+            for (int j = 0; j < dims; j++) {
+                centroid[j] += vector[j];
+            }
+            count++;
+        }
+        if (count > 0) {
+            for (int j = 0; j < dims; j++) {
+                centroid[j] /= count;
+            }
+        }
+        logger.debug("Computed centroid for BBQ DOT_PRODUCT from [{}] vectors", count);
+
+        // Build CAGRA dataset from centroid-subtracted vectors using CosineExpanded
+        CagraIndexParams cagraIndexParams = createCagraIndexParamsWithDistanceOverride(
+            fieldInfo.getVectorSimilarityFunction(),
+            numVectors,
+            dims,
+            CagraIndexParams.CuvsDistanceType.CosineExpanded
+        );
+
+        var builder = CuVSMatrix.hostBuilder(numVectors, dims, dataType);
+        FloatVectorValues vectorValues2 = MergedVectorValues.mergeFloatVectorValues(fieldInfo, mergeState);
+        KnnVectorValues.DocIndexIterator iterator2 = vectorValues2.iterator();
+        float[] subtracted = new float[dims];
+        for (int doc = iterator2.nextDoc(); doc != NO_MORE_DOCS; doc = iterator2.nextDoc()) {
+            float[] vector = vectorValues2.vectorValue(iterator2.index());
+            for (int j = 0; j < dims; j++) {
+                subtracted[j] = vector[j] - centroid[j];
+            }
+            builder.addVector(subtracted);
+        }
+
+        try (
+            var dataset = builder.build();
+            var resourcesHolder = new ResourcesHolder(
+                cuVSResourceManager,
+                cuVSResourceManager.acquire(numVectors, dims, dataType, cagraIndexParams)
+            )
+        ) {
+            generateGpuGraphAndWriteMeta(resourcesHolder, fieldInfo, dataset, cagraIndexParams);
+        }
+    }
+
+    private void mergeFloatVectorFieldDirect(
         FieldInfo fieldInfo,
         MergeState mergeState,
         RandomVectorScorerSupplier randomScorerSupplier,
