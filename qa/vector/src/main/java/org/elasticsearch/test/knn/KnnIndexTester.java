@@ -94,12 +94,18 @@ public class KnnIndexTester {
     static {
         LogConfigurator.loadLog4jPlugins();
 
-        // necessary otherwise the es.logger.level system configuration in build.gradle is ignored
+        // Forward es.logger.* system properties to the ES logging framework
         ProcessInfo pinfo = ProcessInfo.fromSystem();
         Map<String, String> sysprops = pinfo.sysprops();
         String loggerLevel = sysprops.getOrDefault("es.logger.level", Level.INFO.name());
-        Settings settings = Settings.builder().put("logger.level", loggerLevel).build();
-        LogConfigurator.configureWithoutConfig(settings);
+        Settings.Builder settingsBuilder = Settings.builder().put("logger.level", loggerLevel);
+        for (Map.Entry<String, String> entry : sysprops.entrySet()) {
+            if (entry.getKey().startsWith("es.logger.") && entry.getKey().equals("es.logger.level") == false) {
+                String loggerName = entry.getKey().substring("es.".length());
+                settingsBuilder.put(loggerName, entry.getValue());
+            }
+        }
+        LogConfigurator.configureWithoutConfig(settingsBuilder.build());
 
         logger = LogManager.getLogger(KnnIndexTester.class);
     }
