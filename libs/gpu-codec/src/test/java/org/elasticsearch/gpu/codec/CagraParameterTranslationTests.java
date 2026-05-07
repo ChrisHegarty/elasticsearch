@@ -10,7 +10,6 @@
 package org.elasticsearch.gpu.codec;
 
 import com.nvidia.cuvs.CagraIndexParams;
-import com.nvidia.cuvs.CuVSMatrix;
 
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.elasticsearch.common.logging.LogConfigurator;
@@ -81,27 +80,27 @@ public class CagraParameterTranslationTests extends ESTestCase {
     }
 
     public void testDotProductSimilarity() {
-        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, CuVSMatrix.DataType.FLOAT);
+        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.NONE);
         assertEquals(CagraIndexParams.CuvsDistanceType.InnerProduct, params.getCuvsDistanceType());
     }
 
     public void testCosineSimilarity() {
-        var params = translateAndBuild(24, 200, VectorSimilarityFunction.COSINE, CuVSMatrix.DataType.FLOAT);
+        var params = translateAndBuild(24, 200, VectorSimilarityFunction.COSINE, GpuHnswQuantizationType.NONE);
         assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, params.getCuvsDistanceType());
     }
 
     public void testEuclideanSimilarity() {
-        var params = translateAndBuild(24, 200, VectorSimilarityFunction.EUCLIDEAN, CuVSMatrix.DataType.FLOAT);
+        var params = translateAndBuild(24, 200, VectorSimilarityFunction.EUCLIDEAN, GpuHnswQuantizationType.NONE);
         assertEquals(CagraIndexParams.CuvsDistanceType.L2Expanded, params.getCuvsDistanceType());
     }
 
-    public void testInt8DotProductUsesCosine() {
-        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, CuVSMatrix.DataType.BYTE);
+    public void testSQDotProductUsesCosine() {
+        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.INT8_SQ);
         assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, params.getCuvsDistanceType());
     }
 
     public void testBBQDotProductUsesCosine() {
-        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, CuVSMatrix.DataType.FLOAT, true);
+        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.BBQ);
         assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, params.getCuvsDistanceType());
     }
 
@@ -199,19 +198,9 @@ public class CagraParameterTranslationTests extends ESTestCase {
         int m,
         int efConstruction,
         VectorSimilarityFunction similarity,
-        CuVSMatrix.DataType dataType
+        GpuHnswQuantizationType quantizationType
     ) {
-        return translateAndBuild(m, efConstruction, similarity, dataType, false, DEFAULT_NUM_VECTORS, DEFAULT_DIMS, L4_GPU_MEMORY);
-    }
-
-    private static CagraIndexParams translateAndBuild(
-        int m,
-        int efConstruction,
-        VectorSimilarityFunction similarity,
-        CuVSMatrix.DataType dataType,
-        boolean isBBQ
-    ) {
-        return translateAndBuild(m, efConstruction, similarity, dataType, isBBQ, DEFAULT_NUM_VECTORS, DEFAULT_DIMS, L4_GPU_MEMORY);
+        return translateAndBuild(m, efConstruction, similarity, quantizationType, DEFAULT_NUM_VECTORS, DEFAULT_DIMS, L4_GPU_MEMORY);
     }
 
     private static CagraIndexParams translateAndBuild(int m, int efConstruction, int numVectors, int dims, long gpuMemory) {
@@ -219,8 +208,7 @@ public class CagraParameterTranslationTests extends ESTestCase {
             m,
             efConstruction,
             VectorSimilarityFunction.DOT_PRODUCT,
-            CuVSMatrix.DataType.FLOAT,
-            false,
+            GpuHnswQuantizationType.NONE,
             numVectors,
             dims,
             gpuMemory
@@ -231,8 +219,7 @@ public class CagraParameterTranslationTests extends ESTestCase {
         int m,
         int efConstruction,
         VectorSimilarityFunction similarity,
-        CuVSMatrix.DataType dataType,
-        boolean isBBQ,
+        GpuHnswQuantizationType quantizationType,
         int numVectors,
         int dims,
         long gpuMemory
@@ -247,8 +234,7 @@ public class CagraParameterTranslationTests extends ESTestCase {
             graphDegree,
             intermediateGraphDegree,
             nnDescentNumIterations,
-            dataType,
-            isBBQ,
+            quantizationType,
             gpuMemory
         );
     }

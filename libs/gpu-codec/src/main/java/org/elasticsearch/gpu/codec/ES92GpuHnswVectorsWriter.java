@@ -43,7 +43,6 @@ import org.apache.lucene.util.packed.DirectMonotonicWriter;
 import org.apache.lucene.util.quantization.ScalarQuantizer;
 import org.elasticsearch.core.IOUtils;
 import org.elasticsearch.gpu.GPUSupport;
-import org.elasticsearch.index.codec.vectors.ES814ScalarQuantizedVectorsFormat;
 import org.elasticsearch.index.codec.vectors.reflect.VectorsFormatReflectionUtils;
 import org.elasticsearch.logging.LogManager;
 import org.elasticsearch.logging.Logger;
@@ -89,8 +88,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
 
     private final List<FieldWriter> fields = new ArrayList<>();
     private boolean finished;
-    private final CuVSMatrix.DataType dataType;
-    private final boolean isBBQ;
+    private final GpuHnswQuantizationType quantizationType;
 
     ES92GpuHnswVectorsWriter(
         CuVSResourceManager cuVSResourceManager,
@@ -99,7 +97,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         int M,
         int beamWidth,
         FlatVectorsWriter flatVectorWriter,
-        boolean isBBQ
+        GpuHnswQuantizationType quantizationType
     ) throws IOException {
         this.totalDeviceMemory = totalDeviceMemory;
         assert cuVSResourceManager != null : "CuVSResources must not be null";
@@ -107,12 +105,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         this.M = M;
         this.beamWidth = beamWidth;
         this.flatVectorWriter = flatVectorWriter;
-        this.isBBQ = isBBQ;
-        if (flatVectorWriter instanceof ES814ScalarQuantizedVectorsFormat.ES814ScalarQuantizedVectorsWriter) {
-            dataType = CuVSMatrix.DataType.BYTE;
-        } else {
-            dataType = CuVSMatrix.DataType.FLOAT;
-        }
+        this.quantizationType = quantizationType;
         this.segmentWriteState = state;
         String metaFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, LUCENE99_HNSW_META_EXTENSION);
         String indexDataFileName = IndexFileNames.segmentFileName(
@@ -165,7 +158,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
      * <p>
      * This method and the private helpers it calls only need to support FLOAT32.
      * For FlatFieldVectorWriter we only need to support float[] during flush: during indexing users provide floats[], and pass floats to
-     * FlatFieldVectorWriter, even when we have a BYTE dataType (i.e. an "int8_hnsw" type).
+     * FlatFieldVectorWriter, even when we have a SCALAR_QUANTIZED quantization type (i.e. an "int8_hnsw" type).
      * During merging, we use quantized data, so we need to support byte[] too (see {@link ES92GpuHnswVectorsWriter#mergeOneField}),
      * but not here.
      * That's how our other current formats work: use floats during indexing, and quantized data to build graph during merging.
@@ -334,7 +327,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                 logger.debug(
                     "Building CAGRA graph: numVectors=[{}], dims=[{}], algorithm=[{}], similarity=[{}], "
                         + "distanceType=[{}], graphDegree=[{}], intermediateGraphDegree=[{}], nnDescentIterations=[{}], "
-                        + "dataType=[{}], isBBQ=[{}]",
+                        + "quantizationType=[{}]",
                     dataset.size(),
                     dataset.columns(),
                     algorithm,
@@ -343,8 +336,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                     M,
                     beamWidth,
                     cagraIndexParams.getNNDescentNumIterations(),
-                    dataType,
-                    isBBQ
+                    quantizationType
                 );
             } else {
                 // IVF_PQ algorithm
@@ -352,7 +344,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                 logger.debug(
                     "Building CAGRA graph: numVectors=[{}], dims=[{}], algorithm=[{}], similarity=[{}], "
                         + "distanceType=[{}], graphDegree=[{}], intermediateGraphDegree=[{}], pqDim=[{}], pqBits=[{}], "
-                        + "nLists=[{}], dataType=[{}], isBBQ=[{}]",
+                        + "nLists=[{}], quantizationType=[{}]",
                     dataset.size(),
                     dataset.columns(),
                     algorithm,
@@ -363,8 +355,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                     ivfPqIndexParams.getPqDim(),
                     ivfPqIndexParams.getPqBits(),
                     ivfPqIndexParams.getnLists(),
-                    dataType,
-                    isBBQ
+                    quantizationType
                 );
             }
         }
@@ -388,8 +379,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             M,
             beamWidth,
             nnDescentNumIterations,
-            dataType,
-            isBBQ,
+            quantizationType,
             totalDeviceMemory
         );
     }
@@ -401,24 +391,24 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         int graphDegree,
         int intermediateGraphDegree,
         int nnDescentNumIterations,
-        CuVSMatrix.DataType dataType,
-        boolean isBBQ,
+        GpuHnswQuantizationType quantizationType,
         long totalDeviceMemory
     ) {
         // CAGRA requires the intermediate graph degree to be strictly larger than the graph degree
         intermediateGraphDegree = Math.max(graphDegree + 1, intermediateGraphDegree);
 
+        CuVSMatrix.DataType dataType = quantizationType.cagraDataType();
         CagraIndexParams.CuvsDistanceType distanceType = switch (similarityFunction) {
             case COSINE -> CagraIndexParams.CuvsDistanceType.CosineExpanded;
             case EUCLIDEAN -> CagraIndexParams.CuvsDistanceType.L2Expanded;
             case DOT_PRODUCT -> {
-                if (dataType == CuVSMatrix.DataType.BYTE || isBBQ) {
+                if (quantizationType.isQuantized()) {
                     yield CagraIndexParams.CuvsDistanceType.CosineExpanded;
                 }
                 yield CagraIndexParams.CuvsDistanceType.InnerProduct;
             }
             case MAXIMUM_INNER_PRODUCT -> {
-                assert dataType != CuVSMatrix.DataType.BYTE;
+                assert quantizationType != GpuHnswQuantizationType.INT8_SQ;
                 yield CagraIndexParams.CuvsDistanceType.InnerProduct;
             }
         };
@@ -591,18 +581,18 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                 // we just build a mock graph where every node is connected to every other node
                 generateMockGraphAndWriteMeta(fieldInfo, numVectors);
             } else {
-                if (dataType == CuVSMatrix.DataType.FLOAT) {
-                    var randomScorerSupplier = VectorsFormatReflectionUtils.getFlatRandomVectorScorerInnerSupplier(scorerSupplier);
-                    mergeFloatVectorField(fieldInfo, mergeState, randomScorerSupplier, numVectors);
-                } else {
+                if (quantizationType == GpuHnswQuantizationType.INT8_SQ) {
                     // During merging, we use quantized data, so we need to support byte[] too.
                     // That's how our current formats work: use floats during indexing, and quantized data to build a graph
                     // during merging.
-                    assert dataType == CuVSMatrix.DataType.BYTE;
+                    assert quantizationType.cagraDataType() == CuVSMatrix.DataType.BYTE;
                     var randomScorerSupplier = VectorsFormatReflectionUtils.getScalarQuantizedRandomVectorScorerInnerSupplier(
                         scorerSupplier
                     );
                     mergeByteVectorField(fieldInfo, mergeState, randomScorerSupplier, numVectors);
+                } else {
+                    var randomScorerSupplier = VectorsFormatReflectionUtils.getFlatRandomVectorScorerInnerSupplier(scorerSupplier);
+                    mergeFloatVectorField(fieldInfo, mergeState, randomScorerSupplier, numVectors);
                 }
             }
             var elapsed = System.nanoTime() - started;
@@ -627,6 +617,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             numVectors,
             fieldInfo.getVectorDimension()
         );
+        var dataType = quantizationType.cagraDataType();
 
         if (vectorValues != null) {
             IndexInput slice = vectorValues.getSlice();
@@ -733,6 +724,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             numVectors,
             fieldInfo.getVectorDimension()
         );
+        var dataType = quantizationType.cagraDataType();
 
         if (vectorValues != null) {
             IndexInput slice = vectorValues.getSlice();
