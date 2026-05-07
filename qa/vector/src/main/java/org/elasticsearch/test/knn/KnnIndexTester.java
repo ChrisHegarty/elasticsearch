@@ -100,7 +100,7 @@ public class KnnIndexTester {
         String loggerLevel = sysprops.getOrDefault("es.logger.level", Level.INFO.name());
         Settings.Builder settingsBuilder = Settings.builder().put("logger.level", loggerLevel);
         for (Map.Entry<String, String> entry : sysprops.entrySet()) {
-            if (entry.getKey().startsWith("es.logger.") && entry.getKey().equals("es.logger.level") == false) {
+            if (entry.getKey().startsWith("es.logger.") && entry.getKey().equals("es.logger.level") == false && entry.getKey().equals("es.logger.out") == false) {
                 String loggerName = entry.getKey().substring("es.".length());
                 settingsBuilder.put(loggerName, entry.getValue());
             }
