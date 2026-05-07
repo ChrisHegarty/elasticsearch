@@ -34,7 +34,9 @@ import org.apache.lucene.store.FilterIndexInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MemorySegmentAccessInput;
+import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.VectorUtil;
 import org.apache.lucene.util.hnsw.HasKnnVectorValues;
 import org.apache.lucene.util.hnsw.HnswGraph;
 import org.apache.lucene.util.hnsw.HnswGraph.NodesIterator;
@@ -199,8 +201,8 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                 // Will not be indexed on the GPU
                 generateMockGraphAndWriteMeta(fieldInfo, numVectors);
             } else {
-                boolean centroidSubtract = shouldCentroidSubtract(fieldInfo);
-                if (centroidSubtract) {
+                boolean normalize = shouldNormalizeForCagra(fieldInfo);
+                if (normalize) {
                     cagraIndexParams = createCagraIndexParamsWithDistanceOverride(
                         fieldInfo.getVectorSimilarityFunction(),
                         numVectors,
@@ -214,9 +216,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                         cuVSResourceManager.acquire(numVectors, fieldInfo.getVectorDimension(), CuVSMatrix.DataType.FLOAT, cagraIndexParams)
                     )
                 ) {
-                    List<float[]> vectors = centroidSubtract
-                        ? centroidSubtract(vectorsInSortedOrder, fieldInfo.getVectorDimension())
-                        : vectorsInSortedOrder;
+                    List<float[]> vectors = normalize ? l2Normalize(vectorsInSortedOrder) : vectorsInSortedOrder;
                     var builder = CuVSMatrix.deviceBuilder(
                         resourcesHolder.resources(),
                         numVectors,
@@ -237,36 +237,25 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
     }
 
     /**
-     * BBQ with DOT_PRODUCT requires centroid subtraction before CAGRA graph building.
-     * CPU BBQ builds its HNSW graph using a centroid-aware binary scorer, so the graph
-     * structure reflects centroid-relative distances. Without centroid subtraction, the
-     * GPU-built graph captures raw magnitude-based similarity, which misaligns with the
-     * centroid-relative binary scorer used at search time, causing recall collapse on
-     * unnormalized DOT_PRODUCT datasets.
+     * BBQ with DOT_PRODUCT requires L2 normalization before CAGRA graph building.
+     * Lucene's DOT_PRODUCT assumes unit-length vectors (it's an optimized cosine).
+     * CPU BBQ builds its HNSW graph using an asymmetric binary scorer with correction
+     * terms that approximate the true dot product. Without normalization, the GPU-built
+     * graph captures raw magnitude-based similarity, which misaligns with the binary
+     * scorer used at search time. Normalizing vectors and using CosineExpanded for CAGRA
+     * aligns the graph with what the BBQ scorer expects.
      */
-    private boolean shouldCentroidSubtract(FieldInfo fieldInfo) {
+    private boolean shouldNormalizeForCagra(FieldInfo fieldInfo) {
         return quantizationType == GpuHnswQuantizationType.BBQ
             && fieldInfo.getVectorSimilarityFunction() == VectorSimilarityFunction.DOT_PRODUCT;
     }
 
-    static List<float[]> centroidSubtract(List<float[]> vectors, int dims) {
-        float[] centroid = new float[dims];
+    static List<float[]> l2Normalize(List<float[]> vectors) {
+        List<float[]> result = new ArrayList<>(vectors.size());
         for (float[] vector : vectors) {
-            for (int j = 0; j < dims; j++) {
-                centroid[j] += vector[j];
-            }
-        }
-        int count = vectors.size();
-        for (int j = 0; j < dims; j++) {
-            centroid[j] /= count;
-        }
-        List<float[]> result = new ArrayList<>(count);
-        for (float[] vector : vectors) {
-            float[] subtracted = new float[dims];
-            for (int j = 0; j < dims; j++) {
-                subtracted[j] = vector[j] - centroid[j];
-            }
-            result.add(subtracted);
+            float[] normalized = ArrayUtil.copyOfSubArray(vector, 0, vector.length);
+            VectorUtil.l2normalize(normalized);
+            result.add(normalized);
         }
         return result;
     }
@@ -800,39 +789,19 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         RandomVectorScorerSupplier randomScorerSupplier,
         final int numVectors
     ) throws IOException, InterruptedException {
-        boolean centroidSubtract = shouldCentroidSubtract(fieldInfo);
-        if (centroidSubtract) {
-            mergeFloatVectorFieldWithCentroidSubtraction(fieldInfo, mergeState, numVectors);
+        boolean normalize = shouldNormalizeForCagra(fieldInfo);
+        if (normalize) {
+            mergeFloatVectorFieldWithNormalization(fieldInfo, mergeState, numVectors);
         } else {
             mergeFloatVectorFieldDirect(fieldInfo, mergeState, randomScorerSupplier, numVectors);
         }
     }
 
-    private void mergeFloatVectorFieldWithCentroidSubtraction(FieldInfo fieldInfo, MergeState mergeState, final int numVectors)
+    private void mergeFloatVectorFieldWithNormalization(FieldInfo fieldInfo, MergeState mergeState, final int numVectors)
         throws IOException, InterruptedException {
         int dims = fieldInfo.getVectorDimension();
         var dataType = quantizationType.cagraDataType();
 
-        // Compute centroid (mean of all vectors)
-        float[] centroid = new float[dims];
-        FloatVectorValues vectorValues = MergedVectorValues.mergeFloatVectorValues(fieldInfo, mergeState);
-        KnnVectorValues.DocIndexIterator iterator = vectorValues.iterator();
-        int count = 0;
-        for (int doc = iterator.nextDoc(); doc != NO_MORE_DOCS; doc = iterator.nextDoc()) {
-            float[] vector = vectorValues.vectorValue(iterator.index());
-            for (int j = 0; j < dims; j++) {
-                centroid[j] += vector[j];
-            }
-            count++;
-        }
-        if (count > 0) {
-            for (int j = 0; j < dims; j++) {
-                centroid[j] /= count;
-            }
-        }
-        logger.debug("Computed centroid for BBQ DOT_PRODUCT from [{}] vectors", count);
-
-        // Build CAGRA dataset from centroid-subtracted vectors using CosineExpanded
         CagraIndexParams cagraIndexParams = createCagraIndexParamsWithDistanceOverride(
             fieldInfo.getVectorSimilarityFunction(),
             numVectors,
@@ -841,15 +810,13 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         );
 
         var builder = CuVSMatrix.hostBuilder(numVectors, dims, dataType);
-        FloatVectorValues vectorValues2 = MergedVectorValues.mergeFloatVectorValues(fieldInfo, mergeState);
-        KnnVectorValues.DocIndexIterator iterator2 = vectorValues2.iterator();
-        float[] subtracted = new float[dims];
-        for (int doc = iterator2.nextDoc(); doc != NO_MORE_DOCS; doc = iterator2.nextDoc()) {
-            float[] vector = vectorValues2.vectorValue(iterator2.index());
-            for (int j = 0; j < dims; j++) {
-                subtracted[j] = vector[j] - centroid[j];
-            }
-            builder.addVector(subtracted);
+        FloatVectorValues vectorValues = MergedVectorValues.mergeFloatVectorValues(fieldInfo, mergeState);
+        KnnVectorValues.DocIndexIterator iterator = vectorValues.iterator();
+        for (int doc = iterator.nextDoc(); doc != NO_MORE_DOCS; doc = iterator.nextDoc()) {
+            float[] vector = vectorValues.vectorValue(iterator.index());
+            float[] normalized = ArrayUtil.copyOfSubArray(vector, 0, dims);
+            VectorUtil.l2normalize(normalized);
+            builder.addVector(normalized);
         }
 
         try (

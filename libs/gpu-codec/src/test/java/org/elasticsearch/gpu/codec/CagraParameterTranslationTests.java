@@ -101,7 +101,7 @@ public class CagraParameterTranslationTests extends ESTestCase {
 
     public void testBBQDotProductUsesInnerProduct() {
         // BBQ DOT_PRODUCT uses InnerProduct at the params level;
-        // centroid subtraction + CosineExpanded override is applied at the writer level
+        // L2 normalization + CosineExpanded override is applied at the writer level
         var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.BBQ);
         assertEquals(CagraIndexParams.CuvsDistanceType.InnerProduct, params.getCuvsDistanceType());
     }
