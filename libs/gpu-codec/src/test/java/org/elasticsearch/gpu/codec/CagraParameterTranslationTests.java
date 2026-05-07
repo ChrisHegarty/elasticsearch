@@ -100,6 +100,11 @@ public class CagraParameterTranslationTests extends ESTestCase {
         assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, params.getCuvsDistanceType());
     }
 
+    public void testBBQDotProductUsesCosine() {
+        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, CuVSMatrix.DataType.FLOAT, true);
+        assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, params.getCuvsDistanceType());
+    }
+
     public void testL4AlgorithmSelection() {
         var params = translateAndBuild(24, 200, 100_000, 1024, L4_GPU_MEMORY);
         assertEquals(CagraIndexParams.CagraGraphBuildAlgo.NN_DESCENT, params.getCagraGraphBuildAlgo());
@@ -196,7 +201,17 @@ public class CagraParameterTranslationTests extends ESTestCase {
         VectorSimilarityFunction similarity,
         CuVSMatrix.DataType dataType
     ) {
-        return translateAndBuild(m, efConstruction, similarity, dataType, DEFAULT_NUM_VECTORS, DEFAULT_DIMS, L4_GPU_MEMORY);
+        return translateAndBuild(m, efConstruction, similarity, dataType, false, DEFAULT_NUM_VECTORS, DEFAULT_DIMS, L4_GPU_MEMORY);
+    }
+
+    private static CagraIndexParams translateAndBuild(
+        int m,
+        int efConstruction,
+        VectorSimilarityFunction similarity,
+        CuVSMatrix.DataType dataType,
+        boolean isBBQ
+    ) {
+        return translateAndBuild(m, efConstruction, similarity, dataType, isBBQ, DEFAULT_NUM_VECTORS, DEFAULT_DIMS, L4_GPU_MEMORY);
     }
 
     private static CagraIndexParams translateAndBuild(int m, int efConstruction, int numVectors, int dims, long gpuMemory) {
@@ -205,6 +220,7 @@ public class CagraParameterTranslationTests extends ESTestCase {
             efConstruction,
             VectorSimilarityFunction.DOT_PRODUCT,
             CuVSMatrix.DataType.FLOAT,
+            false,
             numVectors,
             dims,
             gpuMemory
@@ -216,6 +232,7 @@ public class CagraParameterTranslationTests extends ESTestCase {
         int efConstruction,
         VectorSimilarityFunction similarity,
         CuVSMatrix.DataType dataType,
+        boolean isBBQ,
         int numVectors,
         int dims,
         long gpuMemory
@@ -231,6 +248,7 @@ public class CagraParameterTranslationTests extends ESTestCase {
             intermediateGraphDegree,
             nnDescentNumIterations,
             dataType,
+            isBBQ,
             gpuMemory
         );
     }

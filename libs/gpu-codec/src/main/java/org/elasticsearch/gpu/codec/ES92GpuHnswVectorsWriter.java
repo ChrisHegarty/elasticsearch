@@ -90,6 +90,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
     private final List<FieldWriter> fields = new ArrayList<>();
     private boolean finished;
     private final CuVSMatrix.DataType dataType;
+    private final boolean isBBQ;
 
     ES92GpuHnswVectorsWriter(
         CuVSResourceManager cuVSResourceManager,
@@ -97,7 +98,8 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         SegmentWriteState state,
         int M,
         int beamWidth,
-        FlatVectorsWriter flatVectorWriter
+        FlatVectorsWriter flatVectorWriter,
+        boolean isBBQ
     ) throws IOException {
         this.totalDeviceMemory = totalDeviceMemory;
         assert cuVSResourceManager != null : "CuVSResources must not be null";
@@ -105,6 +107,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         this.M = M;
         this.beamWidth = beamWidth;
         this.flatVectorWriter = flatVectorWriter;
+        this.isBBQ = isBBQ;
         if (flatVectorWriter instanceof ES814ScalarQuantizedVectorsFormat.ES814ScalarQuantizedVectorsWriter) {
             dataType = CuVSMatrix.DataType.BYTE;
         } else {
@@ -330,32 +333,38 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             if (algorithm == CagraIndexParams.CagraGraphBuildAlgo.NN_DESCENT) {
                 logger.debug(
                     "Building CAGRA graph: numVectors=[{}], dims=[{}], algorithm=[{}], similarity=[{}], "
-                        + "graphDegree=[{}], intermediateGraphDegree=[{}], nnDescentIterations=[{}], dataType=[{}]",
+                        + "distanceType=[{}], graphDegree=[{}], intermediateGraphDegree=[{}], nnDescentIterations=[{}], "
+                        + "dataType=[{}], isBBQ=[{}]",
                     dataset.size(),
                     dataset.columns(),
                     algorithm,
                     fieldInfo.getVectorSimilarityFunction(),
+                    cagraIndexParams.getCuvsDistanceType(),
                     M,
                     beamWidth,
                     cagraIndexParams.getNNDescentNumIterations(),
-                    dataType
+                    dataType,
+                    isBBQ
                 );
             } else {
                 // IVF_PQ algorithm
                 var ivfPqIndexParams = cagraIndexParams.getCuVSIvfPqParams().getIndexParams();
                 logger.debug(
                     "Building CAGRA graph: numVectors=[{}], dims=[{}], algorithm=[{}], similarity=[{}], "
-                        + "graphDegree=[{}], intermediateGraphDegree=[{}], pqDim=[{}], pqBits=[{}], nLists=[{}], dataType=[{}]",
+                        + "distanceType=[{}], graphDegree=[{}], intermediateGraphDegree=[{}], pqDim=[{}], pqBits=[{}], "
+                        + "nLists=[{}], dataType=[{}], isBBQ=[{}]",
                     dataset.size(),
                     dataset.columns(),
                     algorithm,
                     fieldInfo.getVectorSimilarityFunction(),
+                    cagraIndexParams.getCuvsDistanceType(),
                     cagraIndexParams.getGraphDegree(),
                     cagraIndexParams.getIntermediateGraphDegree(),
                     ivfPqIndexParams.getPqDim(),
                     ivfPqIndexParams.getPqBits(),
                     ivfPqIndexParams.getnLists(),
-                    dataType
+                    dataType,
+                    isBBQ
                 );
             }
         }
@@ -380,6 +389,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             beamWidth,
             nnDescentNumIterations,
             dataType,
+            isBBQ,
             totalDeviceMemory
         );
     }
@@ -392,6 +402,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         int intermediateGraphDegree,
         int nnDescentNumIterations,
         CuVSMatrix.DataType dataType,
+        boolean isBBQ,
         long totalDeviceMemory
     ) {
         // CAGRA requires the intermediate graph degree to be strictly larger than the graph degree
@@ -401,7 +412,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             case COSINE -> CagraIndexParams.CuvsDistanceType.CosineExpanded;
             case EUCLIDEAN -> CagraIndexParams.CuvsDistanceType.L2Expanded;
             case DOT_PRODUCT -> {
-                if (dataType == CuVSMatrix.DataType.BYTE) {
+                if (dataType == CuVSMatrix.DataType.BYTE || isBBQ) {
                     yield CagraIndexParams.CuvsDistanceType.CosineExpanded;
                 }
                 yield CagraIndexParams.CuvsDistanceType.InnerProduct;
