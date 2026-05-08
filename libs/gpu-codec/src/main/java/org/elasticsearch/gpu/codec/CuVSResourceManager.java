@@ -184,16 +184,24 @@ public interface CuVSResourceManager {
                             throw new IllegalArgumentException(message);
                         }
 
-                        // If no resource in the pool is locked, short circuit to avoid livelock
-                        if (numLockedResources() == 0) {
-                            logger.debug("No resources currently locked, proceeding");
-                            break;
-                        }
-
                         // Check resources availability
                         long availableMemoryInBytes = gpuMemoryService.availableMemoryInBytes(res);
                         enoughMemory = requiredMemoryInBytes <= availableMemoryInBytes;
                         logger.debug("Free device memory [{} B], enoughMemory[{}]", availableMemoryInBytes, enoughMemory);
+
+                        // If no resource in the pool is locked, we must proceed to avoid livelock
+                        // (there's nobody to release and signal the condition). Log a warning if
+                        // memory is insufficient — the build may still succeed if the estimate is
+                        // conservative, or it will fail with a CUDA error rather than deadlock.
+                        if (enoughMemory == false && numLockedResources() == 0) {
+                            logger.warn(
+                                "Insufficient GPU memory ([{}] B available, [{}] B required) "
+                                    + "but no locked resources to wait on; proceeding to avoid livelock",
+                                availableMemoryInBytes,
+                                requiredMemoryInBytes
+                            );
+                            break;
+                        }
                     } else {
                         if (createdCount == 0) {
                             throw new IOException("No GPU resources available and unable to create new ones");

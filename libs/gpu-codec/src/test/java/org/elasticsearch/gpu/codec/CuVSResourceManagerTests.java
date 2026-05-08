@@ -227,6 +227,37 @@ public class CuVSResourceManagerTests extends ESTestCase {
         mgr.shutdown();
     }
 
+    public void testProceedsWithWarningWhenInsufficientMemoryAndNoLockedResources() throws Exception {
+        // Simulates a GPU where total memory is large but available memory is low (e.g. other
+        // processes using the GPU). With no locked resources, acquire must still proceed
+        // (to avoid livelock) rather than block forever.
+        long totalMemory = 256L * 1024 * 1024;
+        long availableMemory = 1L * 1024 * 1024;
+        var memoryService = new GPUMemoryService() {
+            @Override
+            public long totalMemoryInBytes(CuVSResources res) {
+                return totalMemory;
+            }
+
+            @Override
+            public long availableMemoryInBytes(CuVSResources res) {
+                return availableMemory;
+            }
+
+            @Override
+            public void reserveMemory(long memoryInBytes) {}
+
+            @Override
+            public void releaseMemory(long memoryInBytes) {}
+        };
+        var mgr = new MockPoolingCuVSResourceManagerWithService(2, memoryService);
+        // Request ~128 MB — more than the 1 MB available, but less than the 256 MB total
+        var res = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        assertNotNull(res);
+        mgr.release(res);
+        mgr.shutdown();
+    }
+
     public void testEstimateNNDescentMemoryOverflow() {
         int numVectors = 500_000;
         int dims = 1024;
@@ -297,6 +328,20 @@ public class CuVSResourceManagerTests extends ESTestCase {
             }
             createFailedLatch.countDown();
             return null;
+        }
+    }
+
+    static class MockPoolingCuVSResourceManagerWithService extends CuVSResourceManager.PoolingCuVSResourceManager {
+
+        private final AtomicInteger idGenerator = new AtomicInteger();
+
+        MockPoolingCuVSResourceManagerWithService(int capacity, GPUMemoryService gpuMemoryService) {
+            super(capacity, gpuMemoryService);
+        }
+
+        @Override
+        protected CuVSResources createNew() {
+            return new MockCuVSResources(idGenerator.getAndIncrement());
         }
     }
 
