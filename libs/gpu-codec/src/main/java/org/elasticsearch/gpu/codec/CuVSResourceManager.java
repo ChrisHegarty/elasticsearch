@@ -90,7 +90,7 @@ public interface CuVSResourceManager {
     class PoolingCuVSResourceManager implements CuVSResourceManager {
 
         static final Logger logger = LogManager.getLogger(CuVSResourceManager.class);
-        static final int MAX_RESOURCES = 1;
+        static final int MAX_RESOURCES = 4;
 
         static class Holder {
             static final PoolingCuVSResourceManager INSTANCE = new PoolingCuVSResourceManager(

@@ -13,11 +13,21 @@ import com.nvidia.cuvs.CuVSResources;
 import com.nvidia.cuvs.GPUInfoProvider;
 
 /**
- * A {@link GPUMemoryService} that tracks how much memory is currently used/available on a GPU by using the GPU free/total memory APIs
- * (via a {@link GPUInfoProvider})
+ * A {@link GPUMemoryService} that combines real GPU memory queries with software-side reservation tracking.
+ *
+ * <p>The GPU's reported free memory is a lagging indicator — between acquiring a resource and the CUDA kernel
+ * actually allocating device memory, other threads can observe stale free memory values. To close this race
+ * window, this service also maintains a software ledger of estimated reservations. The available memory
+ * returned is the minimum of the device-reported free memory and the ledger-tracked available memory,
+ * ensuring concurrent builds cannot over-commit.
+ *
+ * <p>Thread safety: all methods are called under the {@link CuVSResourceManager.PoolingCuVSResourceManager} lock,
+ * so no additional synchronization is needed in this class.
  */
 class RealGPUMemoryService implements GPUMemoryService {
     private final GPUInfoProvider gpuInfoProvider;
+    private long totalDeviceMemoryInBytes; // lazily initialized; immutable once set
+    private long reservedMemoryInBytes;
 
     RealGPUMemoryService(GPUInfoProvider gpuInfoProvider) {
         this.gpuInfoProvider = gpuInfoProvider;
@@ -25,21 +35,35 @@ class RealGPUMemoryService implements GPUMemoryService {
 
     @Override
     public long totalMemoryInBytes(CuVSResources res) {
-        return gpuInfoProvider.getCurrentInfo(res).totalDeviceMemoryInBytes();
+        if (totalDeviceMemoryInBytes == 0) {
+            totalDeviceMemoryInBytes = gpuInfoProvider.getCurrentInfo(res).totalDeviceMemoryInBytes();
+        }
+        return totalDeviceMemoryInBytes;
     }
 
     @Override
     public long availableMemoryInBytes(CuVSResources res) {
-        return gpuInfoProvider.getCurrentInfo(res).freeDeviceMemoryInBytes();
+        long deviceFree = gpuInfoProvider.getCurrentInfo(res).freeDeviceMemoryInBytes();
+        long ledgerAvailable = totalMemoryInBytes(res) - reservedMemoryInBytes;
+        return Math.min(deviceFree, ledgerAvailable);
     }
 
     @Override
     public void reserveMemory(long memoryInBytes) {
-        // No-op
+        checkNonNegative(memoryInBytes, "reserve amount");
+        reservedMemoryInBytes += memoryInBytes;
     }
 
     @Override
     public void releaseMemory(long memoryInBytes) {
-        // No-op
+        checkNonNegative(memoryInBytes, "release amount");
+        reservedMemoryInBytes -= memoryInBytes;
+        checkNonNegative(reservedMemoryInBytes, "memory ledger");
+    }
+
+    static void checkNonNegative(long value, String name) {
+        if (value < 0) {
+            throw new IllegalStateException(name + " must be non-negative, got: " + value);
+        }
     }
 }
