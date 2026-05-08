@@ -18,6 +18,4 @@ module org.elasticsearch.gpu {
 
     exports org.elasticsearch.gpu;
     exports org.elasticsearch.gpu.codec;
-
-    provides org.apache.lucene.codecs.KnnVectorsFormat with org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat;
 }
