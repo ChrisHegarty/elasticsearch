@@ -159,11 +159,15 @@ public interface CuVSResourceManager {
 
                 long requiredMemoryInBytes = estimateRequiredMemory(numVectors, dims, dataType, cagraIndexParams);
                 logger.debug(
-                    "Estimated memory for [{}] vectors, [{}] dims of type [{}] is [{} B]",
+                    "Acquiring resource: [{}] vectors, [{}] dims, type [{}], algo [{}], estimated [{}] B, "
+                        + "pool state: [{}] created, [{}] locked",
                     numVectors,
                     dims,
                     dataType.name(),
-                    requiredMemoryInBytes
+                    cagraIndexParams.getCagraGraphBuildAlgo(),
+                    requiredMemoryInBytes,
+                    createdCount,
+                    numLockedResources()
                 );
 
                 while (allConditionsMet == false) {
@@ -171,8 +175,20 @@ public interface CuVSResourceManager {
 
                     final boolean enoughMemory;
                     if (res != null) {
-                        // Check immutable constraints
                         long totalMemoryInBytes = gpuMemoryService.totalMemoryInBytes(res);
+                        long availableMemoryInBytes = gpuMemoryService.availableMemoryInBytes(res);
+                        enoughMemory = requiredMemoryInBytes <= availableMemoryInBytes;
+                        logger.debug(
+                            "Memory check: available [{}] B / total [{}] B, required [{}] B, "
+                                + "enoughMemory [{}], locked [{}]",
+                            availableMemoryInBytes,
+                            totalMemoryInBytes,
+                            requiredMemoryInBytes,
+                            enoughMemory,
+                            numLockedResources()
+                        );
+
+                        // Check immutable constraints
                         if (requiredMemoryInBytes > totalMemoryInBytes) {
                             String message = Strings.format(
                                 "Requested GPU memory for [%d] vectors, [%d] dims is greater than the GPU total memory [%d B]",
@@ -183,11 +199,6 @@ public interface CuVSResourceManager {
                             logger.error(message);
                             throw new IllegalArgumentException(message);
                         }
-
-                        // Check resources availability
-                        long availableMemoryInBytes = gpuMemoryService.availableMemoryInBytes(res);
-                        enoughMemory = requiredMemoryInBytes <= availableMemoryInBytes;
-                        logger.debug("Free device memory [{} B], enoughMemory[{}]", availableMemoryInBytes, enoughMemory);
 
                         // If no resource in the pool is locked, we must proceed to avoid livelock
                         // (there's nobody to release and signal the condition). Log a warning if
@@ -215,8 +226,13 @@ public interface CuVSResourceManager {
                         enoughResourcesCondition.await();
                     }
                 }
-                var elapsed = started - System.nanoTime();
-                logger.debug("Resource acquired in [{}ms]", elapsed / 1_000_000.0);
+                var elapsed = System.nanoTime() - started;
+                logger.debug(
+                    "Resource acquired in [{}] ms, reserving [{}] B, locked after acquire [{}]",
+                    elapsed / 1_000_000.0,
+                    requiredMemoryInBytes,
+                    numLockedResources() + 1
+                );
                 gpuMemoryService.reserveMemory(requiredMemoryInBytes);
                 res.lock(() -> gpuMemoryService.releaseMemory(requiredMemoryInBytes));
                 return res;
@@ -277,11 +293,12 @@ public interface CuVSResourceManager {
 
         @Override
         public void release(ManagedCuVSResources resources) {
-            logger.debug("Releasing resources to pool");
             try {
                 lock.lock();
                 assert resources.isLocked();
                 resources.unlock();
+                int lockedAfter = numLockedResources();
+                logger.debug("Released resource to pool, locked after release [{}]", lockedAfter);
                 enoughResourcesCondition.signalAll();
             } finally {
                 lock.unlock();
