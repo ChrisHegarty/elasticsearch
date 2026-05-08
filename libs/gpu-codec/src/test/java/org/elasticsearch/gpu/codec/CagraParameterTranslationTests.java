@@ -79,9 +79,18 @@ public class CagraParameterTranslationTests extends ESTestCase {
         assertEquals(383, params.getIntermediateGraphDegree());
     }
 
-    public void testDotProductSimilarity() {
+    public void testDotProductUsesCosineExpanded() {
+        // DOT_PRODUCT always uses CosineExpanded for CAGRA, regardless of quantization type.
+        // Lucene's DOT_PRODUCT assumes unit-length vectors (it's an optimized cosine), and
+        // CosineExpanded is robust even when vectors are not perfectly unit-normalized.
         var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.NONE);
-        assertEquals(CagraIndexParams.CuvsDistanceType.InnerProduct, params.getCuvsDistanceType());
+        assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, params.getCuvsDistanceType());
+
+        var sqParams = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.INT8_SQ);
+        assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, sqParams.getCuvsDistanceType());
+
+        var bbqParams = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.BBQ);
+        assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, bbqParams.getCuvsDistanceType());
     }
 
     public void testCosineSimilarity() {
@@ -92,18 +101,6 @@ public class CagraParameterTranslationTests extends ESTestCase {
     public void testEuclideanSimilarity() {
         var params = translateAndBuild(24, 200, VectorSimilarityFunction.EUCLIDEAN, GpuHnswQuantizationType.NONE);
         assertEquals(CagraIndexParams.CuvsDistanceType.L2Expanded, params.getCuvsDistanceType());
-    }
-
-    public void testSQDotProductUsesCosine() {
-        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.INT8_SQ);
-        assertEquals(CagraIndexParams.CuvsDistanceType.CosineExpanded, params.getCuvsDistanceType());
-    }
-
-    public void testBBQDotProductUsesInnerProduct() {
-        // BBQ DOT_PRODUCT uses InnerProduct at the params level;
-        // L2 normalization + CosineExpanded override is applied at the writer level
-        var params = translateAndBuild(24, 200, VectorSimilarityFunction.DOT_PRODUCT, GpuHnswQuantizationType.BBQ);
-        assertEquals(CagraIndexParams.CuvsDistanceType.InnerProduct, params.getCuvsDistanceType());
     }
 
     public void testL4AlgorithmSelection() {

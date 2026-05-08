@@ -34,9 +34,7 @@ import org.apache.lucene.store.FilterIndexInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MemorySegmentAccessInput;
-import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.RamUsageEstimator;
-import org.apache.lucene.util.VectorUtil;
 import org.apache.lucene.util.hnsw.HasKnnVectorValues;
 import org.apache.lucene.util.hnsw.HnswGraph;
 import org.apache.lucene.util.hnsw.HnswGraph.NodesIterator;
@@ -201,29 +199,19 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                 // Will not be indexed on the GPU
                 generateMockGraphAndWriteMeta(fieldInfo, numVectors);
             } else {
-                boolean normalize = shouldNormalizeForCagra(fieldInfo);
-                if (normalize) {
-                    cagraIndexParams = createCagraIndexParamsWithDistanceOverride(
-                        fieldInfo.getVectorSimilarityFunction(),
-                        numVectors,
-                        fieldInfo.getVectorDimension(),
-                        CagraIndexParams.CuvsDistanceType.CosineExpanded
-                    );
-                }
                 try (
                     var resourcesHolder = new ResourcesHolder(
                         cuVSResourceManager,
                         cuVSResourceManager.acquire(numVectors, fieldInfo.getVectorDimension(), CuVSMatrix.DataType.FLOAT, cagraIndexParams)
                     )
                 ) {
-                    List<float[]> vectors = normalize ? l2Normalize(vectorsInSortedOrder) : vectorsInSortedOrder;
                     var builder = CuVSMatrix.deviceBuilder(
                         resourcesHolder.resources(),
                         numVectors,
                         fieldInfo.getVectorDimension(),
                         CuVSMatrix.DataType.FLOAT
                     );
-                    for (var vector : vectors) {
+                    for (var vector : vectorsInSortedOrder) {
                         builder.addVector(vector);
                     }
                     try (var dataset = builder.build()) {
@@ -234,30 +222,6 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             var elapsed = System.nanoTime() - started;
             logger.debug("Flushed [{}] vectors in [{}ms]", numVectors, elapsed / 1_000_000.0);
         }
-    }
-
-    /**
-     * BBQ with DOT_PRODUCT requires L2 normalization before CAGRA graph building.
-     * Lucene's DOT_PRODUCT assumes unit-length vectors (it's an optimized cosine).
-     * CPU BBQ builds its HNSW graph using an asymmetric binary scorer with correction
-     * terms that approximate the true dot product. Without normalization, the GPU-built
-     * graph captures raw magnitude-based similarity, which misaligns with the binary
-     * scorer used at search time. Normalizing vectors and using CosineExpanded for CAGRA
-     * aligns the graph with what the BBQ scorer expects.
-     */
-    private boolean shouldNormalizeForCagra(FieldInfo fieldInfo) {
-        return quantizationType == GpuHnswQuantizationType.BBQ
-            && fieldInfo.getVectorSimilarityFunction() == VectorSimilarityFunction.DOT_PRODUCT;
-    }
-
-    static List<float[]> l2Normalize(List<float[]> vectors) {
-        List<float[]> result = new ArrayList<>(vectors.size());
-        for (float[] vector : vectors) {
-            float[] normalized = ArrayUtil.copyOfSubArray(vector, 0, vector.length);
-            VectorUtil.l2normalize(normalized);
-            result.add(normalized);
-        }
-        return result;
     }
 
     private List<float[]> getVectorsInSortedOrder(FieldWriter field, Sorter.DocMap sortMap, List<float[]> originalVectors)
@@ -420,25 +384,6 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         );
     }
 
-    private CagraIndexParams createCagraIndexParamsWithDistanceOverride(
-        VectorSimilarityFunction similarityFunction,
-        int numVectors,
-        int dims,
-        CagraIndexParams.CuvsDistanceType distanceOverride
-    ) {
-        int nnDescentNumIterations = ES92GpuHnswVectorsFormat.cagraNNDescentNumIterations(beamWidth);
-        return createCagraIndexParamsWithDistance(
-            distanceOverride,
-            numVectors,
-            dims,
-            M,
-            beamWidth,
-            nnDescentNumIterations,
-            quantizationType,
-            totalDeviceMemory
-        );
-    }
-
     static CagraIndexParams createCagraIndexParams(
         VectorSimilarityFunction similarityFunction,
         int numVectors,
@@ -452,12 +397,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         CagraIndexParams.CuvsDistanceType distanceType = switch (similarityFunction) {
             case COSINE -> CagraIndexParams.CuvsDistanceType.CosineExpanded;
             case EUCLIDEAN -> CagraIndexParams.CuvsDistanceType.L2Expanded;
-            case DOT_PRODUCT -> {
-                if (quantizationType == GpuHnswQuantizationType.INT8_SQ) {
-                    yield CagraIndexParams.CuvsDistanceType.CosineExpanded;
-                }
-                yield CagraIndexParams.CuvsDistanceType.InnerProduct;
-            }
+            case DOT_PRODUCT -> CagraIndexParams.CuvsDistanceType.CosineExpanded;
             case MAXIMUM_INNER_PRODUCT -> {
                 assert quantizationType != GpuHnswQuantizationType.INT8_SQ;
                 yield CagraIndexParams.CuvsDistanceType.InnerProduct;
@@ -669,7 +609,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                     mergeByteVectorField(fieldInfo, mergeState, randomScorerSupplier, numVectors);
                 } else {
                     var randomScorerSupplier = VectorsFormatReflectionUtils.getFlatRandomVectorScorerInnerSupplier(scorerSupplier);
-                    mergeFloatVectorField(fieldInfo, mergeState, randomScorerSupplier, numVectors);
+                    mergeFloatVectorFieldDirect(fieldInfo, mergeState, randomScorerSupplier, numVectors);
                 }
             }
             var elapsed = System.nanoTime() - started;
@@ -780,53 +720,6 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             ) {
                 generateGpuGraphAndWriteMeta(resourcesHolder, fieldInfo, dataset, cagraIndexParams);
             }
-        }
-    }
-
-    private void mergeFloatVectorField(
-        FieldInfo fieldInfo,
-        MergeState mergeState,
-        RandomVectorScorerSupplier randomScorerSupplier,
-        final int numVectors
-    ) throws IOException, InterruptedException {
-        boolean normalize = shouldNormalizeForCagra(fieldInfo);
-        if (normalize) {
-            mergeFloatVectorFieldWithNormalization(fieldInfo, mergeState, numVectors);
-        } else {
-            mergeFloatVectorFieldDirect(fieldInfo, mergeState, randomScorerSupplier, numVectors);
-        }
-    }
-
-    private void mergeFloatVectorFieldWithNormalization(FieldInfo fieldInfo, MergeState mergeState, final int numVectors)
-        throws IOException, InterruptedException {
-        int dims = fieldInfo.getVectorDimension();
-        var dataType = quantizationType.cagraDataType();
-
-        CagraIndexParams cagraIndexParams = createCagraIndexParamsWithDistanceOverride(
-            fieldInfo.getVectorSimilarityFunction(),
-            numVectors,
-            dims,
-            CagraIndexParams.CuvsDistanceType.CosineExpanded
-        );
-
-        var builder = CuVSMatrix.hostBuilder(numVectors, dims, dataType);
-        FloatVectorValues vectorValues = MergedVectorValues.mergeFloatVectorValues(fieldInfo, mergeState);
-        KnnVectorValues.DocIndexIterator iterator = vectorValues.iterator();
-        for (int doc = iterator.nextDoc(); doc != NO_MORE_DOCS; doc = iterator.nextDoc()) {
-            float[] vector = vectorValues.vectorValue(iterator.index());
-            float[] normalized = ArrayUtil.copyOfSubArray(vector, 0, dims);
-            VectorUtil.l2normalize(normalized);
-            builder.addVector(normalized);
-        }
-
-        try (
-            var dataset = builder.build();
-            var resourcesHolder = new ResourcesHolder(
-                cuVSResourceManager,
-                cuVSResourceManager.acquire(numVectors, dims, dataType, cagraIndexParams)
-            )
-        ) {
-            generateGpuGraphAndWriteMeta(resourcesHolder, fieldInfo, dataset, cagraIndexParams);
         }
     }
 
