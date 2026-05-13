@@ -40,14 +40,8 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  */
 public interface CuVSResourceManager {
-    /**
-     * A multiplier on raw input data size to estimate total GPU memory consumed during CAGRA index construction.
-     * NN_DESCENT allocates intermediate graph structures, distance matrices, and scratch buffers beyond the raw
-     * vector data. Empirical measurements on an L4 (22 GB) show the actual factor ranges from ~1.6x for large
-     * segments (300K+ vectors) up to ~4x for small segments (~50K vectors) due to fixed-size working buffers.
-     * A value of 4.0 covers the worst case and prevents over-committing GPU memory during concurrent builds.
-     */
-    double GPU_COMPUTATION_MEMORY_FACTOR = 4.0;
+    /** A multiplier on input data to account for intermediate and output data size required while processing it */
+    double GPU_COMPUTATION_MEMORY_FACTOR = 2.0;
 
     /**
      * Acquires a resource from the manager.
@@ -58,6 +52,15 @@ public interface CuVSResourceManager {
      */
     ManagedCuVSResources acquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams)
         throws InterruptedException, IOException;
+
+    /**
+     * Tries to acquire a resource from the manager.
+     *
+     * <p> Non-blocking variant of {@link #acquire}. Returns a locked resource immediately if
+     * one is available and there is sufficient GPU memory, or {@code null} if the GPU is busy.
+     */
+    ManagedCuVSResources tryAcquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams)
+        throws IOException;
 
     /** Marks the resources as finished with regard to compute. */
     void finishedComputation(ManagedCuVSResources resources);
@@ -156,17 +159,41 @@ public interface CuVSResourceManager {
         @Override
         public ManagedCuVSResources acquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams)
             throws InterruptedException, IOException {
+            return doAcquire(numVectors, dims, dataType, cagraIndexParams, false);
+        }
+
+        @Override
+        public ManagedCuVSResources tryAcquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams)
+            throws IOException {
             try {
-                var started = System.nanoTime();
-                lock.lock();
+                return doAcquire(numVectors, dims, dataType, cagraIndexParams, true);
+            } catch (InterruptedException e) {
+                throw new AssertionError("non-blocking acquire should never block", e);
+            }
+        }
 
-                boolean allConditionsMet = false;
-                ManagedCuVSResources res = null;
-
+        /**
+         * Shared implementation for {@link #acquire} and {@link #tryAcquire}.
+         *
+         * @param nonBlocking if {@code true}, returns {@code null} instead of waiting when no
+         *                    resource or memory is available (tryAcquire semantics); if {@code false},
+         *                    blocks until a resource becomes available (acquire semantics).
+         */
+        private ManagedCuVSResources doAcquire(
+            int numVectors,
+            int dims,
+            CuVSMatrix.DataType dataType,
+            CagraIndexParams cagraIndexParams,
+            boolean nonBlocking
+        ) throws InterruptedException, IOException {
+            var started = System.nanoTime();
+            lock.lock();
+            try {
                 long requiredMemoryInBytes = estimateRequiredMemory(numVectors, dims, dataType, cagraIndexParams);
                 logger.debug(
-                    "Acquiring resource: [{}] vectors, [{}] dims, type [{}], algo [{}], estimated [{}] B, "
-                        + "pool state: [{}] created, [{}] locked",
+                    "Try acquiring resource (nonBlocking=[{}]): [{}] vectors, [{}] dims, type [{}], algo [{}], "
+                        + "estimated [{}] B, pool state: [{}] created, [{}] locked",
+                    nonBlocking,
                     numVectors,
                     dims,
                     dataType.name(),
@@ -175,6 +202,9 @@ public interface CuVSResourceManager {
                     createdCount,
                     numLockedResources()
                 );
+
+                boolean allConditionsMet = false;
+                ManagedCuVSResources res = null;
 
                 while (allConditionsMet == false) {
                     res = getResourceFromPool();
@@ -185,8 +215,7 @@ public interface CuVSResourceManager {
                         long availableMemoryInBytes = gpuMemoryService.availableMemoryInBytes(res);
                         enoughMemory = requiredMemoryInBytes <= availableMemoryInBytes;
                         logger.debug(
-                            "Memory check: available [{}] B / total [{}] B, required [{}] B, "
-                                + "enoughMemory [{}], locked [{}]",
+                            "Memory check: available [{}] B / total [{}] B, required [{}] B, enoughMemory [{}], locked [{}]",
                             availableMemoryInBytes,
                             totalMemoryInBytes,
                             requiredMemoryInBytes,
@@ -194,7 +223,6 @@ public interface CuVSResourceManager {
                             numLockedResources()
                         );
 
-                        // Check immutable constraints
                         if (requiredMemoryInBytes > totalMemoryInBytes) {
                             String message = Strings.format(
                                 "Requested GPU memory for [%d] vectors, [%d] dims is greater than the GPU total memory [%d B]",
@@ -220,15 +248,18 @@ public interface CuVSResourceManager {
                             break;
                         }
                     } else {
-                        if (createdCount == 0) {
+                        if (nonBlocking == false && createdCount == 0) {
                             throw new IOException("No GPU resources available and unable to create new ones");
                         }
                         logger.debug("No resources available in pool");
                         enoughMemory = false;
                     }
-                    // TODO: add enoughComputation / enoughComputationCondition here
-                    allConditionsMet = enoughMemory; // && enoughComputation
+
+                    allConditionsMet = enoughMemory;
                     if (allConditionsMet == false) {
+                        if (nonBlocking) {
+                            return null;
+                        }
                         enoughResourcesCondition.await();
                     }
                 }
