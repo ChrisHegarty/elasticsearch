@@ -175,7 +175,7 @@ public class CuVSResourceManagerTests extends ESTestCase {
     }
 
     public void testNotBlockingOnSufficientMemoryNnDescent() throws Exception {
-        var mgr = new MockPoolingCuVSResourceManager(2);
+        var mgr = new MockPoolingCuVSResourceManager(2, 512L * 1024 * 1024);
         testNotBlockingOnSufficientMemory(createNnDescentParams(), mgr);
     }
 
@@ -338,11 +338,17 @@ public class CuVSResourceManagerTests extends ESTestCase {
         mgr.shutdown();
     }
 
-    public void testEstimateNNDescentMemoryOverflow() {
+    public void testEstimateNNDescentMemory() {
         int numVectors = 500_000;
         int dims = 1024;
-        long result = CuVSResourceManager.estimateNNDescentMemory(numVectors, dims, CuVSMatrix.DataType.FLOAT);
-        assertThat(result, equalTo(4_096_000_000L));
+        int intermediateGraphDegree = 28;
+        long result = CuVSResourceManager.estimateNNDescentMemory(numVectors, dims, CuVSMatrix.DataType.FLOAT, intermediateGraphDegree);
+        // datasetSize = 500000 * 1024 * 4 = 2_048_000_000
+        // nndDevicePeak = 500000 * (1024 * 2 + 280) = 1_164_000_000
+        // optimizePeak = 500000 * (4 + 5 * 28) = 72_000_000
+        // buildPeak = 2_048_000_000 + 1_164_000_000 = 3_212_000_000
+        // result = 2.0 * 3_212_000_000 = 6_424_000_000
+        assertThat(result, equalTo(6_424_000_000L));
     }
 
     private static CagraIndexParams createNnDescentParams() {

@@ -77,20 +77,40 @@ public interface CuVSResourceManager {
     void shutdown();
 
     /**
-     * Estimates the required GPU memory for building an index using the NN_DESCENT algorithm.
+     * Estimates the peak GPU device memory for building a CAGRA index using NN_DESCENT.
+     *
+     * <p>Derived from the cuVS documentation
+     * (<a href="https://docs.rapids.ai/api/cuvs/nightly/neighbors/cagra/#build-peak-memory-usage">
+     * CAGRA Build Peak Memory Usage</a>):
+     * <ul>
+     *   <li>{@code dataset_size = numVectors × dims × elementTypeBytes}</li>
+     *   <li>{@code nnd_device_peak = numVectors × (dims × 2 + 280)}
+     *       — fp16 copy of vectors + 276 bytes working graph/locks/counters + 4 bytes L2 norms</li>
+     *   <li>{@code optimize_peak = numVectors × (4 + 5 × intermediateGraphDegree)}
+     *       — pruning phase with {@code sizeof(IdxT)=4}</li>
+     *   <li>{@code build_peak = dataset_size + max(nnd_device_peak, optimize_peak)}</li>
+     * </ul>
+     *
+     * <p>A safety factor ({@link #GPU_COMPUTATION_MEMORY_FACTOR}) is applied on top to account for
+     * RMM pool fragmentation, CUDA context overhead, and estimation imprecision.
      *
      * @param numVectors the number of vectors
      * @param dims the dimensionality of vectors
      * @param dataType the data type of the vectors
-     * @return the estimated memory in bytes needed for NN_DESCENT
+     * @param intermediateGraphDegree the degree of the intermediate kNN graph
+     * @return the estimated peak device memory in bytes
      */
-    static long estimateNNDescentMemory(int numVectors, int dims, CuVSMatrix.DataType dataType) {
+    static long estimateNNDescentMemory(int numVectors, int dims, CuVSMatrix.DataType dataType, int intermediateGraphDegree) {
         int elementTypeBytes = switch (dataType) {
             case FLOAT -> Float.BYTES;
             case INT, UINT -> Integer.BYTES;
             case BYTE -> Byte.BYTES;
         };
-        return (long) (GPU_COMPUTATION_MEMORY_FACTOR * (long) numVectors * dims * elementTypeBytes);
+        long datasetSize = (long) numVectors * dims * elementTypeBytes;
+        long nndDevicePeak = (long) numVectors * ((long) dims * 2 + 280);
+        long optimizePeak = (long) numVectors * (4 + 5L * intermediateGraphDegree);
+        long buildPeak = datasetSize + Math.max(nndDevicePeak, optimizePeak);
+        return (long) (GPU_COMPUTATION_MEMORY_FACTOR * buildPeak);
     }
 
     /** Returns the system-wide pooling manager. */
@@ -314,7 +334,12 @@ public interface CuVSResourceManager {
                 return (long) (GPU_COMPUTATION_MEMORY_FACTOR * approximatedIvfBytes);
             }
 
-            return CuVSResourceManager.estimateNNDescentMemory(numVectors, dims, dataType);
+            return CuVSResourceManager.estimateNNDescentMemory(
+                numVectors,
+                dims,
+                dataType,
+                (int) cagraIndexParams.getIntermediateGraphDegree()
+            );
         }
 
         // visible for testing

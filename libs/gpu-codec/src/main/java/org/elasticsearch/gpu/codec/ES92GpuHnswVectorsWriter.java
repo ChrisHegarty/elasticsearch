@@ -457,7 +457,12 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         } else {
             // Check if we should use IVF_PQ due to insufficient GPU memory for NN_DESCENT
             if (totalDeviceMemory > 0) {
-                long requiredMemoryForNnDescent = CuVSResourceManager.estimateNNDescentMemory(numVectors, dims, dataType);
+                long requiredMemoryForNnDescent = CuVSResourceManager.estimateNNDescentMemory(
+                    numVectors,
+                    dims,
+                    dataType,
+                    intermediateGraphDegree
+                );
                 if (requiredMemoryForNnDescent > totalDeviceMemory) {
                     useIvfPQ = true;
                     logger.debug(
