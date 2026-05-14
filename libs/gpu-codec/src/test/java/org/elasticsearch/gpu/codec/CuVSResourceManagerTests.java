@@ -43,14 +43,14 @@ public class CuVSResourceManagerTests extends ESTestCase {
 
     private static void testBasic(CagraIndexParams params) throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(2);
-        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params);
-        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params);
+        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
+        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
         assertThat(res1.toString(), containsString("id=0"));
         assertThat(res2.toString(), containsString("id=1"));
         mgr.release(res1);
         mgr.release(res2);
-        res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params);
-        res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params);
+        res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
+        res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
         assertThat(res1.toString(), containsString("id=0"));
         assertThat(res2.toString(), containsString("id=1"));
         mgr.release(res1);
@@ -68,16 +68,16 @@ public class CuVSResourceManagerTests extends ESTestCase {
 
     public void testMultipleAcquireRelease() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(2);
-        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
-        var res2 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createIvfPqParams());
+        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        var res2 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createIvfPqParams(), "test");
         assertThat(res1.toString(), containsString("id=0"));
         assertThat(res2.toString(), containsString("id=1"));
         assertThat(mgr.availableMemory(), lessThan(TOTAL_DEVICE_MEMORY_IN_BYTES / 2));
         mgr.release(res1);
         mgr.release(res2);
         assertThat(mgr.availableMemory(), equalTo(TOTAL_DEVICE_MEMORY_IN_BYTES));
-        res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
-        res2 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createIvfPqParams());
+        res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        res2 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createIvfPqParams(), "test");
         assertThat(res1.toString(), containsString("id=0"));
         assertThat(res2.toString(), containsString("id=1"));
         assertThat(mgr.availableMemory(), lessThan(TOTAL_DEVICE_MEMORY_IN_BYTES / 2));
@@ -89,15 +89,15 @@ public class CuVSResourceManagerTests extends ESTestCase {
 
     private static void testBlocking(CagraIndexParams params) throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(2);
-        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params);
-        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params);
+        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
+        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
 
         AtomicReference<CuVSResources> holder = new AtomicReference<>();
         CountDownLatch aboutToAcquire = new CountDownLatch(1);
         Thread t = new Thread(() -> {
             try {
                 aboutToAcquire.countDown();
-                var res3 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params);
+                var res3 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
                 holder.set(res3);
             } catch (Exception e) {
                 throw new AssertionError(e);
@@ -122,14 +122,14 @@ public class CuVSResourceManagerTests extends ESTestCase {
     }
 
     private static void testBlockingOnInsufficientMemory(CagraIndexParams params, CuVSResourceManager mgr) throws Exception {
-        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, params);
+        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, params, "test");
 
         AtomicReference<CuVSResources> holder = new AtomicReference<>();
         CountDownLatch aboutToAcquire = new CountDownLatch(1);
         Thread t = new Thread(() -> {
             try {
                 aboutToAcquire.countDown();
-                var res2 = mgr.acquire((16 * 1024) + 1, 1024, CuVSMatrix.DataType.FLOAT, params);
+                var res2 = mgr.acquire((16 * 1024) + 1, 1024, CuVSMatrix.DataType.FLOAT, params, "test");
                 holder.set(res2);
             } catch (Exception e) {
                 throw new AssertionError(e);
@@ -156,12 +156,12 @@ public class CuVSResourceManagerTests extends ESTestCase {
     }
 
     private static void testNotBlockingOnSufficientMemory(CagraIndexParams params, CuVSResourceManager mgr) throws Exception {
-        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, params);
+        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, params, "test");
 
         AtomicReference<CuVSResources> holder = new AtomicReference<>();
         Thread t = new Thread(() -> {
             try {
-                var res2 = mgr.acquire((16 * 1024) - 1000, 1024, CuVSMatrix.DataType.FLOAT, params);
+                var res2 = mgr.acquire((16 * 1024) - 1000, 1024, CuVSMatrix.DataType.FLOAT, params, "test");
                 holder.set(res2);
             } catch (Exception e) {
                 throw new AssertionError(e);
@@ -186,7 +186,7 @@ public class CuVSResourceManagerTests extends ESTestCase {
 
     public void testManagedResIsNotClosable() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(1);
-        var res = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertThrows(UnsupportedOperationException.class, res::close);
         mgr.release(res);
         mgr.shutdown();
@@ -195,13 +195,13 @@ public class CuVSResourceManagerTests extends ESTestCase {
     // Tests that a failed createNew() causes acquire to wait for an existing resource rather than crash with NPE.
     public void testCreateNewFailsAfterFirstResource() throws Exception {
         var mgr = new FailingAfterNMockPoolingCuVSResourceManager(2, 1);
-        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertThat(res1.toString(), containsString("id=0"));
 
         AtomicReference<CuVSResourceManager.ManagedCuVSResources> holder = new AtomicReference<>();
         Thread t = new Thread(() -> {
             try {
-                var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+                var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
                 holder.set(res2);
             } catch (Exception e) {
                 throw new AssertionError(e);
@@ -221,14 +221,14 @@ public class CuVSResourceManagerTests extends ESTestCase {
     // Tests that acquire throws IOException immediately if no resources exist and createNew() always fails.
     public void testCreateNewAlwaysFailsThrowsIOException() throws Exception {
         var mgr = new FailingAfterNMockPoolingCuVSResourceManager(2, 0);
-        expectThrows(java.io.IOException.class, () -> mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams()));
+        expectThrows(java.io.IOException.class, () -> mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test"));
         mgr.shutdown();
     }
 
     public void testDoubleRelease() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(2);
-        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
-        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         mgr.release(res1);
         mgr.release(res2);
         assertThrows(AssertionError.class, () -> mgr.release(randomFrom(res1, res2)));
@@ -260,7 +260,7 @@ public class CuVSResourceManagerTests extends ESTestCase {
         };
         var mgr = new MockPoolingCuVSResourceManagerWithService(2, memoryService);
         // Request ~128 MB — more than the 1 MB available, but less than the 256 MB total
-        var res = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res);
         mgr.release(res);
         mgr.shutdown();
@@ -268,7 +268,7 @@ public class CuVSResourceManagerTests extends ESTestCase {
 
     public void testTryAcquireReturnsResourceWhenAvailable() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(2);
-        var res = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res);
         assertThat(res.toString(), containsString("id=0"));
         mgr.release(res);
@@ -277,9 +277,9 @@ public class CuVSResourceManagerTests extends ESTestCase {
 
     public void testTryAcquireReturnsNullWhenAllResourcesBusy() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(2);
-        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
-        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
-        var res3 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        var res3 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res1);
         assertNotNull(res2);
         assertNull("tryAcquire should return null when all resources are locked", res3);
@@ -290,8 +290,8 @@ public class CuVSResourceManagerTests extends ESTestCase {
 
     public void testTryAcquireReturnsNullOnInsufficientMemory() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(2);
-        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
-        var res2 = mgr.tryAcquire((16 * 1024) + 1, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        var res2 = mgr.tryAcquire((16 * 1024) + 1, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res1);
         assertNull("tryAcquire should return null when GPU memory is insufficient", res2);
         mgr.release(res1);
@@ -319,7 +319,7 @@ public class CuVSResourceManagerTests extends ESTestCase {
             public void releaseMemory(long memoryInBytes) {}
         };
         var mgr = new MockPoolingCuVSResourceManagerWithService(2, memoryService);
-        var res = mgr.tryAcquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res = mgr.tryAcquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull("tryAcquire should proceed when no resources are locked (livelock guard)", res);
         mgr.release(res);
         mgr.shutdown();
@@ -327,11 +327,11 @@ public class CuVSResourceManagerTests extends ESTestCase {
 
     public void testTryAcquireAfterRelease() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(1);
-        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res1);
-        assertNull(mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams()));
+        assertNull(mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test"));
         mgr.release(res1);
-        var res2 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams());
+        var res2 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull("tryAcquire should succeed after resource is released", res2);
         assertThat(res2.toString(), containsString("id=0"));
         mgr.release(res2);
