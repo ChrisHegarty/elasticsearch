@@ -50,7 +50,7 @@ public interface CuVSResourceManager {
      * effect on GPU memory and compute usage to determine whether to give out
      * another resource or wait for a resources to be returned before giving out another.
      */
-    ManagedCuVSResources acquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams)
+    ManagedCuVSResources acquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams, String reason)
         throws InterruptedException, IOException;
 
     /**
@@ -59,8 +59,13 @@ public interface CuVSResourceManager {
      * <p> Non-blocking variant of {@link #acquire}. Returns a locked resource immediately if
      * one is available and there is sufficient GPU memory, or {@code null} if the GPU is busy.
      */
-    ManagedCuVSResources tryAcquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams)
-        throws IOException;
+    ManagedCuVSResources tryAcquire(
+        int numVectors,
+        int dims,
+        CuVSMatrix.DataType dataType,
+        CagraIndexParams cagraIndexParams,
+        String reason
+    ) throws IOException;
 
     /** Marks the resources as finished with regard to compute. */
     void finishedComputation(ManagedCuVSResources resources);
@@ -157,16 +162,26 @@ public interface CuVSResourceManager {
         }
 
         @Override
-        public ManagedCuVSResources acquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams)
-            throws InterruptedException, IOException {
-            return doAcquire(numVectors, dims, dataType, cagraIndexParams, false);
+        public ManagedCuVSResources acquire(
+            int numVectors,
+            int dims,
+            CuVSMatrix.DataType dataType,
+            CagraIndexParams cagraIndexParams,
+            String reason
+        ) throws InterruptedException, IOException {
+            return doAcquire(numVectors, dims, dataType, cagraIndexParams, false, reason);
         }
 
         @Override
-        public ManagedCuVSResources tryAcquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams)
-            throws IOException {
+        public ManagedCuVSResources tryAcquire(
+            int numVectors,
+            int dims,
+            CuVSMatrix.DataType dataType,
+            CagraIndexParams cagraIndexParams,
+            String reason
+        ) throws IOException {
             try {
-                return doAcquire(numVectors, dims, dataType, cagraIndexParams, true);
+                return doAcquire(numVectors, dims, dataType, cagraIndexParams, true, reason);
             } catch (InterruptedException e) {
                 throw new AssertionError("non-blocking acquire should never block", e);
             }
@@ -184,15 +199,17 @@ public interface CuVSResourceManager {
             int dims,
             CuVSMatrix.DataType dataType,
             CagraIndexParams cagraIndexParams,
-            boolean nonBlocking
+            boolean nonBlocking,
+            String reason
         ) throws InterruptedException, IOException {
             var started = System.nanoTime();
             lock.lock();
             try {
                 long requiredMemoryInBytes = estimateRequiredMemory(numVectors, dims, dataType, cagraIndexParams);
                 logger.debug(
-                    "Try acquiring resource (nonBlocking=[{}]): [{}] vectors, [{}] dims, type [{}], algo [{}], "
+                    "Try acquiring resource for [{}] (nonBlocking=[{}]): [{}] vectors, [{}] dims, type [{}], algo [{}], "
                         + "estimated [{}] B, pool state: [{}] created, [{}] locked",
+                    reason,
                     nonBlocking,
                     numVectors,
                     dims,
@@ -265,7 +282,8 @@ public interface CuVSResourceManager {
                 }
                 var elapsed = System.nanoTime() - started;
                 logger.debug(
-                    "Resource acquired in [{}] ms, reserving [{}] B, locked after acquire [{}]",
+                    "Resource acquired for [{}] in [{}] ms, reserving [{}] B, locked after acquire [{}]",
+                    reason,
                     elapsed / 1_000_000.0,
                     requiredMemoryInBytes,
                     numLockedResources() + 1

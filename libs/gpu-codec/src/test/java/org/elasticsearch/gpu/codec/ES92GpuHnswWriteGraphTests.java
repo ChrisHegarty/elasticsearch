@@ -265,12 +265,24 @@ public class ES92GpuHnswWriteGraphTests extends ESTestCase {
     /** A {@link CuVSResourceManager} whose {@code tryAcquire} always returns null, forcing the CPU fallback path in flush. */
     static class NullResourceManager implements CuVSResourceManager {
         @Override
-        public ManagedCuVSResources acquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams) {
+        public ManagedCuVSResources acquire(
+            int numVectors,
+            int dims,
+            CuVSMatrix.DataType dataType,
+            CagraIndexParams cagraIndexParams,
+            String reason
+        ) {
             throw new UnsupportedOperationException("NullResourceManager: acquire should not be called");
         }
 
         @Override
-        public ManagedCuVSResources tryAcquire(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams) {
+        public ManagedCuVSResources tryAcquire(
+            int numVectors,
+            int dims,
+            CuVSMatrix.DataType dataType,
+            CagraIndexParams cagraIndexParams,
+            String reason
+        ) {
             return null;
         }
 
