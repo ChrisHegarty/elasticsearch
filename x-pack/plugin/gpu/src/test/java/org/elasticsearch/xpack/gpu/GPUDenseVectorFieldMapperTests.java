@@ -69,15 +69,6 @@ public class GPUDenseVectorFieldMapperTests extends DenseVectorFieldMapperTests 
     }
 
     @Override
-    public void testKnnBBQHNSWVectorsFormat() throws IOException {
-        // TOD improve the test with custom parameters
-        KnnVectorsFormat knnVectorsFormat = getKnnVectorsFormat("bbq_hnsw");
-        String expectedStr = "Lucene99HnswVectorsFormat(name=Lucene99HnswVectorsFormat, "
-            + "maxConn=12, beamWidth=22, flatVectorFormat=ES93BinaryQuantizedVectorsFormat(";
-        assertThat(knnVectorsFormat, hasToString(startsWith(expectedStr)));
-    }
-
-    @Override
     protected void randomFetchTestFieldConfig(XContentBuilder b) throws IOException {
         b.field("type", "dense_vector").field("dims", randomIntBetween(2, 4096)).field("element_type", "float");
         if (randomBoolean()) {

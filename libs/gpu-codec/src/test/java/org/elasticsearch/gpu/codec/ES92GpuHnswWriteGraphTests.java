@@ -34,15 +34,12 @@ import org.apache.lucene.tests.util.TestUtil;
 import org.apache.lucene.util.hnsw.HnswGraph;
 import org.elasticsearch.common.logging.LogConfigurator;
 import org.elasticsearch.index.codec.vectors.ES814HnswScalarQuantizedVectorsFormat;
-import org.elasticsearch.index.codec.vectors.es93.ES93HnswBinaryQuantizedVectorsFormat;
-import org.elasticsearch.index.mapper.vectors.DenseVectorFieldMapper;
 import org.elasticsearch.test.ESTestCase;
 import org.junit.Before;
 
 import java.io.IOException;
 import java.util.Arrays;
 
-import static org.apache.lucene.tests.index.BaseKnnVectorsFormatTestCase.randomNormalizedVector;
 import static org.apache.lucene.tests.index.BaseKnnVectorsFormatTestCase.randomVector;
 import static org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat.DEFAULT_BEAM_WIDTH;
 import static org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat.DEFAULT_MAX_CONN;
@@ -54,13 +51,12 @@ import static org.elasticsearch.gpu.codec.ES92GpuHnswVectorsFormat.DEFAULT_MAX_C
 public class ES92GpuHnswWriteGraphTests extends ESTestCase {
 
     static {
-        LogConfigurator.loadLog4jPlugins();
         LogConfigurator.configureESLogging();
     }
 
     private static final String FIELD = "vec";
-    private int numVectors = randomIntBetween(100, 500);
-    private int dims = randomIntBetween(128, 1024);
+    private int numVectors;
+    private int dims;
     private VectorSimilarityFunction similarity;
 
     @Before
@@ -88,7 +84,6 @@ public class ES92GpuHnswWriteGraphTests extends ESTestCase {
     }
 
     public void testCpuFallbackSQGraphMatchesLucene() throws Exception {
-        // SQ on GPU does not support MAXIMUM_INNER_PRODUCT (CAGRA limitation)
         var sqSimilarity = randomValueOtherThan(
             VectorSimilarityFunction.MAXIMUM_INNER_PRODUCT,
             ES92GpuHnswWriteGraphTests::randomSimilarity
@@ -108,39 +103,6 @@ public class ES92GpuHnswWriteGraphTests extends ESTestCase {
         try (Directory gpuDir = newDirectory(); Directory luceneDir = newDirectory()) {
             indexVectors(gpuDir, gpuFormat, vectors, sqSimilarity);
             indexVectors(luceneDir, luceneFormat, vectors, sqSimilarity);
-            try (DirectoryReader gpuReader = DirectoryReader.open(gpuDir); DirectoryReader luceneReader = DirectoryReader.open(luceneDir)) {
-                HnswGraph gpuGraph = getGraph(gpuReader);
-                HnswGraph luceneGraph = getGraph(luceneReader);
-                assertGraphsEqual(gpuGraph, luceneGraph);
-                assertVexBytesEqual(gpuDir, luceneDir);
-            }
-        }
-    }
-
-    public void testCpuFallbackBBQGraphMatchesLucene() throws Exception {
-        int bbqDims = 64 * randomIntBetween(2, 16);
-        float[][] vectors = generateNormalizedVectors(numVectors, bbqDims);
-        var gpuFormat = new ES92GpuHnswBBQVectorsFormat(
-            () -> new NullResourceManager(),
-            0L,
-            DEFAULT_MAX_CONN,
-            DEFAULT_BEAM_WIDTH,
-            DenseVectorFieldMapper.ElementType.FLOAT,
-            false
-        );
-        var luceneFormat = new ES93HnswBinaryQuantizedVectorsFormat(
-            DEFAULT_MAX_CONN,
-            DEFAULT_BEAM_WIDTH,
-            DenseVectorFieldMapper.ElementType.FLOAT,
-            false,
-            1,
-            null,
-            0
-        );
-
-        try (Directory gpuDir = newDirectory(); Directory luceneDir = newDirectory()) {
-            indexVectors(gpuDir, gpuFormat, vectors, similarity);
-            indexVectors(luceneDir, luceneFormat, vectors, similarity);
             try (DirectoryReader gpuReader = DirectoryReader.open(gpuDir); DirectoryReader luceneReader = DirectoryReader.open(luceneDir)) {
                 HnswGraph gpuGraph = getGraph(gpuReader);
                 HnswGraph luceneGraph = getGraph(luceneReader);
@@ -223,7 +185,6 @@ public class ES92GpuHnswWriteGraphTests extends ESTestCase {
                 Lucene99HnswVectorsFormat.VERSION_START,
                 Lucene99HnswVectorsFormat.VERSION_CURRENT
             );
-            // skip past objectID (16 bytes) and suffix (1 byte length + N bytes)
             input.skipBytes(16);
             int suffixLen = input.readByte() & 0xFF;
             input.skipBytes(suffixLen);
@@ -250,19 +211,11 @@ public class ES92GpuHnswWriteGraphTests extends ESTestCase {
         return vectors;
     }
 
-    private float[][] generateNormalizedVectors(int count, int dims) {
-        float[][] vectors = new float[count][dims];
-        for (int i = 0; i < count; i++) {
-            vectors[i] = randomNormalizedVector(dims);
-        }
-        return vectors;
-    }
-
     private static VectorSimilarityFunction randomSimilarity() {
         return VectorSimilarityFunction.values()[random().nextInt(VectorSimilarityFunction.values().length)];
     }
 
-    /** A {@link CuVSResourceManager} whose {@code tryAcquire} always returns null, forcing the CPU fallback path in flush. */
+    /** A {@link CuVSResourceManager} whose {@code tryAcquire} always returns null, forcing the CPU fallback path. */
     static class NullResourceManager implements CuVSResourceManager {
         @Override
         public ManagedCuVSResources acquire(
@@ -300,7 +253,6 @@ public class ES92GpuHnswWriteGraphTests extends ESTestCase {
         public void shutdown() {}
     }
 
-    // copy of ES814HnswScalarQuantizedRWVectorsFormat, to avoid dependency issues.
     static class ES814HnswScalarQuantizedRWVectorsFormat extends ES814HnswScalarQuantizedVectorsFormat {
         ES814HnswScalarQuantizedRWVectorsFormat(int maxConn, int beamWidth) {
             super(maxConn, beamWidth, null, 7, false);

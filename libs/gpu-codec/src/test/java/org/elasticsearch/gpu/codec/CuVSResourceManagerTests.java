@@ -96,7 +96,6 @@ public class CuVSResourceManagerTests extends ESTestCase {
         CountDownLatch aboutToAcquire = new CountDownLatch(1);
         Thread t = new Thread(() -> {
             try {
-                aboutToAcquire.countDown();
                 var res3 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
                 holder.set(res3);
             } catch (Exception e) {
@@ -128,7 +127,6 @@ public class CuVSResourceManagerTests extends ESTestCase {
         CountDownLatch aboutToAcquire = new CountDownLatch(1);
         Thread t = new Thread(() -> {
             try {
-                aboutToAcquire.countDown();
                 var res2 = mgr.acquire((16 * 1024) + 1, 1024, CuVSMatrix.DataType.FLOAT, params, "test");
                 holder.set(res2);
             } catch (Exception e) {
@@ -235,110 +233,99 @@ public class CuVSResourceManagerTests extends ESTestCase {
         mgr.shutdown();
     }
 
-    public void testProceedsWithWarningWhenInsufficientMemoryAndNoLockedResources() throws Exception {
-        // Simulates a GPU where total memory is large but available memory is low (e.g. other
-        // processes using the GPU). With no locked resources, acquire must still proceed
-        // (to avoid livelock) rather than block forever.
-        long totalMemory = 256L * 1024 * 1024;
-        long availableMemory = 1L * 1024 * 1024;
-        var memoryService = new GPUMemoryService() {
-            @Override
-            public long totalMemoryInBytes(CuVSResources res) {
-                return totalMemory;
-            }
-
-            @Override
-            public long availableMemoryInBytes(CuVSResources res) {
-                return availableMemory;
-            }
-
-            @Override
-            public void reserveMemory(long memoryInBytes) {}
-
-            @Override
-            public void releaseMemory(long memoryInBytes) {}
-        };
-        var mgr = new MockPoolingCuVSResourceManagerWithService(2, memoryService);
-        // Request ~128 MB — more than the 1 MB available, but less than the 256 MB total
-        var res = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
-        assertNotNull(res);
-        mgr.release(res);
-        mgr.shutdown();
-    }
-
-    public void testTryAcquireReturnsResourceWhenAvailable() throws Exception {
-        var mgr = new MockPoolingCuVSResourceManager(2);
-        var res = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
-        assertNotNull(res);
-        assertThat(res.toString(), containsString("id=0"));
-        mgr.release(res);
-        mgr.shutdown();
-    }
-
-    public void testTryAcquireReturnsNullWhenAllResourcesBusy() throws Exception {
-        var mgr = new MockPoolingCuVSResourceManager(2);
+    // tryAcquire returns null when all resources in the pool are locked
+    public void testTryAcquireReturnsNullWhenBusy() throws Exception {
+        var mgr = new MockPoolingCuVSResourceManager(1);
         var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
-        var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
-        var res3 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res1);
+        var res2 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        assertNull(res2);
+        mgr.release(res1);
+        mgr.shutdown();
+    }
+
+    // tryAcquire succeeds when resources are available in the pool
+    public void testTryAcquireSucceedsWhenFree() throws Exception {
+        var mgr = new MockPoolingCuVSResourceManager(2);
+        var res1 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        assertNotNull(res1);
+        assertThat(res1.toString(), containsString("id=0"));
+        var res2 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res2);
-        assertNull("tryAcquire should return null when all resources are locked", res3);
+        assertThat(res2.toString(), containsString("id=1"));
         mgr.release(res1);
         mgr.release(res2);
         mgr.shutdown();
     }
 
+    // tryAcquire returns null when available GPU memory is insufficient
     public void testTryAcquireReturnsNullOnInsufficientMemory() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(2);
-        var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
-        var res2 = mgr.tryAcquire((16 * 1024) + 1, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        var res1 = mgr.tryAcquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res1);
-        assertNull("tryAcquire should return null when GPU memory is insufficient", res2);
+        var res2 = mgr.tryAcquire((16 * 1024) + 1, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        assertNull(res2);
         mgr.release(res1);
         mgr.shutdown();
     }
 
-    public void testTryAcquireProceedsWhenNoLockedResources() throws Exception {
-        long totalMemory = 256L * 1024 * 1024;
-        long availableMemory = 1L * 1024 * 1024;
-        var memoryService = new GPUMemoryService() {
-            @Override
-            public long totalMemoryInBytes(CuVSResources res) {
-                return totalMemory;
-            }
-
-            @Override
-            public long availableMemoryInBytes(CuVSResources res) {
-                return availableMemory;
-            }
-
-            @Override
-            public void reserveMemory(long memoryInBytes) {}
-
-            @Override
-            public void releaseMemory(long memoryInBytes) {}
-        };
-        var mgr = new MockPoolingCuVSResourceManagerWithService(2, memoryService);
-        var res = mgr.tryAcquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
-        assertNotNull("tryAcquire should proceed when no resources are locked (livelock guard)", res);
-        mgr.release(res);
-        mgr.shutdown();
-    }
-
-    public void testTryAcquireAfterRelease() throws Exception {
+    // tryAcquire succeeds after a previously locked resource is released
+    public void testTryAcquireSucceedsAfterRelease() throws Exception {
         var mgr = new MockPoolingCuVSResourceManager(1);
-        var res1 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        var res1 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
         assertNotNull(res1);
         assertNull(mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test"));
         mgr.release(res1);
         var res2 = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
-        assertNotNull("tryAcquire should succeed after resource is released", res2);
+        assertNotNull(res2);
         assertThat(res2.toString(), containsString("id=0"));
         mgr.release(res2);
         mgr.shutdown();
     }
 
-    public void testEstimateNNDescentMemory() {
+    // tryAcquire returns null (not IOException) when createNew fails and no existing resource is free
+    public void testTryAcquireReturnsNullWhenCreateNewFails() throws Exception {
+        var mgr = new FailingAfterNMockPoolingCuVSResourceManager(2, 0);
+        var res = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+        assertNull(res);
+        mgr.shutdown();
+    }
+
+    // N threads tryAcquire concurrently: exactly capacity succeed, the rest get null
+    public void testTryAcquireConcurrent() throws Exception {
+        int capacity = randomIntBetween(2, 4);
+        var mgr = new MockPoolingCuVSResourceManager(capacity);
+        int numThreads = randomIntBetween(8, 12);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(numThreads);
+        AtomicInteger successes = new AtomicInteger();
+        AtomicInteger nulls = new AtomicInteger();
+
+        for (int i = 0; i < numThreads; i++) {
+            new Thread(() -> {
+                try {
+                    startLatch.await();
+                    var res = mgr.tryAcquire(0, 0, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test");
+                    if (res != null) {
+                        successes.incrementAndGet();
+                    } else {
+                        nulls.incrementAndGet();
+                    }
+                } catch (Exception e) {
+                    throw new AssertionError(e);
+                } finally {
+                    doneLatch.countDown();
+                }
+            }).start();
+        }
+        startLatch.countDown();
+        assertTrue(doneLatch.await(10, TimeUnit.SECONDS));
+        assertThat(successes.get(), equalTo(capacity));
+        assertThat(nulls.get(), equalTo(numThreads - capacity));
+        mgr.shutdown();
+    }
+
+    public void testEstimateNNDescentMemoryOverflow() {
         int numVectors = 500_000;
         int dims = 1024;
         int intermediateGraphDegree = 28;

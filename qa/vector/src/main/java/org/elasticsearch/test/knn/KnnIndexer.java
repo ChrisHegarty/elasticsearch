@@ -397,23 +397,22 @@ public class KnnIndexer {
                 while (true) {
                     final int idx;
                     final IndexableField field;
+                    final int ordinal;
                     switch (vectorEncoding) {
                         case BYTE -> {
                             var ov = vectorReader.nextByteVector();
-                            idx = ov.ordinal();
-                            if (idx >= numDocsToIndex) return;
+                            ordinal = ov.ordinal();
                             field = new KnnByteVectorField(VECTOR_FIELD, ov.vector(), fieldType);
                         }
                         case FLOAT32 -> {
                             var ov = vectorReader.nextFloatVector();
-                            idx = ov.ordinal();
-                            if (idx >= numDocsToIndex) return;
+                            ordinal = ov.ordinal();
                             field = new KnnFloatVectorField(VECTOR_FIELD, ov.vector(), fieldType);
                         }
                         default -> throw new UnsupportedOperationException();
                     }
 
-                    Document doc = documentFactory.createDocument(field, idx);
+                    Document doc = documentFactory.createDocument(field, ordinal);
                     iw.addDocument(doc);
 
                     if ((idx + 1) % 25000 == 0) {

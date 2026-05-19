@@ -92,9 +92,7 @@ public class KnnIndexTester {
     public static final Logger logger;
 
     static {
-        LogConfigurator.loadLog4jPlugins();
-
-        // Forward es.logger.* system properties to the ES logging framework
+        // necessary otherwise the es.logger.level system configuration in build.gradle is ignored
         ProcessInfo pinfo = ProcessInfo.fromSystem();
         Map<String, String> sysprops = pinfo.sysprops();
         String loggerLevel = sysprops.getOrDefault("es.logger.level", Level.INFO.name());
@@ -239,7 +237,7 @@ public class KnnIndexTester {
                     args.doPrecondition(),
                     args.preconditioningBlockDims(),
                     flatVectorThreshold,
-                    null
+                    args.datasetConfig().isSliced() ? KnnIndexer.PARTITION_ID_FIELD : null
                 );
             }
             case GPU_HNSW -> switch (quantizeBits) {

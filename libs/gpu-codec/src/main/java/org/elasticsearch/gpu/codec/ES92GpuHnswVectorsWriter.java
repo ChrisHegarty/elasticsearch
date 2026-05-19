@@ -180,43 +180,29 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         logger.debug("Flush total time [{}ms]", elapsed / 1_000_000.0);
     }
 
-    private void flushFieldsWithoutMemoryMappedFile(Sorter.DocMap sortMap) throws IOException, InterruptedException {
+    private void flushFieldsWithoutMemoryMappedFile(Sorter.DocMap sortMap) throws IOException {
         // No tmp file written, or the file cannot be mmapped
         for (FieldWriter field : fields) {
             var started = System.nanoTime();
             var fieldInfo = field.fieldInfo;
+            int dims = fieldInfo.getVectorDimension();
 
             var originalVectors = field.flatFieldVectorsWriter.getVectors();
             final List<float[]> vectorsInSortedOrder = sortMap == null
                 ? originalVectors
                 : getVectorsInSortedOrder(field, sortMap, originalVectors);
             int numVectors = vectorsInSortedOrder.size();
-            CagraIndexParams cagraIndexParams = createCagraIndexParams(
-                fieldInfo.getVectorSimilarityFunction(),
-                numVectors,
-                fieldInfo.getVectorDimension()
-            );
+            CagraIndexParams cagraIndexParams = createCagraIndexParams(fieldInfo.getVectorSimilarityFunction(), numVectors, dims);
 
             if (numVectors < MIN_NUM_VECTORS_FOR_GPU_BUILD) {
                 logger.debug("Skip building carga index; vectors length {} < {} (min for GPU)", numVectors, MIN_NUM_VECTORS_FOR_GPU_BUILD);
                 // Will not be indexed on the GPU
                 generateMockGraphAndWriteMeta(fieldInfo, numVectors);
             } else {
-                var resource = cuVSResourceManager.tryAcquire(
-                    numVectors,
-                    fieldInfo.getVectorDimension(),
-                    CuVSMatrix.DataType.FLOAT,
-                    cagraIndexParams,
-                    "flush"
-                );
+                var resource = cuVSResourceManager.tryAcquire(numVectors, dims, CuVSMatrix.DataType.FLOAT, cagraIndexParams, "flush");
                 if (resource != null) {
                     try (var resourcesHolder = new ResourcesHolder(cuVSResourceManager, resource)) {
-                        var builder = CuVSMatrix.deviceBuilder(
-                            resourcesHolder.resources(),
-                            numVectors,
-                            fieldInfo.getVectorDimension(),
-                            CuVSMatrix.DataType.FLOAT
-                        );
+                        var builder = CuVSMatrix.deviceBuilder(resourcesHolder.resources(), numVectors, dims, CuVSMatrix.DataType.FLOAT);
                         for (var vector : vectorsInSortedOrder) {
                             builder.addVector(vector);
                         }
@@ -290,11 +276,16 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             var index = buildGPUIndex(resourcesHolder.resources(), cagraIndexParams, dataset, fieldInfo);
             try {
                 assert index != null : "GPU index should be built for field: " + fieldInfo.name;
-                try (var deviceGraph = index.getGraph()) {
+                try (var deviceGraph = index.getGraph();) {
                     var graphSize = deviceGraph.size() * deviceGraph.columns() * Integer.BYTES;
                     if (graphSize < DIRECT_COPY_THRESHOLD_IN_BYTES) {
-                        // If the graph is "small enough", copy it entirely to host memory so we can
-                        // release the associated resource early and increase parallelism.
+                        // Graph is small enough to copy to host, allowing us to free GPU resources
+                        // before the (relatively slow) disk write. Order matters: copy the graph,
+                        // close the index (frees device memory), then release the resource to the
+                        // pool so another thread can use it. Reversing this order causes a race:
+                        // CagraIndex.close() calls cuvsCagraIndexDestroy using the CuVSResources
+                        // context, which another thread may already be using if the resource was
+                        // returned to the pool first.
                         try (var hostGraph = deviceGraph.toHost()) {
                             index.close();
                             index = null;
@@ -612,10 +603,10 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         int countOnLevel0 = graph.size();
         int[] scratch = new int[graph.maxConn() * 2];
         for (int level = 0; level < graph.numLevels(); level++) {
-            NodesIterator sortedNodes = graph.getSortedNodes(level);
+            NodesIterator nodesOnLevel = graph.getNodesOnLevel(level);
             int nodeOffsetId = 0;
-            while (sortedNodes.hasNext()) {
-                NeighborArray neighbors = graph.getNeighbors(level, sortedNodes.next());
+            while (nodesOnLevel.hasNext()) {
+                NeighborArray neighbors = graph.getNeighbors(level, nodesOnLevel.next());
                 int size = neighbors.size();
                 long offsetStart = vectorIndex.getFilePointer();
                 int[] nnodes = neighbors.nodes();
@@ -640,17 +631,14 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         return graph;
     }
 
-    private void buildCpuGraphAndWriteMeta(FieldInfo fieldInfo, List<float[]> vectors, VectorSimilarityFunction similarityFunction)
+    private void buildCpuGraphAndWriteMeta(FieldInfo fieldInfo, List<float[]> vectors, VectorSimilarityFunction similarity)
         throws IOException {
         int numVectors = vectors.size();
         int dims = fieldInfo.getVectorDimension();
         var flatVectorsScorer = flatVectorWriter.getFlatVectorScorer();
-        var scorerSupplier = flatVectorsScorer.getRandomVectorScorerSupplier(
-            similarityFunction,
-            FloatVectorValues.fromFloats(vectors, dims)
-        );
-        OnHeapHnswGraph cpuGraph = HnswGraphBuilder.create(scorerSupplier, M, beamWidth, HnswGraphBuilder.randSeed, numVectors)
-            .build(numVectors);
+        var scorerSupplier = flatVectorsScorer.getRandomVectorScorerSupplier(similarity, FloatVectorValues.fromFloats(vectors, dims));
+        var graphBuilder = HnswGraphBuilder.create(scorerSupplier, M, beamWidth, HnswGraphBuilder.randSeed, numVectors);
+        OnHeapHnswGraph cpuGraph = graphBuilder.build(numVectors);
 
         long vectorIndexOffset = vectorIndex.getFilePointer();
         int[][] graphLevelNodeOffsets = new int[cpuGraph.numLevels()][];
@@ -726,6 +714,11 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
                 // TODO: revert to directly pass data mapped with DatasetUtils.getInstance() to generateGpuGraphAndWriteMeta
                 // when cuvs has fixed this problem
                 int packedRowSize = fieldInfo.getVectorDimension();
+                // Acquire the GPU resource first, before creating the potentially large
+                // temporary memory-mapped copy. This bounds the number of concurrent temp
+                // files to the number of GPU resources (MAX_RESOURCES), preventing the
+                // page thrashing that occurs when many merge threads each create multi-GB
+                // temp copies while waiting for a GPU slot.
                 try (
                     var resourcesHolder = new ResourcesHolder(
                         cuVSResourceManager,
@@ -824,7 +817,9 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             IndexInput slice = vectorValues.getSlice();
             var input = FilterIndexInput.unwrap(slice);
             if (input instanceof MemorySegmentAccessInput memorySegmentAccessInput) {
-                // Fast path, possible direct access to mmapped file
+                // Fast path, possible direct access to mmapped file.
+                // Acquire the GPU resource first to limit concurrent temp file creation
+                // (see mergeByteVectorField for full rationale).
                 try (
                     var resourcesHolder = new ResourcesHolder(
                         cuVSResourceManager,
