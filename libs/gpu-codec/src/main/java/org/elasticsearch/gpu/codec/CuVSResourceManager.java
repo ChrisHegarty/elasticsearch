@@ -40,7 +40,13 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  */
 public interface CuVSResourceManager {
-    /** A multiplier on input data to account for intermediate and output data size required while processing it */
+    /**
+     * Safety factor applied to NN-DESCENT peak memory estimates to account for RMM pool
+     * fragmentation, CUDA context overhead, and estimation imprecision. Only applied to NN-DESCENT
+     * because that algorithm requires the full dataset and intermediate structures to be resident on
+     * the GPU simultaneously. IVF-PQ is out-of-core (streams data in batches), so its ledger
+     * reservation uses the raw index size estimate without this factor.
+     */
     double GPU_COMPUTATION_MEMORY_FACTOR = 2.0;
 
     /**
@@ -240,14 +246,20 @@ public interface CuVSResourceManager {
         }
 
         /**
-         * Estimates the GPU memory to reserve in the ledger for the given build operation.
+         * Estimates the GPU memory to reserve in the software ledger for the given build operation.
          *
-         * <p>For NN-DESCENT, a safety factor ({@link #GPU_COMPUTATION_MEMORY_FACTOR}) is applied to the
-         * peak estimate to account for RMM pool fragmentation, CUDA context overhead, and estimation
-         * imprecision. NN-DESCENT requires all memory to be resident on device simultaneously.
+         * <p>The ledger prevents concurrent GPU operations from over-committing device memory. Each
+         * call to {@code doAcquire} reserves the value returned here, and releases it on
+         * {@code release}. The reservation strategy differs by algorithm:
          *
-         * <p>For IVF-PQ, the raw index size estimate is used without the safety factor because IVF-PQ
-         * streams data in batches and does not require the full peak to be resident at once.
+         * <ul>
+         *   <li><b>NN-DESCENT</b> — requires the full dataset plus intermediate structures resident on
+         *       device simultaneously. We have an accurate peak formula, so we apply
+         *       {@link #GPU_COMPUTATION_MEMORY_FACTOR} (2×) to cover fragmentation and CUDA overhead.
+         *   <li><b>IVF-PQ</b> — streams data in batches (out-of-core) and never holds the full dataset
+         *       on device at once. We use the raw index size estimate as a proportional proxy for the
+         *       device footprint during build, without the safety factor.
+         * </ul>
          */
         private long estimateRequiredMemory(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams) {
             if (cagraIndexParams.getCagraGraphBuildAlgo() == CagraIndexParams.CagraGraphBuildAlgo.IVF_PQ) {
@@ -449,7 +461,7 @@ public interface CuVSResourceManager {
     }
 
     /**
-     * Estimates the peak GPU device memory for the IVF-PQ index during CAGRA build.
+     * Estimates the IVF-PQ index size on the GPU device during CAGRA build.
      *
      * <p>Derived from the cuVS
      * <a href="https://docs.rapids.ai/api/cuvs/nightly/neighbors/ivfpq/#index-device-memory">
@@ -461,13 +473,15 @@ public interface CuVSResourceManager {
      *   <li>{@code index_size ≈ encoded_data + indices + list_pointers}</li>
      * </ul>
      *
-     * <p>A safety factor ({@link #GPU_COMPUTATION_MEMORY_FACTOR}) is applied by the caller.
+     * <p>No safety factor is applied because IVF-PQ streams data in batches (out-of-core) and does
+     * not require the full dataset to be resident on device simultaneously. The returned value is
+     * used directly as the ledger reservation.
      *
      * @param numVectors the number of vectors
      * @param dims the dimensionality of vectors (unused but kept for API consistency)
      * @param dataType the data type of the vectors (unused but kept for API consistency)
      * @param cagraIndexParams the CAGRA index parameters containing IVF-PQ configuration
-     * @return the estimated IVF-PQ index device memory in bytes (before safety factor)
+     * @return the estimated IVF-PQ index device memory in bytes
      */
     static long estimateIPVPQMemory(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams) {
         assert assertCuVSIvfPqParams(cagraIndexParams);
