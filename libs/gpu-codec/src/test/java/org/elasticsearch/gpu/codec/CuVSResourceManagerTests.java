@@ -149,7 +149,8 @@ public class CuVSResourceManagerTests extends ESTestCase {
     }
 
     public void testBlockingOnInsufficientMemoryIvfPq() throws Exception {
-        var mgr = new MockPoolingCuVSResourceManager(2, 32L * 1024 * 1024);
+        // IVF-PQ estimate uses raw index size (no safety factor), so use a smaller mock memory
+        var mgr = new MockPoolingCuVSResourceManager(2, 12L * 1024 * 1024);
         testBlockingOnInsufficientMemory(createIvfPqParams(), mgr);
     }
 
@@ -334,8 +335,7 @@ public class CuVSResourceManagerTests extends ESTestCase {
         // nndDevicePeak = 500000 * (1024 * 2 + 280) = 1_164_000_000
         // optimizePeak = 500000 * (4 + 5 * 28) = 72_000_000
         // buildPeak = 2_048_000_000 + 1_164_000_000 = 3_212_000_000
-        // result = 2.0 * 3_212_000_000 = 6_424_000_000
-        assertThat(result, equalTo(6_424_000_000L));
+        assertThat(result, equalTo(3_212_000_000L));
     }
 
     private static CagraIndexParams createNnDescentParams() {

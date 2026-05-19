@@ -40,7 +40,6 @@ import java.io.IOException;
 public class GpuFormatNameCompatibilityTests extends ESTestCase {
 
     static {
-        LogConfigurator.loadLog4jPlugins();
         LogConfigurator.configureESLogging();
     }
 

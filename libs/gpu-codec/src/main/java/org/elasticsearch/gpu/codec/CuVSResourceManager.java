@@ -76,43 +76,6 @@ public interface CuVSResourceManager {
     /** Shuts down the manager, releasing all open resources. */
     void shutdown();
 
-    /**
-     * Estimates the peak GPU device memory for building a CAGRA index using NN_DESCENT.
-     *
-     * <p>Derived from the cuVS documentation
-     * (<a href="https://docs.rapids.ai/api/cuvs/nightly/neighbors/cagra/#build-peak-memory-usage">
-     * CAGRA Build Peak Memory Usage</a>):
-     * <ul>
-     *   <li>{@code dataset_size = numVectors × dims × elementTypeBytes}</li>
-     *   <li>{@code nnd_device_peak = numVectors × (dims × 2 + 280)}
-     *       — fp16 copy of vectors + 276 bytes working graph/locks/counters + 4 bytes L2 norms</li>
-     *   <li>{@code optimize_peak = numVectors × (4 + 5 × intermediateGraphDegree)}
-     *       — pruning phase with {@code sizeof(IdxT)=4}</li>
-     *   <li>{@code build_peak = dataset_size + max(nnd_device_peak, optimize_peak)}</li>
-     * </ul>
-     *
-     * <p>A safety factor ({@link #GPU_COMPUTATION_MEMORY_FACTOR}) is applied on top to account for
-     * RMM pool fragmentation, CUDA context overhead, and estimation imprecision.
-     *
-     * @param numVectors the number of vectors
-     * @param dims the dimensionality of vectors
-     * @param dataType the data type of the vectors
-     * @param intermediateGraphDegree the degree of the intermediate kNN graph
-     * @return the estimated peak device memory in bytes
-     */
-    static long estimateNNDescentMemory(int numVectors, int dims, CuVSMatrix.DataType dataType, int intermediateGraphDegree) {
-        int elementTypeBytes = switch (dataType) {
-            case FLOAT -> Float.BYTES;
-            case INT, UINT -> Integer.BYTES;
-            case BYTE -> Byte.BYTES;
-        };
-        long datasetSize = (long) numVectors * dims * elementTypeBytes;
-        long nndDevicePeak = (long) numVectors * ((long) dims * 2 + 280);
-        long optimizePeak = (long) numVectors * (4 + 5L * intermediateGraphDegree);
-        long buildPeak = datasetSize + Math.max(nndDevicePeak, optimizePeak);
-        return (long) (GPU_COMPUTATION_MEMORY_FACTOR * buildPeak);
-    }
-
     /** Returns the system-wide pooling manager. */
     static CuVSResourceManager pooling() {
         return PoolingCuVSResourceManager.Holder.INSTANCE;
@@ -276,30 +239,22 @@ public interface CuVSResourceManager {
             }
         }
 
+        /**
+         * Estimates the GPU memory to reserve in the ledger for the given build operation.
+         *
+         * <p>For NN-DESCENT, a safety factor ({@link #GPU_COMPUTATION_MEMORY_FACTOR}) is applied to the
+         * peak estimate to account for RMM pool fragmentation, CUDA context overhead, and estimation
+         * imprecision. NN-DESCENT requires all memory to be resident on device simultaneously.
+         *
+         * <p>For IVF-PQ, the raw index size estimate is used without the safety factor because IVF-PQ
+         * streams data in batches and does not require the full peak to be resident at once.
+         */
         private long estimateRequiredMemory(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams) {
-            if (cagraIndexParams.getCagraGraphBuildAlgo() == CagraIndexParams.CagraGraphBuildAlgo.IVF_PQ
-                && cagraIndexParams.getCuVSIvfPqParams() != null
-                && cagraIndexParams.getCuVSIvfPqParams().getIndexParams() != null
-                && cagraIndexParams.getCuVSIvfPqParams().getIndexParams().getPqDim() != 0) {
-                // See https://docs.rapids.ai/api/cuvs/nightly/neighbors/ivfpq/#index-device-memory
-                int elementTypeBytes = switch (dataType) {
-                    case FLOAT -> Float.BYTES;
-                    case INT, UINT -> Integer.BYTES;
-                    case BYTE -> Byte.BYTES;
-                };
-                var pqDim = cagraIndexParams.getCuVSIvfPqParams().getIndexParams().getPqDim();
-                var pqBits = cagraIndexParams.getCuVSIvfPqParams().getIndexParams().getPqBits();
-                var numClusters = cagraIndexParams.getCuVSIvfPqParams().getIndexParams().getnLists();
-                var approximatedIvfBytes = numVectors * (pqDim * (pqBits / 8.0) + elementTypeBytes) + (long) numClusters * Integer.BYTES;
-                return (long) (GPU_COMPUTATION_MEMORY_FACTOR * approximatedIvfBytes);
+            if (cagraIndexParams.getCagraGraphBuildAlgo() == CagraIndexParams.CagraGraphBuildAlgo.IVF_PQ) {
+                return estimateIPVPQMemory(numVectors, dims, dataType, cagraIndexParams);
             }
-
-            return CuVSResourceManager.estimateNNDescentMemory(
-                numVectors,
-                dims,
-                dataType,
-                (int) cagraIndexParams.getIntermediateGraphDegree()
-            );
+            long peakMemory = estimateNNDescentMemory(numVectors, dims, dataType, (int) cagraIndexParams.getIntermediateGraphDegree());
+            return (long) (GPU_COMPUTATION_MEMORY_FACTOR * peakMemory);
         }
 
         // visible for testing
@@ -458,5 +413,86 @@ public interface CuVSResourceManager {
         boolean isLocked() {
             return unlockAction != NOT_LOCKED;
         }
+    }
+
+    /**
+     * Estimates the peak GPU device memory for building a CAGRA index using NN_DESCENT.
+     *
+     * <p>Derived from the cuVS
+     * <a href="https://docs.rapids.ai/api/cuvs/nightly/neighbors/cagra/#build-peak-memory-usage">
+     * CAGRA Build Peak Memory Usage</a> documentation:
+     * <ul>
+     *   <li>{@code dataset_size = numVectors × dims × elementTypeBytes}
+     *       — input vectors copied to device memory</li>
+     *   <li>{@code nnd_device_peak = numVectors × (dims × 2 + 276 + 4)}
+     *       — fp16 copy of vectors (dims × 2), working graph/locks/counters (276 fixed),
+     *       and L2 norms (4, always present as Elasticsearch uses L2 distance internally)</li>
+     *   <li>{@code optimize_peak = numVectors × (4 + (sizeof(IdxT) + 1) × intermediateGraphDegree)}
+     *       — graph pruning/reordering phase, where {@code sizeof(IdxT) = 4}</li>
+     *   <li>{@code build_peak = dataset_size + max(nnd_device_peak, optimize_peak)}</li>
+     * </ul>
+     *
+     * <p>A safety factor ({@link #GPU_COMPUTATION_MEMORY_FACTOR}) is applied by the caller to account
+     * for RMM pool fragmentation, CUDA context overhead, and estimation imprecision.
+     *
+     * @param numVectors the number of vectors
+     * @param dims the dimensionality of vectors
+     * @param dataType the data type of the vectors
+     * @param intermediateGraphDegree the degree of the intermediate kNN graph
+     * @return the estimated peak device memory in bytes (before safety factor)
+     */
+    static long estimateNNDescentMemory(int numVectors, int dims, CuVSMatrix.DataType dataType, int intermediateGraphDegree) {
+        long datasetSize = (long) numVectors * dims * elementTypeBytes(dataType);
+        long nndDevicePeak = (long) numVectors * ((long) dims * 2 + 280);
+        long optimizePeak = (long) numVectors * (4 + 5L * intermediateGraphDegree);
+        return datasetSize + Math.max(nndDevicePeak, optimizePeak);
+    }
+
+    /**
+     * Estimates the peak GPU device memory for the IVF-PQ index during CAGRA build.
+     *
+     * <p>Derived from the cuVS
+     * <a href="https://docs.rapids.ai/api/cuvs/nightly/neighbors/ivfpq/#index-device-memory">
+     * IVF-PQ Index Device Memory</a> documentation:
+     * <ul>
+     *   <li>{@code encoded_data = numVectors × pqDim × pqBits / 8} — PQ-encoded vectors</li>
+     *   <li>{@code indices = numVectors × sizeof(IdxT)} — per-vector index (4 bytes)</li>
+     *   <li>{@code list_pointers = numClusters × sizeof(uint32_t)} — IVF list pointers</li>
+     *   <li>{@code index_size ≈ encoded_data + indices + list_pointers}</li>
+     * </ul>
+     *
+     * <p>A safety factor ({@link #GPU_COMPUTATION_MEMORY_FACTOR}) is applied by the caller.
+     *
+     * @param numVectors the number of vectors
+     * @param dims the dimensionality of vectors (unused but kept for API consistency)
+     * @param dataType the data type of the vectors (unused but kept for API consistency)
+     * @param cagraIndexParams the CAGRA index parameters containing IVF-PQ configuration
+     * @return the estimated IVF-PQ index device memory in bytes (before safety factor)
+     */
+    static long estimateIPVPQMemory(int numVectors, int dims, CuVSMatrix.DataType dataType, CagraIndexParams cagraIndexParams) {
+        assert assertCuVSIvfPqParams(cagraIndexParams);
+        var pqDim = cagraIndexParams.getCuVSIvfPqParams().getIndexParams().getPqDim();
+        var pqBits = cagraIndexParams.getCuVSIvfPqParams().getIndexParams().getPqBits();
+        var numClusters = cagraIndexParams.getCuVSIvfPqParams().getIndexParams().getnLists();
+        long encodedData = (long) (numVectors * pqDim * (pqBits / 8.0));
+        long indices = (long) numVectors * Integer.BYTES;
+        long listPointers = (long) numClusters * Integer.BYTES;
+        return encodedData + indices + listPointers;
+    }
+
+    static int elementTypeBytes(CuVSMatrix.DataType dataType) {
+        return switch (dataType) {
+            case FLOAT -> Float.BYTES;
+            case INT, UINT -> Integer.BYTES;
+            case BYTE -> Byte.BYTES;
+        };
+    }
+
+    static boolean assertCuVSIvfPqParams(CagraIndexParams cagraIndexParams) {
+        assert cagraIndexParams.getCagraGraphBuildAlgo() == CagraIndexParams.CagraGraphBuildAlgo.IVF_PQ
+            && cagraIndexParams.getCuVSIvfPqParams() != null
+            && cagraIndexParams.getCuVSIvfPqParams().getIndexParams() != null
+            && cagraIndexParams.getCuVSIvfPqParams().getIndexParams().getPqDim() != 0;
+        return true;
     }
 }

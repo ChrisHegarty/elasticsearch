@@ -430,13 +430,13 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         int numVectors,
         int dims,
         int graphDegree,
-        int intermediateGraphDegree,
+        int interGraphDegree,
         int nnDescentNumIterations,
         GpuHnswQuantizationType quantizationType,
         long totalDeviceMemory
     ) {
         // CAGRA requires the intermediate graph degree to be strictly larger than the graph degree
-        intermediateGraphDegree = Math.max(graphDegree + 1, intermediateGraphDegree);
+        interGraphDegree = Math.max(graphDegree + 1, interGraphDegree);
 
         CuVSMatrix.DataType dataType = quantizationType.cagraDataType();
         int numCPUThreads = 1; // TODO: how many CPU threads we can use?
@@ -446,14 +446,12 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         if (numVectors >= MAX_NUM_VECTORS_FOR_NN_DESCENT) {
             useIvfPQ = true;
         } else {
-            // Check if we should use IVF_PQ due to insufficient GPU memory for NN_DESCENT
+            // Check if we should use IVF_PQ due to insufficient GPU memory for NN_DESCENT.
+            // Apply the same safety factor used by the resource manager ledger so that the
+            // switchover decision is consistent with what doAcquire will actually reserve.
             if (totalDeviceMemory > 0) {
-                long requiredMemoryForNnDescent = CuVSResourceManager.estimateNNDescentMemory(
-                    numVectors,
-                    dims,
-                    dataType,
-                    intermediateGraphDegree
-                );
+                long requiredMemoryForNnDescent = (long) (CuVSResourceManager.GPU_COMPUTATION_MEMORY_FACTOR * CuVSResourceManager
+                    .estimateNNDescentMemory(numVectors, dims, dataType, interGraphDegree));
                 if (requiredMemoryForNnDescent > totalDeviceMemory) {
                     useIvfPQ = true;
                     logger.debug(
@@ -466,12 +464,12 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
         }
 
         if (useIvfPQ) {
-            var ivfPqParams = CuVSIvfPqParamsFactory.create(numVectors, dims, distanceType, intermediateGraphDegree);
+            var ivfPqParams = CuVSIvfPqParamsFactory.create(numVectors, dims, distanceType, interGraphDegree);
             params = new CagraIndexParams.Builder().withNumWriterThreads(numCPUThreads)
                 .withCagraGraphBuildAlgo(CagraIndexParams.CagraGraphBuildAlgo.IVF_PQ)
                 .withCuVSIvfPqParams(ivfPqParams)
                 .withGraphDegree(graphDegree)
-                .withIntermediateGraphDegree(intermediateGraphDegree)
+                .withIntermediateGraphDegree(interGraphDegree)
                 .withNNDescentNumIterations(nnDescentNumIterations)
                 .withMetric(distanceType)
                 .build();
@@ -479,7 +477,7 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             params = new CagraIndexParams.Builder().withNumWriterThreads(numCPUThreads)
                 .withCagraGraphBuildAlgo(CagraIndexParams.CagraGraphBuildAlgo.NN_DESCENT)
                 .withGraphDegree(graphDegree)
-                .withIntermediateGraphDegree(intermediateGraphDegree)
+                .withIntermediateGraphDegree(interGraphDegree)
                 .withNNDescentNumIterations(nnDescentNumIterations)
                 .withMetric(distanceType)
                 .build();

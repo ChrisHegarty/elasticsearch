@@ -30,7 +30,6 @@ import static org.hamcrest.Matchers.containsString;
 public class ES92GpuHnswBBQVectorsFormatTests extends BaseKnnVectorsFormatTestCase {
 
     static {
-        LogConfigurator.loadLog4jPlugins();
         LogConfigurator.configureESLogging();
     }
 
