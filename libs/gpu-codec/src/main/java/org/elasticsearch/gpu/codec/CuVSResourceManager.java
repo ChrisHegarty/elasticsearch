@@ -41,7 +41,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public interface CuVSResourceManager {
     /** A multiplier on input data to account for intermediate and output data size required while processing it */
-    double GPU_COMPUTATION_MEMORY_FACTOR = 4.0;
+    double GPU_COMPUTATION_MEMORY_FACTOR = 2.0;
 
     /**
      * Acquires a resource from the manager.
