@@ -37,6 +37,10 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -130,12 +134,13 @@ public abstract class AbstractStatelessQueryBenchmark {
             buildIndex(w);
             w.commit();
         }
+        System.err.println("[stateless-bench] building index at " + path + " complete");
     }
 
     @Setup(Level.Invocation)
     public final void setupInvocation() throws IOException {
         if (dropOsPageCache) {
-            dropPageCache();
+            evictSharedCachePages(workPath);
         }
     }
 
@@ -151,7 +156,9 @@ public abstract class AbstractStatelessQueryBenchmark {
     @Benchmark
     public final Object runBenchmark(CacheCounters counters) throws IOException {
         SharedBlobCacheService.Stats before = StatelessDirectoryFactory.statsFor(directory);
+        long[] faultsBefore = readPageFaults();
         Object result = runQuery(searcher);
+        long[] faultsAfter = readPageFaults();
         SharedBlobCacheService.Stats after = StatelessDirectoryFactory.statsFor(directory);
         if (before != null && after != null) {
             counters.bytesRead = after.readBytes() - before.readBytes();
@@ -159,7 +166,21 @@ public abstract class AbstractStatelessQueryBenchmark {
             counters.cacheMisses = after.missCount() - before.missCount();
             counters.regionWrites = after.writeCount() - before.writeCount();
         }
+        counters.minorFaults = faultsAfter[0] - faultsBefore[0];
+        counters.majorFaults = faultsAfter[1] - faultsBefore[1];
         return result;
+    }
+
+    private static long[] readPageFaults() {
+        try {
+            String stat = Files.readString(Path.of("/proc/self/stat"));
+            String[] fields = stat.split(" ");
+            long minorFaults = Long.parseLong(fields[9]);
+            long majorFaults = Long.parseLong(fields[11]);
+            return new long[] { minorFaults, majorFaults };
+        } catch (Exception e) {
+            return new long[] { 0, 0 };
+        }
     }
 
     /** Subclass hook: the {@link IndexWriterConfig} (codec, merge policy) used to build the index. */
@@ -184,17 +205,42 @@ public abstract class AbstractStatelessQueryBenchmark {
     /** Subclass hook: populate query-side state. Runs once per trial, after the (possibly cached) index is ready. */
     protected void prepareQuery() throws IOException {}
 
-    private static void dropPageCache() {
-        try {
-            new ProcessBuilder("sudo", "sh", "-c", "echo 3 > /proc/sys/vm/drop_caches").inheritIO().start().waitFor();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (IOException e) {
-            System.err.println("[stateless-bench] WARNING: failed to drop OS page cache: " + e.getMessage());
+    private static final long BALLAST_SIZE = Long.getLong("es.bench.ballastBytes", 5L * 1024 * 1024 * 1024);
+
+    private static void evictSharedCachePages(Path workPath) throws IOException {
+        // 1. Tell the kernel to drop cached pages for the shared bytes file
+        try (Stream<Path> walk = Files.walk(workPath)) {
+            walk.filter(p -> p.getFileName().toString().equals("shared_snapshot_cache")).forEach(p -> {
+                try {
+                    new ProcessBuilder("vmtouch", "-e", p.toString()).inheritIO().start().waitFor();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (Exception e) {
+                    System.err.println("[stateless-bench] WARNING: failed to evict pages for " + p + ": " + e.getMessage());
+                }
+            });
+        }
+        // 2. Force physical page reclamation by filling RAM with a throwaway mmap.
+        //    This pushes the blob cache pages out of physical memory, ensuring
+        //    subsequent accesses trigger real major faults from disk.
+        if (BALLAST_SIZE > 0) {
+            Path ballast = workPath.resolve("ballast");
+            try (
+                RandomAccessFile raf = new RandomAccessFile(ballast.toFile(), "rw");
+                Arena arena = Arena.ofConfined()
+            ) {
+                raf.setLength(BALLAST_SIZE);
+                MemorySegment seg = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, BALLAST_SIZE, arena);
+                for (long i = 0; i < BALLAST_SIZE; i += 4096) {
+                    seg.set(java.lang.foreign.ValueLayout.JAVA_BYTE, i, (byte) 1);
+                }
+            }
+            Files.deleteIfExists(ballast);
         }
     }
 
     private static void preWarm(Directory dir) throws IOException {
+        System.err.println("[stateless-bench] prewarm index at " + dir);
         byte[] buf = new byte[64 * 1024];
         for (String name : dir.listAll()) {
             try (IndexInput in = dir.openInput(name, IOContext.READONCE)) {
@@ -206,6 +252,7 @@ public abstract class AbstractStatelessQueryBenchmark {
                 }
             }
         }
+        System.err.println("[stateless-bench] prewarm index at " + dir + " complete");
     }
 
     private static void deleteRecursively(Path path) throws IOException {
@@ -247,6 +294,8 @@ public abstract class AbstractStatelessQueryBenchmark {
         public long bytesDownloaded;
         public long cacheMisses;
         public long regionWrites;
+        public long minorFaults;
+        public long majorFaults;
 
         @Setup(Level.Invocation)
         public void reset() {
@@ -254,6 +303,8 @@ public abstract class AbstractStatelessQueryBenchmark {
             bytesDownloaded = 0;
             cacheMisses = 0;
             regionWrites = 0;
+            minorFaults = 0;
+            majorFaults = 0;
         }
     }
 }
