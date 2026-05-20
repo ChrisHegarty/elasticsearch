@@ -49,7 +49,13 @@ import java.util.Set;
  * <p>Cold/hot cache state and simulated first-byte latency are inherited @Params from
  * {@link AbstractStatelessQueryBenchmark}.
  */
-@Fork(value = 1, jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
+@Fork(
+    value = 1,
+    jvmArgsPrepend = {
+        "--add-modules=jdk.incubator.vector",
+        "--enable-native-access=ALL-UNNAMED",
+        "-Dorg.apache.lucene.vectorization.upperJavaFeatureVersion=99" }
+)
 public class RescoreKnnVectorQueryBenchmark extends AbstractStatelessQueryBenchmark {
 
     private static final String FIELD = "vector";

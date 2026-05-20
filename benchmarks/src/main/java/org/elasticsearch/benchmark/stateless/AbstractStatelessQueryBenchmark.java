@@ -73,6 +73,8 @@ public abstract class AbstractStatelessQueryBenchmark {
 
     static {
         Utils.configureBenchmarkLogging();
+        var nativeAccess = org.elasticsearch.nativeaccess.NativeAccess.instance();
+        System.err.println("[stateless-bench] NativeAccess: " + nativeAccess.getClass().getName());
     }
 
     public enum CacheState {
@@ -85,6 +87,9 @@ public abstract class AbstractStatelessQueryBenchmark {
 
     @Param({ "0" })
     public long firstByteLatencyMs;
+
+    @Param({ "false" })
+    public boolean dropOsPageCache;
 
     private Path dataPath;
     private Path workPath;
@@ -109,6 +114,14 @@ public abstract class AbstractStatelessQueryBenchmark {
         }
         workPath = Files.createTempDirectory("stateless-bench-work");
         prepareQuery();
+
+        System.setProperty(StatelessDirectoryFactory.FIRST_BYTE_LATENCY_MS_PROP, Long.toString(firstByteLatencyMs));
+        directory = StatelessDirectoryFactory.create(dataPath, workPath);
+        if (cacheState == CacheState.HOT) {
+            preWarm(directory);
+        }
+        reader = DirectoryReader.open(directory);
+        searcher = new IndexSearcher(reader);
     }
 
     private void buildIndexInto(Path path) throws IOException {
@@ -121,26 +134,14 @@ public abstract class AbstractStatelessQueryBenchmark {
 
     @Setup(Level.Invocation)
     public final void setupInvocation() throws IOException {
-        System.setProperty(StatelessDirectoryFactory.FIRST_BYTE_LATENCY_MS_PROP, Long.toString(firstByteLatencyMs));
-        deleteRecursively(workPath);
-        Files.createDirectories(workPath);
-        directory = StatelessDirectoryFactory.create(dataPath, workPath);
-        if (cacheState == CacheState.HOT) {
-            preWarm(directory);
+        if (dropOsPageCache) {
+            dropPageCache();
         }
-        // Reader open happens in setup, not in the timed block: in production stateless
-        // the reader is opened once per shard and amortized across many queries.
-        reader = DirectoryReader.open(directory);
-        searcher = new IndexSearcher(reader);
-    }
-
-    @TearDown(Level.Invocation)
-    public final void tearDownInvocation() throws IOException {
-        IOUtils.close(reader, directory);
     }
 
     @TearDown(Level.Trial)
     public final void tearDownTrial() throws IOException {
+        IOUtils.close(reader, directory);
         if (indexCacheKey() == null) {
             deleteRecursively(dataPath);
         }
@@ -182,6 +183,16 @@ public abstract class AbstractStatelessQueryBenchmark {
 
     /** Subclass hook: populate query-side state. Runs once per trial, after the (possibly cached) index is ready. */
     protected void prepareQuery() throws IOException {}
+
+    private static void dropPageCache() {
+        try {
+            new ProcessBuilder("sudo", "sh", "-c", "echo 3 > /proc/sys/vm/drop_caches").inheritIO().start().waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            System.err.println("[stateless-bench] WARNING: failed to drop OS page cache: " + e.getMessage());
+        }
+    }
 
     private static void preWarm(Directory dir) throws IOException {
         byte[] buf = new byte[64 * 1024];
