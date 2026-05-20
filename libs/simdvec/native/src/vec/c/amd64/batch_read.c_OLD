@@ -1,0 +1,65 @@
+#include <liburing.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdio.h>
+
+/**
+ * Batch read using io_uring.
+ *
+ * @param fd      File descriptor
+ * @param offsets Array of file offsets
+ * @param length  Bytes per read
+ * @param count   Number of reads
+ * @param target  Pointer to memory segment for all reads
+ * @return 0 if success, negative errno if failed
+ */
+int readBatch(int fd, long* offsets, int length, int count, char* target) {
+
+    struct io_uring ring;
+    int ret = io_uring_queue_init(256, &ring, 0);
+    if (ret < 0) {
+        return -ret;
+    }
+
+    for (int i = 0; i < count; i++) {
+        struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+        if (!sqe) {
+            io_uring_queue_exit(&ring);
+            return -ENOMEM;
+        }
+
+        char* buf = target + (long)i * length;
+        io_uring_prep_read(sqe, fd, buf, length, offsets[i]);
+        io_uring_sqe_set_data(sqe, (void*)(long)i);
+    }
+
+    ret = io_uring_submit(&ring);
+    if (ret < 0) {
+        io_uring_queue_exit(&ring);
+        return -ret;
+    }
+
+    int completed = 0;
+    while (completed < count) {
+        struct io_uring_cqe *cqe;
+        ret = io_uring_wait_cqe(&ring, &cqe);
+        if (ret < 0) {
+            io_uring_queue_exit(&ring);
+            return -ret;
+        }
+
+        if (cqe->res < 0) {
+            io_uring_cqe_seen(&ring, cqe);
+            io_uring_queue_exit(&ring);
+            return cqe->res;
+        }
+
+        io_uring_cqe_seen(&ring, cqe);
+        completed++;
+    }
+
+    io_uring_queue_exit(&ring);
+    return 0;
+}
