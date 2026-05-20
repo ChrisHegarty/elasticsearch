@@ -93,7 +93,6 @@ public class CuVSResourceManagerTests extends ESTestCase {
         var res2 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
 
         AtomicReference<CuVSResources> holder = new AtomicReference<>();
-        CountDownLatch aboutToAcquire = new CountDownLatch(1);
         Thread t = new Thread(() -> {
             try {
                 var res3 = mgr.acquire(0, 0, CuVSMatrix.DataType.FLOAT, params, "test");
@@ -103,7 +102,6 @@ public class CuVSResourceManagerTests extends ESTestCase {
             }
         });
         t.start();
-        assertTrue(aboutToAcquire.await(30, TimeUnit.SECONDS));
         assertBusy(() -> assertThat(t.getState(), is(oneOf(Thread.State.WAITING, Thread.State.TIMED_WAITING))));
         assertNull(holder.get());
         mgr.release(randomFrom(res1, res2));
@@ -124,7 +122,6 @@ public class CuVSResourceManagerTests extends ESTestCase {
         var res1 = mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, params, "test");
 
         AtomicReference<CuVSResources> holder = new AtomicReference<>();
-        CountDownLatch aboutToAcquire = new CountDownLatch(1);
         Thread t = new Thread(() -> {
             try {
                 var res2 = mgr.acquire((16 * 1024) + 1, 1024, CuVSMatrix.DataType.FLOAT, params, "test");
@@ -134,7 +131,6 @@ public class CuVSResourceManagerTests extends ESTestCase {
             }
         });
         t.start();
-        assertTrue(aboutToAcquire.await(30, TimeUnit.SECONDS));
         assertBusy(() -> assertThat(t.getState(), is(oneOf(Thread.State.WAITING, Thread.State.TIMED_WAITING))));
         assertNull(holder.get());
         mgr.release(res1);
@@ -336,6 +332,30 @@ public class CuVSResourceManagerTests extends ESTestCase {
         // optimizePeak = 500000 * (4 + 5 * 28) = 72_000_000
         // buildPeak = 2_048_000_000 + 1_164_000_000 = 3_212_000_000
         assertThat(result, equalTo(3_212_000_000L));
+    }
+
+    // Acquire throws when estimated memory exceeds available and no resources are locked
+    public void testAcquireThrowsWhenMemoryExceedsAvailable() throws Exception {
+        long tinyGpuMemory = 1024L;
+        var mgr = new MockPoolingCuVSResourceManager(2, tinyGpuMemory);
+        var ex = expectThrows(
+            IllegalArgumentException.class,
+            () -> mgr.acquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test")
+        );
+        assertThat(ex.getMessage(), containsString("exceeds available GPU memory"));
+        mgr.shutdown();
+    }
+
+    // tryAcquire throws (not returns null) when estimated memory exceeds total GPU memory
+    public void testTryAcquireThrowsWhenMemoryExceedsTotal() throws Exception {
+        long tinyGpuMemory = 1024L;
+        var mgr = new MockPoolingCuVSResourceManager(2, tinyGpuMemory);
+        var ex = expectThrows(
+            IllegalArgumentException.class,
+            () -> mgr.tryAcquire(16 * 1024, 1024, CuVSMatrix.DataType.FLOAT, createNnDescentParams(), "test")
+        );
+        assertThat(ex.getMessage(), containsString("exceeds available GPU memory"));
+        mgr.shutdown();
     }
 
     private static CagraIndexParams createNnDescentParams() {

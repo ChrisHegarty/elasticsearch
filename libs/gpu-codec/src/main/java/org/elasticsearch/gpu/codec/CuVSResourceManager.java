@@ -50,6 +50,20 @@ public interface CuVSResourceManager {
     double GPU_COMPUTATION_MEMORY_FACTOR = 2.0;
 
     /**
+     * Maximum GPU memory reserved for CUDA context, driver allocations, and other non-build
+     * overhead that is always present on the device. The usable memory for index builds is
+     * {@code totalDeviceMemory - min(totalDeviceMemory * 0.1, GPU_OVERHEAD_MAX_BYTES)}.
+     * This cap prevents over-reserving on large GPUs where 10% would be many gigabytes.
+     */
+    long GPU_OVERHEAD_MAX_BYTES = 1024L * 1024 * 1024; // 1 GB
+
+    /** Returns the usable GPU memory for index builds, accounting for fixed overhead. */
+    static long usableMemory(long totalDeviceMemory) {
+        long overhead = Math.min((long) (totalDeviceMemory * 0.1), GPU_OVERHEAD_MAX_BYTES);
+        return totalDeviceMemory - overhead;
+    }
+
+    /**
      * Acquires a resource from the manager.
      *
      * <p>A manager can use the given parameters, numVectors and dims, to estimate the potential
@@ -214,10 +228,8 @@ public interface CuVSResourceManager {
                             throw memoryExceededError(numVectors, dims, totalMemoryInBytes);
                         }
 
-                        // If no resource in the pool is locked, we must proceed to avoid livelock
                         if (enoughMemory == false && numLockedResources() == 0) {
-                            logLivelockBypass(availableMemoryInBytes, requiredMemoryInBytes);
-                            break;
+                            throw memoryExceededError(numVectors, dims, availableMemoryInBytes);
                         }
                     } else {
                         if (nonBlocking == false && createdCount == 0) {
@@ -321,12 +333,12 @@ public interface CuVSResourceManager {
             }
         }
 
-        private IllegalArgumentException memoryExceededError(int numVectors, int dims, long totalMemoryInBytes) {
+        private IllegalArgumentException memoryExceededError(int numVectors, int dims, long availableMemoryInBytes) {
             String message = Strings.format(
-                "Requested GPU memory for [%d] vectors, [%d] dims is greater than the GPU total memory [%d B]",
+                "Requested GPU memory for [%d] vectors, [%d] dims exceeds available GPU memory [%d B]",
                 numVectors,
                 dims,
-                totalMemoryInBytes
+                availableMemoryInBytes
             );
             logger.error(message);
             return new IllegalArgumentException(message);
@@ -355,14 +367,6 @@ public interface CuVSResourceManager {
 
         private void logMemoryCheck(long available, long total, long required, boolean enough) {
             logger.debug("Memory check: available={}B, total={}B, required={}B, enough={}", available, total, required, enough);
-        }
-
-        private void logLivelockBypass(long available, long required) {
-            logger.warn(
-                "Insufficient GPU memory ({}B available, {}B required) but no locked resources; proceeding to avoid livelock",
-                available,
-                required
-            );
         }
 
         private void logAcquired(String reason, long startedNanos, long reservedBytes) {

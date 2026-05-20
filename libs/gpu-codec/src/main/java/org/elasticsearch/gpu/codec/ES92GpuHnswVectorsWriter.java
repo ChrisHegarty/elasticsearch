@@ -449,14 +449,19 @@ final class ES92GpuHnswVectorsWriter extends KnnVectorsWriter {
             // Check if we should use IVF_PQ due to insufficient GPU memory for NN_DESCENT.
             // Apply the same safety factor used by the resource manager ledger so that the
             // switchover decision is consistent with what doAcquire will actually reserve.
+            // Compare against usable memory rather than raw total, to account for CUDA context
+            // and driver overhead that is always present on the device.
             if (totalDeviceMemory > 0) {
+                long usableMemory = CuVSResourceManager.usableMemory(totalDeviceMemory);
                 long requiredMemoryForNnDescent = (long) (CuVSResourceManager.GPU_COMPUTATION_MEMORY_FACTOR * CuVSResourceManager
                     .estimateNNDescentMemory(numVectors, dims, dataType, interGraphDegree));
-                if (requiredMemoryForNnDescent > totalDeviceMemory) {
+                if (requiredMemoryForNnDescent > usableMemory) {
                     useIvfPQ = true;
                     logger.debug(
-                        "Using IVF_PQ algorithm due to insufficient GPU memory for NN_DESCENT; required [{}B] > total [{}B]",
+                        "Using IVF_PQ algorithm due to insufficient GPU memory for NN_DESCENT;"
+                            + " required [{}B] > usable [{}B] (total [{}B])",
                         requiredMemoryForNnDescent,
+                        usableMemory,
                         totalDeviceMemory
                     );
                 }
