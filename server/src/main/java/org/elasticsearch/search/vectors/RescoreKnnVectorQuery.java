@@ -45,6 +45,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * A Lucene {@link Query} that applies vector-based rescoring to an inner query's results.
@@ -447,10 +451,13 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             return unwrapped instanceof DirectAccessInput dai ? dai : null;
         }
 
+        private static final int DIRECT_IO_CONCURRENCY = 128;
+
         /**
-         * Rescores vectors using O_DIRECT reads from the shared blob cache,
-         * bypassing the OS page cache to avoid TLB and page-table overhead.
-         * Falls back to the bulk scoring path if direct IO is unavailable.
+         * Rescores vectors using concurrent O_DIRECT reads from the shared blob
+         * cache, bypassing the OS page cache to avoid TLB and page-table overhead.
+         * Reads are issued in parallel via virtual threads (similar to
+         * {@code AsyncDirectIOIndexInput.DirectIOPrefetcher}).
          */
         private void rescoreWithDirectIO(
             List<LeafContext> leaves,
@@ -462,40 +469,72 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
         ) throws IOException {
             final int dims = floatTarget.length;
             final int vectorByteSize = dims * Float.BYTES;
-            ByteBuffer buf = ByteBuffer.allocate(vectorByteSize).order(ByteOrder.LITTLE_ENDIAN);
-            float[] vector = new float[dims];
 
-            for (int i = 0; i < count; i++) {
-                LeafContext ctx = leaves.get(leafIndices[i]);
-                long fileOffset = (long) ords[i] * ctx.vectorByteSize;
+            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                int batchSize = DIRECT_IO_CONCURRENCY;
+                float[][] vectors = new float[batchSize][dims];
+                @SuppressWarnings("unchecked")
+                Future<Boolean>[] futures = new Future[batchSize];
 
-                buf.clear();
-                boolean read = ctx.directInput != null && ctx.directInput.tryReadDirect(buf, fileOffset);
-                if (read == false) {
-                    int target = ctx.scorer.iterator().advance(docIDs[i]);
-                    assert target == docIDs[i];
-                    float score = ctx.scorer.score();
-                    if (Float.isNaN(score) == false) {
-                        results.add(new ScoreDoc(docIDs[i] + ctx.docBase, score));
+                for (int batchStart = 0; batchStart < count; batchStart += batchSize) {
+                    int batchEnd = Math.min(batchStart + batchSize, count);
+                    int batchLen = batchEnd - batchStart;
+
+                    for (int j = 0; j < batchLen; j++) {
+                        int idx = batchStart + j;
+                        LeafContext ctx = leaves.get(leafIndices[idx]);
+                        long fileOffset = (long) ords[idx] * ctx.vectorByteSize;
+                        final int slot = j;
+                        futures[j] = executor.submit(() -> {
+                            ByteBuffer buf = ByteBuffer.allocate(vectorByteSize).order(ByteOrder.LITTLE_ENDIAN);
+                            boolean read = ctx.directInput != null && ctx.directInput.tryReadDirect(buf, fileOffset);
+                            if (read) {
+                                buf.flip().asFloatBuffer().get(vectors[slot]);
+                            }
+                            return read;
+                        });
                     }
-                    continue;
-                }
 
-                buf.flip().asFloatBuffer().get(vector);
+                    for (int j = 0; j < batchLen; j++) {
+                        int idx = batchStart + j;
+                        LeafContext ctx = leaves.get(leafIndices[idx]);
+                        boolean read;
+                        try {
+                            read = futures[j].get();
+                        } catch (ExecutionException e) {
+                            Throwable cause = e.getCause();
+                            if (cause instanceof IOException ioe) throw ioe;
+                            throw new IOException(cause);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IOException(e);
+                        }
 
-                float rawScore = switch (ctx.sim) {
-                    case DOT_PRODUCT, COSINE -> VectorUtil.dotProduct(floatTarget, vector);
-                    case EUCLIDEAN -> VectorUtil.squareDistance(floatTarget, vector);
-                    case MAXIMUM_INNER_PRODUCT -> VectorUtil.dotProduct(floatTarget, vector);
-                };
-                float score = switch (ctx.sim) {
-                    case DOT_PRODUCT, COSINE -> (1 + rawScore) / 2f;
-                    case EUCLIDEAN -> 1 / (1 + rawScore);
-                    case MAXIMUM_INNER_PRODUCT -> rawScore < 0 ? 1 / (1 - rawScore) : rawScore + 1;
-                };
+                        if (read == false) {
+                            int target = ctx.scorer.iterator().advance(docIDs[idx]);
+                            assert target == docIDs[idx];
+                            float score = ctx.scorer.score();
+                            if (Float.isNaN(score) == false) {
+                                results.add(new ScoreDoc(docIDs[idx] + ctx.docBase, score));
+                            }
+                            continue;
+                        }
 
-                if (Float.isNaN(score) == false) {
-                    results.add(new ScoreDoc(docIDs[i] + ctx.docBase, score));
+                        float rawScore = switch (ctx.sim) {
+                            case DOT_PRODUCT, COSINE -> VectorUtil.dotProduct(floatTarget, vectors[j]);
+                            case EUCLIDEAN -> VectorUtil.squareDistance(floatTarget, vectors[j]);
+                            case MAXIMUM_INNER_PRODUCT -> VectorUtil.dotProduct(floatTarget, vectors[j]);
+                        };
+                        float score = switch (ctx.sim) {
+                            case DOT_PRODUCT, COSINE -> (1 + rawScore) / 2f;
+                            case EUCLIDEAN -> 1 / (1 + rawScore);
+                            case MAXIMUM_INNER_PRODUCT -> rawScore < 0 ? 1 / (1 - rawScore) : rawScore + 1;
+                        };
+
+                        if (Float.isNaN(score) == false) {
+                            results.add(new ScoreDoc(docIDs[idx] + ctx.docBase, score));
+                        }
+                    }
                 }
             }
         }
