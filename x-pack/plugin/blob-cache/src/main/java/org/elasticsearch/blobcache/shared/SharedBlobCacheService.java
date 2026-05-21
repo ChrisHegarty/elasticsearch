@@ -1074,6 +1074,27 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
         }
 
         /**
+         * Optimistically try to read from the region using O_DIRECT, bypassing the OS page cache.
+         * @return true if successful, false if evicted, O_DIRECT unavailable, or data not available
+         */
+        boolean tryReadDirect(ByteBuffer buf, long offset) throws IOException {
+            SharedBytes.IO ioRef = nonVolatileIO();
+            if (ioRef != null) {
+                int readBytes = ioRef.readDirect(buf, blobCacheService.getRegionRelativePosition(offset));
+                if (readBytes < 0) {
+                    return false;
+                }
+                if (isEvicted()) {
+                    buf.position(buf.position() - readBytes);
+                    return false;
+                }
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        /**
          * If a direct byte buffer slice is available for the given range,
          * passes it to {@code action} within a ref-counted scope (preventing
          * eviction) and returns {@code true}. Returns {@code false} without
@@ -1410,6 +1431,30 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
                 // todo: should we add to readBytes? readBytes.add(end - offset);
             }
             return res;
+        }
+
+        /**
+         * Reads using O_DIRECT, bypassing the OS page cache. Same semantics as
+         * {@link #tryRead} but uses a direct I/O channel. The buffer must be
+         * a direct buffer aligned to the filesystem block size.
+         */
+        public boolean tryReadDirect(ByteBuffer buf, long offset) throws IOException {
+            assert assertOffsetsWithinFileLength(offset, buf.remaining(), length);
+            final int startRegion = getRegion(offset);
+            final long end = offset + buf.remaining();
+            final int endRegion = getEndingRegion(end);
+            if (startRegion != endRegion) {
+                return false;
+            }
+            var fileRegion = cache.getIfPresent(cacheKey, startRegion);
+            if (fileRegion == null) {
+                return false;
+            }
+            final var region = fileRegion.chunk;
+            if (region.tracker.checkAvailable(end - getRegionStart(startRegion)) == false) {
+                return false;
+            }
+            return region.tryReadDirect(buf, offset);
         }
 
         /**

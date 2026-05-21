@@ -168,6 +168,11 @@ public final class BlobCacheIndexInput extends BlobCacheBufferedIndexInput imple
     }
 
     @Override
+    public boolean tryReadDirect(ByteBuffer buf, long offset) throws IOException {
+        return cacheFileReader.tryReadDirect(buf, this.offset + offset);
+    }
+
+    @Override
     protected void readInternal(ByteBuffer b) throws IOException {
         try {
             doReadInternal(b);

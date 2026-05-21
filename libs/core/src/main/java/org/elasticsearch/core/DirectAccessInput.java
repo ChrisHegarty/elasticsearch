@@ -74,4 +74,17 @@ public interface DirectAccessInput {
         }
         return count == 0;
     }
+
+    /**
+     * Reads data using O_DIRECT, bypassing the OS page cache. The buffer must
+     * be a direct buffer aligned to the filesystem block size, and the offset
+     * must also be block-aligned.
+     *
+     * @param buf    aligned direct buffer to read into
+     * @param offset byte offset within the input
+     * @return {@code true} if the direct read succeeded
+     */
+    default boolean tryReadDirect(ByteBuffer buf, long offset) throws IOException {
+        return false;
+    }
 }

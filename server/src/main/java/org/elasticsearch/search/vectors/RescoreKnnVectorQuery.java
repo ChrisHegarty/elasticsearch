@@ -9,8 +9,11 @@
 
 package org.elasticsearch.search.vectors;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.codecs.lucene95.HasIndexSlice;
 import org.apache.lucene.index.KnnVectorValues;
+import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.queries.function.FunctionScoreQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.ConjunctionUtils;
@@ -27,12 +30,17 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.VectorScorer;
+import org.apache.lucene.store.FilterIndexInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.VectorUtil;
 import org.elasticsearch.common.lucene.search.Queries;
+import org.elasticsearch.core.DirectAccessInput;
 import org.elasticsearch.search.profile.query.QueryProfiler;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -203,6 +211,7 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
     }
 
     private static class DirectRescoreKnnVectorQuery extends Query {
+        private static final Logger logger = LogManager.getLogger(DirectRescoreKnnVectorQuery.class);
         private static final int PREFETCH_LEAD = 100;
 
         private final float[] floatTarget;
@@ -254,7 +263,10 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
                 int vectorByteSize = knnVectorValues.getVectorByteLength();
                 IndexInput input = (knnVectorValues instanceof HasIndexSlice h) ? h.getSlice() : null;
                 VectorScorer vectorScorer = knnVectorValues.rescorer(floatTarget);
-                leaves.add(new LeafContext(leaf.docBase, vectorByteSize, input, vectorScorer));
+                DirectAccessInput directInput = unwrapDirectAccess(input);
+                var fieldInfo = leaf.reader().getFieldInfos().fieldInfo(fieldName);
+                VectorSimilarityFunction sim = fieldInfo != null ? fieldInfo.getVectorSimilarityFunction() : null;
+                leaves.add(new LeafContext(leaf.docBase, vectorByteSize, input, vectorScorer, directInput, sim));
 
                 var filterIterator = scorer.iterator();
                 KnnVectorValues.DocIndexIterator vectorIter = knnVectorValues.iterator();
@@ -275,7 +287,14 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             }
 
             List<ScoreDoc> results = new ArrayList<>(count);
-            rescore(leaves, docIDs, ords, leafIndices, count, results);
+            boolean hasDirectIO = leaves.stream().anyMatch(l -> l.directInput != null);
+            if (hasDirectIO) {
+                logger.info("rescoring {} vectors using O_DIRECT reads from shared blob cache", count);
+                rescoreWithDirectIO(leaves, docIDs, ords, leafIndices, count, results);
+            } else {
+                logger.debug("rescoring {} vectors using bulk scoring (no direct IO available)", count);
+                rescore(leaves, docIDs, ords, leafIndices, count, results);
+            }
             ScoreDoc[] arrayResults = results.toArray(new ScoreDoc[0]);
             return new KnnScoreDocQuery(arrayResults, indexSearcher.getIndexReader());
         }
@@ -422,7 +441,73 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             }
         }
 
-        private record LeafContext(int docBase, int vectorByteSize, IndexInput input, VectorScorer scorer) {}
+        private static DirectAccessInput unwrapDirectAccess(IndexInput input) {
+            if (input == null) return null;
+            IndexInput unwrapped = FilterIndexInput.unwrapOnlyTest(input);
+            return unwrapped instanceof DirectAccessInput dai ? dai : null;
+        }
+
+        /**
+         * Rescores vectors using O_DIRECT reads from the shared blob cache,
+         * bypassing the OS page cache to avoid TLB and page-table overhead.
+         * Falls back to the bulk scoring path if direct IO is unavailable.
+         */
+        private void rescoreWithDirectIO(
+            List<LeafContext> leaves,
+            int[] docIDs,
+            int[] ords,
+            int[] leafIndices,
+            int count,
+            List<ScoreDoc> results
+        ) throws IOException {
+            final int dims = floatTarget.length;
+            final int vectorByteSize = dims * Float.BYTES;
+            ByteBuffer buf = ByteBuffer.allocate(vectorByteSize).order(ByteOrder.LITTLE_ENDIAN);
+            float[] vector = new float[dims];
+
+            for (int i = 0; i < count; i++) {
+                LeafContext ctx = leaves.get(leafIndices[i]);
+                long fileOffset = (long) ords[i] * ctx.vectorByteSize;
+
+                buf.clear();
+                boolean read = ctx.directInput != null && ctx.directInput.tryReadDirect(buf, fileOffset);
+                if (read == false) {
+                    int target = ctx.scorer.iterator().advance(docIDs[i]);
+                    assert target == docIDs[i];
+                    float score = ctx.scorer.score();
+                    if (Float.isNaN(score) == false) {
+                        results.add(new ScoreDoc(docIDs[i] + ctx.docBase, score));
+                    }
+                    continue;
+                }
+
+                buf.flip().asFloatBuffer().get(vector);
+
+                float rawScore = switch (ctx.sim) {
+                    case DOT_PRODUCT, COSINE -> VectorUtil.dotProduct(floatTarget, vector);
+                    case EUCLIDEAN -> VectorUtil.squareDistance(floatTarget, vector);
+                    case MAXIMUM_INNER_PRODUCT -> VectorUtil.dotProduct(floatTarget, vector);
+                };
+                float score = switch (ctx.sim) {
+                    case DOT_PRODUCT, COSINE -> (1 + rawScore) / 2f;
+                    case EUCLIDEAN -> 1 / (1 + rawScore);
+                    case MAXIMUM_INNER_PRODUCT -> rawScore < 0 ? 1 / (1 - rawScore) : rawScore + 1;
+                };
+
+                if (Float.isNaN(score) == false) {
+                    results.add(new ScoreDoc(docIDs[i] + ctx.docBase, score));
+                }
+            }
+        }
+
+        private record LeafContext(
+            int docBase,
+            int vectorByteSize,
+            IndexInput input,
+            VectorScorer scorer,
+            DirectAccessInput directInput,
+            VectorSimilarityFunction sim
+        ) {}
 
         @Override
         public void visit(QueryVisitor visitor) {

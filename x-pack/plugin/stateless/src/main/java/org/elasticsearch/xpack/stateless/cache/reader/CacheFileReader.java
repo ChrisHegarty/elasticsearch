@@ -98,6 +98,18 @@ public class CacheFileReader {
     }
 
     /**
+     * Reads using O_DIRECT, bypassing the OS page cache. The buffer must be
+     * a direct buffer aligned to the filesystem block size.
+     *
+     * @return {@code true} if the read succeeded, {@code false} if
+     *         O_DIRECT is unavailable, data is not cached, or the
+     *         read spans multiple cache regions
+     */
+    public final boolean tryReadDirect(ByteBuffer buf, long offset) throws IOException {
+        return cacheFile.tryReadDirect(buf, offset);
+    }
+
+    /**
      * Attempts to read byte(s) from the cache using the fast path.
      *
      * @param b the {@link ByteBuffer} to write bytes into
