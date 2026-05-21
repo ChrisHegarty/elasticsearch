@@ -293,7 +293,7 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             List<ScoreDoc> results = new ArrayList<>(count);
             boolean hasDirectIO = leaves.stream().anyMatch(l -> l.directInput != null);
             if (hasDirectIO) {
-                logger.info("rescoring {} vectors using O_DIRECT reads from shared blob cache", count);
+                logger.info("rescoring {} vectors using pread from shared blob cache ({} concurrent)", count, DIRECT_IO_CONCURRENCY);
                 rescoreWithDirectIO(leaves, docIDs, ords, leafIndices, count, results);
             } else {
                 logger.debug("rescoring {} vectors using bulk scoring (no direct IO available)", count);
@@ -454,10 +454,10 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
         private static final int DIRECT_IO_CONCURRENCY = 128;
 
         /**
-         * Rescores vectors using concurrent O_DIRECT reads from the shared blob
-         * cache, bypassing the OS page cache to avoid TLB and page-table overhead.
-         * Reads are issued in parallel via virtual threads (similar to
-         * {@code AsyncDirectIOIndexInput.DirectIOPrefetcher}).
+         * Rescores vectors using concurrent pread-based reads from the shared
+         * blob cache, bypassing mmap to avoid TLB and page-table overhead
+         * while still using the kernel page cache. Reads are issued in parallel
+         * via virtual threads.
          */
         private void rescoreWithDirectIO(
             List<LeafContext> leaves,

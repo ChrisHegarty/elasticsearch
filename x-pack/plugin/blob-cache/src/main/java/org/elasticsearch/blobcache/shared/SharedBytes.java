@@ -30,10 +30,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.nio.file.Files;
-import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
 import java.util.function.IntConsumer;
 
 public class SharedBytes extends AbstractRefCounted {
@@ -62,31 +60,22 @@ public class SharedBytes extends AbstractRefCounted {
 
     private static final byte[] ZEROES = new byte[PAGE_SIZE];
 
-    private static final ThreadLocal<ByteBuffer> directIOBuffer = new ThreadLocal<>();
-
     final int numRegions;
 
     private final IO[] ios;
 
     final int regionSize;
 
-    private static final OpenOption DIRECT_OPEN_OPTION;
-
-    static {
-        OpenOption option;
-        try {
-            final Class<? extends OpenOption> clazz = Class.forName("com.sun.nio.file.ExtendedOpenOption").asSubclass(OpenOption.class);
-            option = Arrays.stream(clazz.getEnumConstants()).filter(e -> e.toString().equalsIgnoreCase("DIRECT")).findFirst().orElse(null);
-        } catch (Exception ex) {
-            option = null;
-        }
-        DIRECT_OPEN_OPTION = option;
-    }
-
     // TODO: for systems like Windows without true p-write/read support we should split this up into multiple channels since positional
     // operations in #IO are not contention-free there (https://bugs.java.com/bugdatabase/view_bug.do?bug_id=6265734)
     private final FileChannel fileChannel;
-    private final FileChannel directChannel;
+
+    /**
+     * A second read-only channel on the same cache file, used for pread-based
+     * random reads that bypass mmap (avoiding TLB thrash on large address
+     * spaces). Shares the kernel page cache with {@link #fileChannel}.
+     */
+    private final FileChannel preadChannel;
     private final Path path;
 
     private final IntConsumer writeBytes;
@@ -110,10 +99,10 @@ public class SharedBytes extends AbstractRefCounted {
             cacheFile = Unwrappable.unwrapAll(cacheFile);
             this.fileChannel = FileChannel.open(cacheFile, OPEN_OPTIONS);
             assert this.fileChannel.size() == fileSize : "expected file size " + fileSize + " but was " + fileChannel.size();
-            this.directChannel = openDirectChannel(cacheFile);
+            this.preadChannel = FileChannel.open(cacheFile, StandardOpenOption.READ);
         } else {
             this.fileChannel = null;
-            this.directChannel = null;
+            this.preadChannel = null;
             for (Path path : environment.nodeDataPaths()) {
                 Files.deleteIfExists(path.resolve(CACHE_FILE_NAME));
             }
@@ -346,7 +335,7 @@ public class SharedBytes extends AbstractRefCounted {
             logger.warn("Failed to unmap shared bytes", e);
         } finally {
             try {
-                IOUtils.close(directChannel, fileChannel, path == null ? null : () -> Files.deleteIfExists(path));
+                IOUtils.close(preadChannel, fileChannel, path == null ? null : () -> Files.deleteIfExists(path));
             } catch (IOException e) {
                 logger.warn("Failed to clean up shared bytes file", e);
             }
@@ -357,21 +346,8 @@ public class SharedBytes extends AbstractRefCounted {
         return path;
     }
 
-    public boolean hasDirectIO() {
-        return directChannel != null;
-    }
-
-    private static FileChannel openDirectChannel(Path cacheFile) {
-        if (DIRECT_OPEN_OPTION == null) {
-            logger.debug("O_DIRECT not available on this JDK");
-            return null;
-        }
-        try {
-            return FileChannel.open(cacheFile, StandardOpenOption.READ, DIRECT_OPEN_OPTION);
-        } catch (Exception e) {
-            logger.debug("O_DIRECT not supported for shared cache file, falling back to normal IO", e);
-            return null;
-        }
+    public boolean hasPreadChannel() {
+        return preadChannel != null;
     }
 
     public IO getFileChannel(int sharedBytesPos) {
@@ -421,41 +397,22 @@ public class SharedBytes extends AbstractRefCounted {
         }
 
         /**
-         * Reads bytes using O_DIRECT, bypassing the OS page cache.
-         * Handles alignment internally: the physical read is aligned down
-         * to a {@link #PAGE_SIZE} boundary and the relevant bytes are
-         * copied into the destination buffer.
+         * Reads bytes via pread through a separate read-only channel,
+         * bypassing mmap to avoid TLB thrash on large address spaces.
+         * Still uses the kernel page cache (unlike O_DIRECT).
          *
-         * @return the number of bytes copied into {@code dst}, or -1 if O_DIRECT is not available
+         * @return the number of bytes read, or -1 if the pread channel is not available
          */
         @SuppressForbidden(reason = "Use positional reads on purpose")
         public int readDirect(ByteBuffer dst, int position) throws IOException {
-            if (directChannel == null) {
+            if (preadChannel == null) {
                 return -1;
             }
-            int wanted = dst.remaining();
-            checkOffsets(position, wanted);
-
-            long physicalOffset = pageStart + position;
-            long alignedOffset = physicalOffset & ~(PAGE_SIZE - 1L);
-            int adjustment = (int) (physicalOffset - alignedOffset);
-            int alignedLen = ((adjustment + wanted + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
-
-            ByteBuffer alignedBuf = directIOBuffer.get();
-            if (alignedBuf == null || alignedBuf.capacity() < alignedLen) {
-                alignedBuf = ByteBuffer.allocateDirect(alignedLen + PAGE_SIZE - 1).alignedSlice(PAGE_SIZE);
-                directIOBuffer.set(alignedBuf);
-            }
-            alignedBuf.clear().limit(alignedLen);
-            int bytesRead = directChannel.read(alignedBuf, alignedOffset);
-            if (bytesRead <= adjustment) {
-                return -1;
-            }
-            int toCopy = Math.min(wanted, bytesRead - adjustment);
-            alignedBuf.position(adjustment).limit(adjustment + toCopy);
-            dst.put(alignedBuf);
-            readBytes.accept(toCopy);
-            return toCopy;
+            int remaining = dst.remaining();
+            checkOffsets(position, remaining);
+            int bytesRead = preadChannel.read(dst, pageStart + position);
+            readBytes.accept(bytesRead);
+            return bytesRead;
         }
 
         /**
