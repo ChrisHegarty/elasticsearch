@@ -14,6 +14,7 @@ import org.apache.lucene.index.KnnVectorValues;
 import org.apache.lucene.queries.function.FunctionScoreQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.ConjunctionUtils;
+import org.apache.lucene.search.DocAndFloatFeatureBuffer;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.KnnByteVectorQuery;
@@ -274,9 +275,108 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             }
 
             List<ScoreDoc> results = new ArrayList<>(count);
-            rescoreWithSlidingPrefetch(leaves, docIDs, ords, leafIndices, count, results);
+            rescore(leaves, docIDs, ords, leafIndices, count, results);
             ScoreDoc[] arrayResults = results.toArray(new ScoreDoc[0]);
             return new KnnScoreDocQuery(arrayResults, indexSearcher.getIndexReader());
+        }
+
+        /**
+         * Rescores using {@link VectorScorer.Bulk} per leaf, which internally uses
+         * SIMD-optimized {@code bulkScore} when available. Entries are grouped by
+         * leaf (contiguous since they were collected leaf-by-leaf), and the next
+         * batch's ordinals are prefetched to overlap I/O with scoring.
+         */
+        private static void rescore(
+            List<LeafContext> leaves,
+            int[] docIDs,
+            int[] ords,
+            int[] leafIndices,
+            int count,
+            List<ScoreDoc> results
+        ) throws IOException {
+            DocAndFloatFeatureBuffer buffer = new DocAndFloatFeatureBuffer();
+
+            int i = 0;
+            while (i < count) {
+                int currentLeaf = leafIndices[i];
+                LeafContext ctx = leaves.get(currentLeaf);
+
+                int runStart = i;
+                int runEnd = i + 1;
+                while (runEnd < count && leafIndices[runEnd] == currentLeaf) {
+                    runEnd++;
+                }
+                int runLen = runEnd - runStart;
+
+                VectorScorer.Bulk bulk = ctx.scorer.bulk(sortedDocIdIterator(docIDs, runStart, runLen));
+
+                // prefetch the first batch before entering the scoring loop
+                if (ctx.input != null) {
+                    int prefetchEnd = Math.min(runStart + VectorScorer.DEFAULT_BULK_BATCH_SIZE, runEnd);
+                    for (int p = runStart; p < prefetchEnd; p++) {
+                        ctx.input.prefetch((long) ords[p] * ctx.vectorByteSize, ctx.vectorByteSize);
+                    }
+                }
+
+                int processed = 0;
+                while (processed < runLen) {
+                    // prefetch the next batch while we score the current one
+                    if (ctx.input != null) {
+                        int nextStart = runStart + processed + VectorScorer.DEFAULT_BULK_BATCH_SIZE;
+                        int nextEnd = Math.min(nextStart + VectorScorer.DEFAULT_BULK_BATCH_SIZE, runEnd);
+                        for (int p = nextStart; p < nextEnd; p++) {
+                            ctx.input.prefetch((long) ords[p] * ctx.vectorByteSize, ctx.vectorByteSize);
+                        }
+                    }
+
+                    bulk.nextDocsAndScores(DocIdSetIterator.NO_MORE_DOCS, null, buffer);
+                    if (buffer.size == 0) {
+                        break;
+                    }
+
+                    for (int j = 0; j < buffer.size; j++) {
+                        if (Float.isNaN(buffer.features[j]) == false) {
+                            results.add(new ScoreDoc(buffer.docs[j] + ctx.docBase, buffer.features[j]));
+                        }
+                    }
+                    processed += buffer.size;
+                }
+
+                i = runEnd;
+            }
+        }
+
+        /** Creates a {@link DocIdSetIterator} over a sorted sub-range of doc IDs. */
+        private static DocIdSetIterator sortedDocIdIterator(int[] docIDs, int offset, int length) {
+            return new DocIdSetIterator() {
+                int idx = -1;
+                int doc = -1;
+
+                @Override
+                public int docID() {
+                    return doc;
+                }
+
+                @Override
+                public int nextDoc() {
+                    idx++;
+                    doc = idx < length ? docIDs[offset + idx] : NO_MORE_DOCS;
+                    return doc;
+                }
+
+                @Override
+                public int advance(int target) {
+                    while (doc < target) {
+                        nextDoc();
+                    }
+                    return doc;
+                }
+
+                @Override
+                public long cost() {
+                    return length;
+                }
+            };
         }
 
         /**
@@ -285,6 +385,7 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
          * scoring cursor, giving madvise(MADV_WILLNEED) time to page in data
          * before it is read.
          */
+        @SuppressWarnings("unused")
         private static void rescoreWithSlidingPrefetch(
             List<LeafContext> leaves,
             int[] docIDs,
@@ -293,9 +394,6 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             int count,
             List<ScoreDoc> results
         ) throws IOException {
-            if (count == 0) {
-                return;
-            }
             final int lead = Math.min(PREFETCH_LEAD, count);
 
             for (int i = 0; i < lead; i++) {
