@@ -828,6 +828,10 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
         return -1;
     }
 
+    public java.nio.file.Path getCacheFilePath() {
+        return sharedBytes.getPath();
+    }
+
     @Override
     public void close() {
         sharedBytes.decRef();
@@ -1455,6 +1459,29 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
                 return false;
             }
             return region.tryReadDirect(buf, offset);
+        }
+
+        /**
+         * Maps a logical offset within this cache file to the physical byte
+         * offset in the underlying shared_snapshot_cache file. Returns -1
+         * if the region is not cached or has been evicted.
+         */
+        public long getPhysicalOffset(long offset) {
+            final int region = getRegion(offset);
+            final var entry = cache.getIfPresent(cacheKey, region);
+            if (entry == null) {
+                return -1;
+            }
+            final var chunk = entry.chunk;
+            SharedBytes.IO ioRef = chunk.nonVolatileIO();
+            if (ioRef == null || chunk.isEvicted()) {
+                return -1;
+            }
+            return ioRef.getPageStart() + getRegionRelativePosition(offset);
+        }
+
+        public java.nio.file.Path getCacheFilePath() {
+            return SharedBlobCacheService.this.getCacheFilePath();
         }
 
         /**

@@ -442,6 +442,10 @@ public class SharedBytes extends AbstractRefCounted {
             return bytesWritten;
         }
 
+        public long getPageStart() {
+            return pageStart;
+        }
+
         private void checkOffsets(int position, int length) {
             if (position < 0 || position + length > regionSize) {
                 offsetCheckFailed();

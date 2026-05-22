@@ -173,6 +173,16 @@ public final class BlobCacheIndexInput extends BlobCacheBufferedIndexInput imple
     }
 
     @Override
+    public long getPhysicalOffset(long offset) {
+        return cacheFileReader.getPhysicalOffset(this.offset + offset);
+    }
+
+    @Override
+    public java.nio.file.Path getCacheFilePath() {
+        return cacheFileReader.getCacheFilePath();
+    }
+
+    @Override
     protected void readInternal(ByteBuffer b) throws IOException {
         try {
             doReadInternal(b);

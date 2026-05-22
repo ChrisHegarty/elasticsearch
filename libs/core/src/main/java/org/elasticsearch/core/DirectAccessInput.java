@@ -76,15 +76,32 @@ public interface DirectAccessInput {
     }
 
     /**
-     * Reads data using O_DIRECT, bypassing the OS page cache. The buffer must
-     * be a direct buffer aligned to the filesystem block size, and the offset
-     * must also be block-aligned.
+     * Reads data via pread, bypassing mmap to avoid TLB thrash on large
+     * address spaces while still using the kernel page cache.
      *
-     * @param buf    aligned direct buffer to read into
+     * @param buf    buffer to read into
      * @param offset byte offset within the input
-     * @return {@code true} if the direct read succeeded
+     * @return {@code true} if the read succeeded
      */
     default boolean tryReadDirect(ByteBuffer buf, long offset) throws IOException {
         return false;
+    }
+
+    /**
+     * Maps a logical byte offset within this input to the physical byte
+     * offset in the underlying cache file (e.g. shared_snapshot_cache).
+     * Returns -1 if the mapping is unavailable (not cached, evicted, or
+     * not supported).
+     */
+    default long getPhysicalOffset(long offset) {
+        return -1;
+    }
+
+    /**
+     * Returns the path to the underlying cache file (e.g. shared_snapshot_cache),
+     * or {@code null} if unavailable.
+     */
+    default java.nio.file.Path getCacheFilePath() {
+        return null;
     }
 }

@@ -140,6 +140,14 @@ public class CacheFileReader {
         return cacheFile.withByteBufferSlices(offsets, length, count, action);
     }
 
+    public long getPhysicalOffset(long offset) {
+        return cacheFile.getPhysicalOffset(offset);
+    }
+
+    public java.nio.file.Path getCacheFilePath() {
+        return cacheFile.getCacheFilePath();
+    }
+
     /**
      * Reads byte(s) from the cache, potentially fetching the data from a remote source if the data are not present in cache (slow path).
      *

@@ -108,7 +108,7 @@ public abstract class AbstractStatelessQueryBenchmark {
             dataPath = Files.createTempDirectory("stateless-bench-data");
             buildIndexInto(dataPath);
         } else {
-            dataPath = Path.of(System.getProperty("java.io.tmpdir"), "stateless-bench-index", cacheKey);
+            dataPath = Path.of(System.getProperty("es.bench.indexDir", System.getProperty("java.io.tmpdir")), "stateless-bench-index", cacheKey);
             Files.createDirectories(dataPath);
             Path marker = dataPath.resolve("_built");
             if (Files.exists(marker) == false) {
@@ -140,7 +140,7 @@ public abstract class AbstractStatelessQueryBenchmark {
     @Setup(Level.Invocation)
     public final void setupInvocation() throws IOException {
         if (dropOsPageCache) {
-            evictSharedCachePages(workPath);
+            evictSharedCachePages(workPath, dataPath);
         }
     }
 
@@ -207,7 +207,8 @@ public abstract class AbstractStatelessQueryBenchmark {
 
     private static final long BALLAST_SIZE = Long.getLong("es.bench.ballastBytes", 5L * 1024 * 1024 * 1024);
 
-    private static void evictSharedCachePages(Path workPath) throws IOException {
+    private static void evictSharedCachePages(Path workPath, Path dataPath) throws IOException {
+        System.err.println("[stateless-bench] evict Shared Cache Pages for index at " + workPath);
         // 1. Tell the kernel to drop cached pages for the shared bytes file
         try (Stream<Path> walk = Files.walk(workPath)) {
             walk.filter(p -> p.getFileName().toString().equals("shared_snapshot_cache")).forEach(p -> {
@@ -224,7 +225,7 @@ public abstract class AbstractStatelessQueryBenchmark {
         //    This pushes the blob cache pages out of physical memory, ensuring
         //    subsequent accesses trigger real major faults from disk.
         if (BALLAST_SIZE > 0) {
-            Path ballast = workPath.resolve("ballast");
+            Path ballast = dataPath.resolve("bench-ballast");
             try (
                 RandomAccessFile raf = new RandomAccessFile(ballast.toFile(), "rw");
                 Arena arena = Arena.ofConfined()
@@ -237,6 +238,7 @@ public abstract class AbstractStatelessQueryBenchmark {
             }
             Files.deleteIfExists(ballast);
         }
+        System.err.println("[stateless-bench] evict Shared Cache Pages for index at " + workPath + " complete");
     }
 
     private static void preWarm(Directory dir) throws IOException {

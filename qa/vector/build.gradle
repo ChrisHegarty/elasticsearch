@@ -205,6 +205,7 @@ tasks.named("thirdPartyAudit").configure {
 tasks.register("checkVec", JavaExec) {
   group = "Execution"
   description = "Runs KnnIndexTester with the provided parameters to validate recall and performance."
+  dependsOn ":libs:native:native-libraries:extractLibs"
   classpath = sourceSets.main.runtimeClasspath
   mainClass.set("org.elasticsearch.test.knn.KnnIndexTester")
   // Configure logging to console
