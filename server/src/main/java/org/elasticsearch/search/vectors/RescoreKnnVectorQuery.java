@@ -266,9 +266,13 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
                         ords = ArrayUtil.grow(ords);
                         leafIndices = ArrayUtil.grow(leafIndices);
                     }
+                    int ord = vectorIter.index();
                     docIDs[count] = doc;
-                    ords[count] = vectorIter.index();
+                    ords[count] = ord;
                     leafIndices[count] = leafIdx;
+                    if (count < PREFETCH_LEAD && input != null) {
+                        input.prefetch((long) ord * vectorByteSize, vectorByteSize);
+                    }
                     count++;
                 }
             }
@@ -298,12 +302,9 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             }
             final int lead = Math.min(PREFETCH_LEAD, count);
 
-            for (int i = 0; i < lead; i++) {
-                LeafContext ctx = leaves.get(leafIndices[i]);
-                if (ctx.input != null) {
-                    ctx.input.prefetch((long) ords[i] * ctx.vectorByteSize, ctx.vectorByteSize);
-                }
-            }
+            // The first `lead` entries were already prefetched during collection,
+            // giving them maximum lead time (the remainder of collection + early
+            // scoring iterations). The sliding window below handles the rest.
 
             for (int i = 0; i < count; i++) {
                 int prefetchIdx = i + lead;
