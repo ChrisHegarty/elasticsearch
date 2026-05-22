@@ -10,6 +10,7 @@
 package org.elasticsearch.search.vectors;
 
 import org.apache.lucene.codecs.lucene95.HasIndexSlice;
+import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.index.KnnVectorValues;
 import org.apache.lucene.queries.function.FunctionScoreQuery;
 import org.apache.lucene.search.BooleanClause;
@@ -26,14 +27,14 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.VectorScorer;
-import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.util.ArrayUtil;
 import org.elasticsearch.common.lucene.search.Queries;
+import org.elasticsearch.core.CheckedRunnable;
 import org.elasticsearch.search.profile.query.QueryProfiler;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 
@@ -202,7 +203,7 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
     }
 
     private static class DirectRescoreKnnVectorQuery extends Query {
-        private static final int PREFETCH_LEAD = 100;
+        private static final int PREFETCH_BUFFER_SIZE = 100;
 
         private final float[] floatTarget;
         private final String fieldName;
@@ -227,12 +228,8 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             }
             assert innerRewritten.getClass() != MatchAllDocsQuery.class;
 
-            int[] docIDs = new int[16];
-            int[] ords = new int[16];
-            int[] leafIndices = new int[16];
-            int count = 0;
-
-            List<LeafContext> leaves = new ArrayList<>();
+            List<ScoreDoc> results = new ArrayList<>(10);
+            LinkedList<CheckedRunnable<IOException>> buffer = new LinkedList<>();
             for (var leaf : indexSearcher.getIndexReader().leaves()) {
                 var knnVectorValues = leaf.reader().getFloatVectorValues(fieldName);
                 if (knnVectorValues == null) {
@@ -248,84 +245,18 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
                 if (scorer == null) {
                     continue;
                 }
-
-                int leafIdx = leaves.size();
-                int vectorByteSize = knnVectorValues.getVectorByteLength();
-                IndexInput input = (knnVectorValues instanceof HasIndexSlice h) ? h.getSlice() : null;
-                VectorScorer vectorScorer = knnVectorValues.rescorer(floatTarget);
-                leaves.add(new LeafContext(leaf.docBase, vectorByteSize, input, vectorScorer));
-
                 var filterIterator = scorer.iterator();
-                KnnVectorValues.DocIndexIterator vectorIter = knnVectorValues.iterator();
-                DocIdSetIterator conjunction = ConjunctionUtils.intersectIterators(List.of(vectorIter, filterIterator));
-                int doc;
-                while ((doc = conjunction.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
-                    assert doc == vectorIter.docID();
-                    if (count == docIDs.length) {
-                        docIDs = ArrayUtil.grow(docIDs);
-                        ords = ArrayUtil.grow(ords);
-                        leafIndices = ArrayUtil.grow(leafIndices);
-                    }
-                    int ord = vectorIter.index();
-                    docIDs[count] = doc;
-                    ords[count] = ord;
-                    leafIndices[count] = leafIdx;
-                    if (count < PREFETCH_LEAD && input != null) {
-                        input.prefetch((long) ord * vectorByteSize, vectorByteSize);
-                    }
-                    count++;
-                }
+                rescoreIndividually(leaf.docBase, knnVectorValues, buffer, results, filterIterator);
             }
 
-            List<ScoreDoc> results = new ArrayList<>(count);
-            rescoreWithSlidingPrefetch(leaves, docIDs, ords, leafIndices, count, results);
+            for (var runnable : buffer) {
+                runnable.run();
+            }
+            buffer.clear();
+            // Remove any remaining sentinel values
             ScoreDoc[] arrayResults = results.toArray(new ScoreDoc[0]);
             return new KnnScoreDocQuery(arrayResults, indexSearcher.getIndexReader());
         }
-
-        /**
-         * Rescores vectors using a sliding-window prefetch across all leaves.
-         * A prefetch cursor runs {@link #PREFETCH_LEAD} positions ahead of the
-         * scoring cursor, giving madvise(MADV_WILLNEED) time to page in data
-         * before it is read.
-         */
-        private static void rescoreWithSlidingPrefetch(
-            List<LeafContext> leaves,
-            int[] docIDs,
-            int[] ords,
-            int[] leafIndices,
-            int count,
-            List<ScoreDoc> results
-        ) throws IOException {
-            if (count == 0) {
-                return;
-            }
-            final int lead = Math.min(PREFETCH_LEAD, count);
-
-            // The first `lead` entries were already prefetched during collection,
-            // giving them maximum lead time (the remainder of collection + early
-            // scoring iterations). The sliding window below handles the rest.
-
-            for (int i = 0; i < count; i++) {
-                int prefetchIdx = i + lead;
-                if (prefetchIdx < count) {
-                    LeafContext prefetchCtx = leaves.get(leafIndices[prefetchIdx]);
-                    if (prefetchCtx.input != null) {
-                        prefetchCtx.input.prefetch((long) ords[prefetchIdx] * prefetchCtx.vectorByteSize, prefetchCtx.vectorByteSize);
-                    }
-                }
-
-                LeafContext ctx = leaves.get(leafIndices[i]);
-                int target = ctx.scorer.iterator().advance(docIDs[i]);
-                assert target == docIDs[i];
-                float score = ctx.scorer.score();
-                if (Float.isNaN(score) == false) {
-                    results.add(new ScoreDoc(docIDs[i] + ctx.docBase, score));
-                }
-            }
-        }
-
-        private record LeafContext(int docBase, int vectorByteSize, IndexInput input, VectorScorer scorer) {}
 
         @Override
         public void visit(QueryVisitor visitor) {
@@ -345,6 +276,57 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
         @Override
         public int hashCode() {
             return Objects.hash(innerQuery, getClass());
+        }
+
+        /**
+         * Adds rescoring work to {@code buffer}.
+         *
+         * <p> Prefetches and scores vectors using a sliding-window approach across leaves.
+         * The buffer holds up to {@link #PREFETCH_BUFFER_SIZE} deferred scoring tasks.
+         * Each new vector is prefetched immediately; once the buffer is full, the oldest
+         * entry is scored before adding the new one, keeping ~PREFETCH_BUFFER_SIZE
+         * madvise(MADV_WILLNEED) calls ahead of the scoring cursor.
+         *
+         * <p> Callers should ensure to drain the {@code buffer} after this method returns
+         * to run the queued {@link CheckedRunnable}s to materialize results into {@code queue}.
+         */
+        private void rescoreIndividually(
+            int docBase,
+            FloatVectorValues knnVectorValues,
+            LinkedList<CheckedRunnable<IOException>> buffer,
+            List<ScoreDoc> queue,
+            DocIdSetIterator filterIterator
+        ) throws IOException {
+            final int vectorByteSize = knnVectorValues.getVectorByteLength();
+            final HasIndexSlice sliceable = (knnVectorValues instanceof HasIndexSlice h) ? h : null;
+            final var input = sliceable != null ? sliceable.getSlice() : null;
+
+            KnnVectorValues.DocIndexIterator vectorIter = knnVectorValues.iterator();
+            DocIdSetIterator conjunction = ConjunctionUtils.intersectIterators(List.of(vectorIter, filterIterator));
+            VectorScorer scorer = knnVectorValues.rescorer(floatTarget);
+            int doc;
+            while ((doc = conjunction.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+                assert doc == vectorIter.docID();
+                final int docID = doc;
+                final int ord = vectorIter.index();
+
+                if (input != null) {
+                    input.prefetch((long) ord * vectorByteSize, vectorByteSize);
+                }
+
+                if (buffer.size() == PREFETCH_BUFFER_SIZE) {
+                    buffer.removeFirst().run();
+                }
+
+                buffer.add(() -> {
+                    int target = scorer.iterator().advance(docID);
+                    assert target == docID;
+                    float score = scorer.score();
+                    if (Float.isNaN(score) == false) {
+                        queue.add(new ScoreDoc(docID + docBase, score));
+                    }
+                });
+            }
         }
     }
 }
