@@ -155,6 +155,11 @@ public abstract sealed class Int7uOSQVectorScorer extends RandomVectorScorer.Abs
         for (int i = 0; i < numNodes; i++) {
             offsets[i] = (long) nodes[i] * vectorPitch;
         }
+        if (Int8VectorScorer.PREFETCH_ENABLED) {
+            for (int i = 0; i < numNodes; i++) {
+                input.prefetch(offsets[i], vectorByteSize);
+            }
+        }
 
         float[] maxScore = new float[] { Float.NEGATIVE_INFINITY };
         boolean resolved = IndexInputUtils.withSliceAddresses(input, offsets, vectorByteSize, numNodes, addrsScratch::get, addrs -> {

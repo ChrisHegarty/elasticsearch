@@ -101,6 +101,11 @@ public abstract sealed class Int7SQVectorScorer extends RandomVectorScorer.Abstr
         for (int i = 0; i < numNodes; i++) {
             offsets[i] = (long) nodes[i] * vectorPitch;
         }
+        if (Int8VectorScorer.PREFETCH_ENABLED) {
+            for (int i = 0; i < numNodes; i++) {
+                input.prefetch(offsets[i], vectorByteSize);
+            }
+        }
         return IndexInputUtils.withSliceAddresses(
             input,
             offsets,

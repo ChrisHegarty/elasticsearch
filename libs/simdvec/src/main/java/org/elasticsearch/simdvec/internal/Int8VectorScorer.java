@@ -86,6 +86,8 @@ public abstract sealed class Int8VectorScorer extends RandomVectorScorer.Abstrac
      * the sparse scoring function. Returns true if addresses were resolved
      * (via mmap or DirectAccessInput), false if fallback scoring is needed.
      */
+    static final boolean PREFETCH_ENABLED = "true".equalsIgnoreCase(System.getProperty("es.hnsw_vector_prefetch_feature_flag_enabled"));
+
     final boolean bulkScoreWithSparse(int[] nodes, float[] scores, int numNodes, SparseScorer sparseScorer) throws IOException {
         if (numNodes == 0) {
             return false;
@@ -93,6 +95,11 @@ public abstract sealed class Int8VectorScorer extends RandomVectorScorer.Abstrac
         long[] offsets = offsetsScratch.get(numNodes);
         for (int i = 0; i < numNodes; i++) {
             offsets[i] = (long) nodes[i] * vectorByteSize;
+        }
+        if (PREFETCH_ENABLED) {
+            for (int i = 0; i < numNodes; i++) {
+                input.prefetch(offsets[i], vectorByteSize);
+            }
         }
         return IndexInputUtils.withSliceAddresses(
             input,
