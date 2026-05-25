@@ -1,0 +1,20 @@
+{
+  "dataset": {
+    "gcp": {
+      "name": "cohere-msmarco-v2-embed-english-v3-10M"
+    }
+  },
+  "num_docs": 10000000,
+  "dimensions": 1024,
+  "vector_encoding": "FLOAT32",
+  "vector_space": "DOT_PRODUCT",
+  "index_type": "HNSW",
+  "hnsw_m": 16,
+  "hnsw_ef_construction": 100,
+  "quantize_bits": 7,
+  "force_merge": true,
+  "force_merge_max_num_segments": 1,
+  "reindex": true,
+  "directory_type": "default",
+  "num_queries": 1000
+}
