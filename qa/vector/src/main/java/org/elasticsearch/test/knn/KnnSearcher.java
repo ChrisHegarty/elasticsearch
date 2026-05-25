@@ -23,18 +23,10 @@ package org.elasticsearch.test.knn;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FloatVectorValues;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.index.VectorEncoding;
 import org.apache.lucene.index.VectorSimilarityFunction;
-import org.apache.lucene.queries.function.FunctionQuery;
-import org.apache.lucene.queries.function.valuesource.ByteKnnVectorFieldSource;
-import org.apache.lucene.queries.function.valuesource.ByteVectorSimilarityFunction;
-import org.apache.lucene.queries.function.valuesource.ConstKnnByteVectorValueSource;
-import org.apache.lucene.queries.function.valuesource.ConstKnnFloatValueSource;
-import org.apache.lucene.queries.function.valuesource.FloatKnnVectorFieldSource;
-import org.apache.lucene.queries.function.valuesource.FloatVectorSimilarityFunction;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ConstantScoreScorer;
@@ -44,7 +36,6 @@ import org.apache.lucene.search.FilterDocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryVisitor;
-import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.ScorerSupplier;
@@ -99,7 +90,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
 
-import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 import static org.elasticsearch.test.knn.KnnIndexTester.logger;
 import static org.elasticsearch.test.knn.KnnIndexer.ID_FIELD;
 import static org.elasticsearch.test.knn.KnnIndexer.PARTITION_ID_FIELD;
@@ -636,7 +626,7 @@ public class KnnSearcher {
                     int idx = p * numQueryVectors + q;
                     if (vectorEncoding.equals(VectorEncoding.BYTE)) {
                         tasks.add(
-                            new ComputeNNByteTask(
+                            new GroundTruth.PerQuery.ComputeNNByteTask(
                                 idx,
                                 params.topK(),
                                 queries.nextByteVector().vector(),
@@ -648,7 +638,7 @@ public class KnnSearcher {
                         );
                     } else {
                         tasks.add(
-                            new ComputeNNFloatTask(
+                            new GroundTruth.PerQuery.ComputeNNFloatTask(
                                 idx,
                                 params.topK(),
                                 queries.nextFloatVector().vector(),
@@ -867,149 +857,17 @@ public class KnnSearcher {
     }
 
     private int[][] computeExactNN(DataGenerator dataGenerator, Query filterQuery, int topK) throws IOException {
-        int[][] result = new int[dataGenerator.numQueries()][];
-        try (Directory dir = FSDirectory.open(indexPath); DirectoryReader reader = DirectoryReader.open(dir)) {
-            List<Callable<Void>> tasks = new ArrayList<>();
-            IndexVectorReader queryReader = dataGenerator.queries();
-            for (int i = 0; i < numQueryVectors; i++) {
-                float[] queryVector = queryReader.nextFloatVector().vector();
-                tasks.add(new ComputeNNFloatTask(i, topK, queryVector, result, reader, filterQuery, similarityFunction));
-            }
-            ForkJoinPool.commonPool().invokeAll(tasks);
-            return result;
-        }
+        GroundTruth groundTruth = GroundTruth.create(docPath, indexPath, numDocs, numQueryVectors, dim, similarityFunction, filterQuery);
+        return groundTruth.computeFloat(dataGenerator, topK);
     }
 
     private int[][] computeExactNNByte(DataGenerator dataGenerator, Query filterQuery, int topK) throws IOException {
-        int[][] result = new int[dataGenerator.numQueries()][];
-        try (Directory dir = FSDirectory.open(indexPath); DirectoryReader reader = DirectoryReader.open(dir)) {
-            List<Callable<Void>> tasks = new ArrayList<>();
-            IndexVectorReader queryReader = dataGenerator.queries();
-            for (int i = 0; i < numQueryVectors; i++) {
-                byte[] queryVector = queryReader.nextByteVector().vector();
-                tasks.add(new ComputeNNByteTask(i, topK, queryVector, result, reader, filterQuery, similarityFunction));
-            }
-            ForkJoinPool.commonPool().invokeAll(tasks);
-            return result;
-        }
-    }
-
-    static class ComputeNNFloatTask implements Callable<Void> {
-
-        private final int queryOrd;
-        private final float[] query;
-        private final int[][] result;
-        private final IndexReader reader;
-        private final VectorSimilarityFunction similarityFunction;
-        private final Query filterQuery;
-        private final int topK;
-
-        ComputeNNFloatTask(
-            int queryOrd,
-            int topK,
-            float[] query,
-            int[][] result,
-            IndexReader reader,
-            Query filterQuery,
-            VectorSimilarityFunction similarityFunction
-        ) {
-            this.queryOrd = queryOrd;
-            this.query = query;
-            this.result = result;
-            this.reader = reader;
-            this.similarityFunction = similarityFunction;
-            this.filterQuery = filterQuery;
-            this.topK = topK;
-        }
-
-        @Override
-        public Void call() {
-            IndexSearcher searcher = new IndexSearcher(reader);
-            try {
-                var queryVector = new ConstKnnFloatValueSource(query);
-                var docVectors = new FloatKnnVectorFieldSource(VECTOR_FIELD);
-                Query query = new FunctionQuery(new FloatVectorSimilarityFunction(similarityFunction, queryVector, docVectors));
-                if (filterQuery != null) {
-                    query = new BooleanQuery.Builder().add(query, BooleanClause.Occur.SHOULD)
-                        .add(filterQuery, BooleanClause.Occur.FILTER)
-                        .build();
-                }
-                var topDocs = searcher.search(query, topK);
-                result[queryOrd] = getResultIds(topDocs, reader.storedFields());
-                if ((queryOrd + 1) % 100 == 0) {
-                    logger.debug(" exact knn scored " + (queryOrd + 1));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            return null;
-        }
-    }
-
-    static class ComputeNNByteTask implements Callable<Void> {
-
-        private final int queryOrd;
-        private final byte[] query;
-        private final int[][] result;
-        private final IndexReader reader;
-        private final VectorSimilarityFunction similarityFunction;
-        private final Query filterQuery;
-        private final int topK;
-
-        ComputeNNByteTask(
-            int queryOrd,
-            int topK,
-            byte[] query,
-            int[][] result,
-            IndexReader reader,
-            Query filterQuery,
-            VectorSimilarityFunction similarityFunction
-        ) {
-            this.queryOrd = queryOrd;
-            this.query = query;
-            this.result = result;
-            this.reader = reader;
-            this.similarityFunction = similarityFunction;
-            this.filterQuery = filterQuery;
-            this.topK = topK;
-        }
-
-        @Override
-        public Void call() {
-            IndexSearcher searcher = new IndexSearcher(reader);
-            try {
-                var queryVector = new ConstKnnByteVectorValueSource(query);
-                var docVectors = new ByteKnnVectorFieldSource(VECTOR_FIELD);
-                Query query = new FunctionQuery(new ByteVectorSimilarityFunction(similarityFunction, queryVector, docVectors));
-                if (filterQuery != null) {
-                    query = new BooleanQuery.Builder().add(query, BooleanClause.Occur.SHOULD)
-                        .add(filterQuery, BooleanClause.Occur.FILTER)
-                        .build();
-                }
-                var topDocs = searcher.search(query, topK);
-                result[queryOrd] = getResultIds(topDocs, reader.storedFields());
-                if ((queryOrd + 1) % 100 == 0) {
-                    logger.debug(" exact knn scored " + (queryOrd + 1));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            return null;
-        }
+        GroundTruth groundTruth = GroundTruth.create(docPath, indexPath, numDocs, numQueryVectors, dim, similarityFunction, filterQuery);
+        return groundTruth.computeByte(dataGenerator, topK);
     }
 
     static int[] getResultIds(TopDocs topDocs, StoredFields storedFields) throws IOException {
-        int[] resultIds = new int[topDocs.scoreDocs.length];
-        int i = 0;
-        for (ScoreDoc doc : topDocs.scoreDocs) {
-            if (doc.doc != NO_MORE_DOCS) {
-                // there is a bug somewhere that can result in doc=NO_MORE_DOCS! I think it happens
-                // in some degenerate case (like input query has NaN in it?) that causes no results to
-                // be returned from HNSW search?
-                resultIds[i++] = Integer.parseInt(storedFields.document(doc.doc).get(ID_FIELD));
-            }
-        }
-        return resultIds;
+        return GroundTruth.getResultIds(topDocs, storedFields);
     }
 
     private static class BitSetQuery extends Query {

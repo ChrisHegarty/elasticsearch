@@ -26,7 +26,12 @@ import java.util.Random;
  */
 public final class NonPartitionDataGenerator extends DataGenerator {
 
-    NonPartitionDataGenerator(IOSupplier<IndexVectorReader> docs, int numDocs, IOSupplier<IndexVectorReader> queries, int numQueries) {
+    public NonPartitionDataGenerator(
+        IOSupplier<IndexVectorReader> docs,
+        int numDocs,
+        IOSupplier<IndexVectorReader> queries,
+        int numQueries
+    ) {
         super(docs, numDocs, queries, numQueries);
     }
 
