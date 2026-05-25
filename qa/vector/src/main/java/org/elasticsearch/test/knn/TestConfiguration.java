@@ -41,6 +41,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32C;
 
@@ -725,12 +728,16 @@ public record TestConfiguration(
             }
         }
 
+        private record FileEntry(String gsFile, Blob blob, Path destFile) {}
+
         private static List<Path> downloadFromGoogleCloud(Storage storage, List<String> files, Path dest) throws Exception {
             if (Files.exists(dest) && !Files.isDirectory(dest)) {
                 throw new IllegalArgumentException("Data path must be a directory");
             }
 
             List<Path> dataFiles = new ArrayList<>();
+            List<FileEntry> toCheck = new ArrayList<>();
+
             for (String gsFile : files) {
                 BlobId id = BlobId.fromGsUtilUri(gsFile);
                 Blob blob = storage.get(id);
@@ -755,23 +762,46 @@ public record TestConfiguration(
                         blob.downloadTo(out);
                     }
                 } else {
-                    KnnIndexTester.logger.info("Checking CRC32C for {}...", destFile.getFileName());
-                    // check CRC32
-                    String blobCrc32c = blob.getCrc32c();
-                    if (blobCrc32c == null) {
-                        KnnIndexTester.logger.warn("Skipping CRC32C check for {} (blob CRC32C not available)", gsFile);
-                        continue;
-                    }
-
-                    String localCrc32c = computeFileCrc32cBase64(destFile);
-                    if (!blobCrc32c.equals(localCrc32c)) {
-                        throw new IllegalArgumentException(
-                            "CRC32C mismatch on local file " + destFile + ". Check file, then delete to re-download"
-                        );
-                    }
+                    toCheck.add(new FileEntry(gsFile, blob, destFile));
                 }
             }
+
+            if (!toCheck.isEmpty()) {
+                verifyCrc32cChecksums(toCheck);
+            }
             return dataFiles;
+        }
+
+        /** Verifies CRC32C checksums of existing local files against their GCS blobs, in parallel using virtual threads. */
+        private static void verifyCrc32cChecksums(List<FileEntry> entries) throws Exception {
+            KnnIndexTester.logger.info("Checking CRC32C for {} existing files...", entries.size());
+            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                List<Future<Void>> futures = new ArrayList<>();
+                for (FileEntry entry : entries) {
+                    futures.add(executor.submit(() -> {
+                        verifySingleCrc32c(entry);
+                        return null;
+                    }));
+                }
+                for (var future : futures) {
+                    future.get();
+                }
+            }
+        }
+
+        private static void verifySingleCrc32c(FileEntry entry) throws IOException {
+            String blobCrc32c = entry.blob().getCrc32c();
+            if (blobCrc32c == null) {
+                KnnIndexTester.logger.warn("Skipping CRC32C check for {} (blob CRC32C not available)", entry.gsFile());
+                return;
+            }
+            KnnIndexTester.logger.info("Checking CRC32C for {}...", entry.destFile().getFileName());
+            String localCrc32c = computeFileCrc32cBase64(entry.destFile());
+            if (!blobCrc32c.equals(localCrc32c)) {
+                throw new IllegalArgumentException(
+                    "CRC32C mismatch on local file " + entry.destFile() + ". Check file, then delete to re-download"
+                );
+            }
         }
 
         /**
