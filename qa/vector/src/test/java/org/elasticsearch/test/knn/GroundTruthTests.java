@@ -19,6 +19,7 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.tests.util.LuceneTestCase.AwaitsFix;
 import org.apache.lucene.util.VectorUtil;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.test.knn.data.DataGenerator;
@@ -95,7 +96,8 @@ public class GroundTruthTests extends ESTestCase {
         assertResultsEqual(perQueryResult, singlePassResult);
     }
 
-    /** Times both strategies on 1M docs / 100 queries and prints elapsed ms. Not a correctness test -- just a timing comparison. */
+    /** Times both strategies on 1M docs / 100 queries and writes elapsed ms to a file. Not a correctness test. */
+    @AwaitsFix(bugUrl = "manual timing benchmark -- remove @AwaitsFix to run")
     public void testTimingSinglePassVsPerQuery1M() throws Exception {
         int numDocs = 1_000_000;
         int numQueries = 100;
@@ -107,40 +109,50 @@ public class GroundTruthTests extends ESTestCase {
         Path indexDir = tempDir.resolve("index");
         Files.createDirectories(indexDir);
 
-        System.out.println("generating " + numDocs + " random float vectors (dim=" + dim + ")...");
+        Path resultsFile = tempDir.resolve("timing-results.txt");
+
         long t0 = System.nanoTime();
         Random rng = new Random(42);
         writeRandomFloatVectors(rawVecFile, rng, numDocs, dim);
         float[][] queryVectors = generateFloatVectors(43, numQueries, dim);
-        System.out.println("data generation: " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0) + " ms");
+        long dataGenMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
 
-        System.out.println("building Lucene index for PerQuery strategy...");
         t0 = System.nanoTime();
         buildLuceneIndexFromFile(indexDir, rawVecFile, numDocs, dim, VectorSimilarityFunction.DOT_PRODUCT);
-        System.out.println("index build: " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0) + " ms");
+        long indexBuildMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
 
         // -- SinglePass --
         DataGenerator dataGenSP = makeDataGenerator(new float[0][], queryVectors);
         GroundTruth singlePass = new GroundTruth.SinglePass(List.of(rawVecFile), numDocs, dim, VectorSimilarityFunction.DOT_PRODUCT);
-        System.out.println("running SinglePass...");
         t0 = System.nanoTime();
         int[][] singlePassResult = singlePass.computeFloat(dataGenSP, topK);
         long singlePassMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
-        System.out.println("SinglePass: " + singlePassMs + " ms");
 
         // -- PerQuery --
         DataGenerator dataGenPQ = makeDataGenerator(new float[0][], queryVectors);
         GroundTruth perQuery = new GroundTruth.PerQuery(indexDir, numQueries, VectorSimilarityFunction.DOT_PRODUCT, null);
-        System.out.println("running PerQuery...");
         t0 = System.nanoTime();
         int[][] perQueryResult = perQuery.computeFloat(dataGenPQ, topK);
         long perQueryMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
-        System.out.println("PerQuery: " + perQueryMs + " ms");
 
-        System.out.println(
-            "=== SinglePass: " + singlePassMs + " ms  vs  PerQuery: " + perQueryMs + " ms  (speedup: "
-                + String.format("%.1f", (double) perQueryMs / singlePassMs) + "x) ==="
+        String summary = String.format(
+            "numDocs=%d  numQueries=%d  dim=%d  topK=%d%n"
+                + "data generation: %d ms%n"
+                + "index build:     %d ms%n"
+                + "SinglePass:      %d ms%n"
+                + "PerQuery:        %d ms%n"
+                + "speedup:         %.1fx%n",
+            numDocs,
+            numQueries,
+            dim,
+            topK,
+            dataGenMs,
+            indexBuildMs,
+            singlePassMs,
+            perQueryMs,
+            (double) perQueryMs / singlePassMs
         );
+        Files.writeString(resultsFile, summary);
 
         assertResultsEqual(perQueryResult, singlePassResult);
     }
