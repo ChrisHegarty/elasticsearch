@@ -1,0 +1,25 @@
+{
+  "dataset": {
+    "gcp": {
+      "name": "wiki-cohere-byte"
+    }
+  },
+  "num_docs": 1000000,
+  "dimensions": 1024,
+  "vector_encoding": "BYTE",
+  "vector_space": "DOT_PRODUCT",
+  "index_type": "HNSW",
+  "hnsw_m": 16,
+  "hnsw_ef_construction": 100,
+  "quantize_bits": 7,
+  "force_merge": true,
+  "force_merge_max_num_segments": 1,
+  "reindex": true,
+  "directory_type": "stateless",
+  "num_queries": 1000,
+  "search_params": [
+    { "num_candidates": 100, "k": 10, "num_searchers": 1 },
+    { "num_candidates": 200, "k": 10, "num_searchers": 1 },
+    { "num_candidates": 500, "k": 10, "num_searchers": 1 }
+  ]
+}
