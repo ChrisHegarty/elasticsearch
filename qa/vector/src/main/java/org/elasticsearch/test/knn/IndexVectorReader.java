@@ -192,6 +192,54 @@ public interface IndexVectorReader extends Closeable {
             return new OrdinalVector<>(ordinal, dest);
         }
 
+        /** Positional read of a float vector by global doc ID. Thread-safe (uses pread).
+         *  The caller supplies a scratch {@code ByteBuffer} (capacity >= dim * 4, little-endian)
+         *  to avoid per-call allocation. */
+        public void readFloat(int globalDoc, float[] dest, ByteBuffer scratch) throws IOException {
+            int readerIdx = readerIndex(globalDoc);
+            int localDoc = globalDoc - readerStartDoc(readerIdx);
+            int byteSize = dim * Float.BYTES;
+            long position = (long) localDoc * (byteSize + readers.get(readerIdx).offsetByteSize) + readers.get(readerIdx).offsetByteSize;
+            scratch.clear().limit(byteSize);
+            checkRead(Channels.readFromFileChannel(channels.get(readerIdx), position, scratch), byteSize, globalDoc);
+            scratch.flip().asFloatBuffer().get(dest);
+        }
+
+        /** Positional read of a byte vector by global doc ID. Thread-safe (uses pread).
+         *  The caller supplies the {@code dest} array which doubles as the read buffer. */
+        public void readByte(int globalDoc, byte[] dest) throws IOException {
+            int readerIdx = readerIndex(globalDoc);
+            int localDoc = globalDoc - readerStartDoc(readerIdx);
+            long position = (long) localDoc * (dim + readers.get(readerIdx).offsetByteSize) + readers.get(readerIdx).offsetByteSize;
+            ByteBuffer buf = ByteBuffer.wrap(dest);
+            checkRead(Channels.readFromFileChannel(channels.get(readerIdx), position, buf), dest.length, globalDoc);
+        }
+
+        private static void checkRead(int bytesRead, int expected, int globalDoc) throws IOException {
+            if (bytesRead < expected) {
+                throw new IOException("short read for doc " + globalDoc + ": expected " + expected + " bytes, got " + bytesRead);
+            }
+        }
+
+        private int readerIndex(int globalDoc) {
+            int doc = 0;
+            for (int i = 0; i < docsPerReader.length; i++) {
+                if (globalDoc < doc + docsPerReader[i]) {
+                    return i;
+                }
+                doc += docsPerReader[i];
+            }
+            throw new IllegalArgumentException("doc " + globalDoc + " out of range [0, " + totalDocs + ")");
+        }
+
+        private int readerStartDoc(int readerIdx) {
+            int start = 0;
+            for (int i = 0; i < readerIdx; i++) {
+                start += docsPerReader[i];
+            }
+            return start;
+        }
+
         @Override
         public int totalVectors() {
             return totalDocs;
