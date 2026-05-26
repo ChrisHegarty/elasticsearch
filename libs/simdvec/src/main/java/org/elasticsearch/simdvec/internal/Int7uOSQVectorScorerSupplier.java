@@ -115,6 +115,11 @@ public abstract sealed class Int7uOSQVectorScorerSupplier implements RandomVecto
             for (int i = 0; i < numNodes; i++) {
                 offsets[i] = (long) ordinals[i] * vectorPitch;
             }
+            if (Int8VectorScorer.PREFETCH_ENABLED) {
+                for (int i = 0; i < numNodes; i++) {
+                    input.prefetch(offsets[i], dims);
+                }
+            }
 
             float[] maxScore = new float[] { Float.NEGATIVE_INFINITY };
             boolean resolved = IndexInputUtils.withSliceAddresses(input, offsets, dims, numNodes, addrsScratch::get, addrs -> {
