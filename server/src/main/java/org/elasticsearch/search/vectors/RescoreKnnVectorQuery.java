@@ -304,29 +304,55 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
             KnnVectorValues.DocIndexIterator vectorIter = knnVectorValues.iterator();
             DocIdSetIterator conjunction = ConjunctionUtils.intersectIterators(List.of(vectorIter, filterIterator));
             VectorScorer scorer = knnVectorValues.rescorer(floatTarget);
+            int prefetchCount = 0;
+            int scoredInLoop = 0;
+            long firstScoreGapNs = -1;
             int doc;
             while ((doc = conjunction.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
                 assert doc == vectorIter.docID();
                 final int docID = doc;
                 final int ord = vectorIter.index();
 
+                long prefetchTimeNs = System.nanoTime();
                 if (input != null) {
                     input.prefetch((long) ord * vectorByteSize, vectorByteSize);
+                    prefetchCount++;
                 }
 
                 if (buffer.size() == PREFETCH_BUFFER_SIZE) {
+                    long beforeScore = System.nanoTime();
                     buffer.removeFirst().run();
+                    long scoreTimeNs = System.nanoTime() - beforeScore;
+                    if (firstScoreGapNs < 0) {
+                        firstScoreGapNs = beforeScore - prefetchTimeNs;
+                    }
+                    scoredInLoop++;
                 }
 
+                final long capturedPrefetchTime = prefetchTimeNs;
                 buffer.add(() -> {
+                    long scoreStart = System.nanoTime();
                     int target = scorer.iterator().advance(docID);
                     assert target == docID;
                     float score = scorer.score();
+                    long scoreEnd = System.nanoTime();
                     if (Float.isNaN(score) == false) {
                         queue.add(new ScoreDoc(docID + docBase, score));
                     }
                 });
             }
+            System.err.println(
+                "rescoreIndividually: input="
+                    + (input != null ? input.getClass().getSimpleName() : "null")
+                    + ", prefetched="
+                    + prefetchCount
+                    + ", scoredInLoop="
+                    + scoredInLoop
+                    + ", drainAfter="
+                    + buffer.size()
+                    + ", firstScoreGapUs="
+                    + (firstScoreGapNs >= 0 ? firstScoreGapNs / 1000 : "N/A")
+            );
         }
     }
 }
