@@ -1140,7 +1140,19 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
          * invoking the action when not available (not mmap'd, evicted, etc.).
          */
         boolean withByteBufferSlice(long offset, int length, CheckedConsumer<ByteBuffer, IOException> action) throws IOException {
-            return withByteBufferSlice(offset, length, action, SharedBytes.MADV_NORMAL);
+            SharedBytes.IO ioRef = nonVolatileIO();
+            if (ioRef != null && tryIncRef()) {
+                try {
+                    ByteBuffer slice = ioRef.byteBufferSlice(blobCacheService.getRegionRelativePosition(offset), length);
+                    if (slice != null && isEvicted() == false) {
+                        action.accept(slice);
+                        return true;
+                    }
+                } finally {
+                    decRef();
+                }
+            }
+            return false;
         }
 
         boolean withByteBufferSlice(long offset, int length, CheckedConsumer<ByteBuffer, IOException> action, int advice)
@@ -1488,7 +1500,31 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
          * {@code false} without invoking the action.
          */
         public boolean withByteBufferSlice(long offset, int length, CheckedConsumer<ByteBuffer, IOException> action) throws IOException {
-            return withByteBufferSlice(offset, length, action, SharedBytes.MADV_NORMAL);
+            assert assertOffsetsWithinFileLength(offset, length, this.length);
+            final int startRegion = getRegion(offset);
+            final long end = offset + length;
+            final int endRegion = getEndingRegion(end);
+            if (startRegion != endRegion) {
+                return false;
+            }
+            CacheEntry<CacheFileRegion<KeyType>> fileRegion = lastAccessedRegion;
+            if (fileRegion != null && fileRegion.chunk.regionKey.region == startRegion) {
+                fileRegion.touch();
+            } else {
+                fileRegion = cache.getIfPresent(cacheKey, startRegion);
+                if (fileRegion == null) {
+                    return false;
+                }
+            }
+            final var region = fileRegion.chunk;
+            if (region.tracker.checkAvailable(end - getRegionStart(startRegion)) == false) {
+                return false;
+            }
+            boolean result = region.withByteBufferSlice(offset, length, action);
+            if (result) {
+                lastAccessedRegion = fileRegion;
+            }
+            return result;
         }
 
         public boolean withByteBufferSlice(long offset, int length, CheckedConsumer<ByteBuffer, IOException> action, int advice)
@@ -1528,11 +1564,22 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
         @SuppressWarnings({ "unchecked", "rawtypes" })
         public boolean withByteBufferSlices(long[] offsets, int length, int count, CheckedConsumer<ByteBuffer[], IOException> action)
             throws IOException {
-            return withByteBufferSlices(offsets, length, count, action, SharedBytes.MADV_NORMAL);
+            return withByteBufferSlicesImpl(offsets, length, count, action, -1);
         }
 
         @SuppressWarnings({ "unchecked", "rawtypes" })
         public boolean withByteBufferSlices(
+            long[] offsets,
+            int length,
+            int count,
+            CheckedConsumer<ByteBuffer[], IOException> action,
+            int advice
+        ) throws IOException {
+            return withByteBufferSlicesImpl(offsets, length, count, action, advice);
+        }
+
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        private boolean withByteBufferSlicesImpl(
             long[] offsets,
             int length,
             int count,
@@ -1575,7 +1622,9 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
                             return false;
                         }
                         held[heldCount++] = region;
-                        ioRef.madvise(advice);
+                        if (advice >= 0) {
+                            ioRef.madvise(advice);
+                        }
                     }
 
                     results[i] = ioRef.byteBufferSlice(getRegionRelativePosition(offset), length);
