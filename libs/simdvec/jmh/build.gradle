@@ -1,0 +1,46 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the "Elastic License
+ * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
+ * Public License v 1"; you may not use this file except in compliance with, at
+ * your election, the "Elastic License 2.0", the "GNU Affero General Public
+ * License v3.0 only", or the "Server Side Public License, v 1".
+ */
+
+// List benchmarks:  ./gradlew :libs:simdvec:jmh:run --args='-l'
+// Run a benchmark:  ./gradlew :libs:simdvec:jmh:run --args='VectorScorerBenchmark'
+
+apply plugin: 'elasticsearch.jmh'
+apply plugin: 'elasticsearch.foreign-api'
+
+base {
+  archivesName = 'simdvec-benchmarks'
+}
+
+dependencies {
+  api(project(":server")) {
+    exclude group: 'net.sf.jopt-simple', module: 'jopt-simple'
+  }
+  implementation project(path: ':libs:native')
+  implementation(testFixtures(project(':libs:native')))
+  implementation project(path: ':libs:simdvec')
+  implementation(testFixtures(project(path: ':libs:simdvec')))
+  implementation(project(':x-pack:plugin:searchable-snapshots')) {
+    capabilities {
+      requireCapability("org.elasticsearch.plugin:searchable-snapshots-test-artifacts")
+    }
+  }
+  implementation project(':x-pack:plugin:blob-cache')
+  implementation project(':x-pack:plugin:stateless')
+  implementation(project(':x-pack:plugin:stateless')) {
+    capabilities {
+      requireCapability("org.elasticsearch.plugin:stateless-test-artifacts")
+    }
+  }
+}
+
+spotless {
+  java {
+    targetExclude 'src/main/generated/**/*.java'
+  }
+}

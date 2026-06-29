@@ -97,6 +97,11 @@ make install
 LOCAL_VEC_BINARY_OS=true ./gradlew :libs:simdvec:test
 ```
 
+## Benchmarks
+
+JMH microbenchmarks live in the `jmh/` subdirectory. See `jmh/build.gradle` for
+how to list and run them.
+
 ## Testing
 
 ```bash
