@@ -147,6 +147,10 @@ gradlePlugin {
       id = 'elasticsearch.jdk-download'
       implementationClass = 'org.elasticsearch.gradle.internal.JdkDownloadPlugin'
     }
+    jmh {
+      id = 'elasticsearch.jmh'
+      implementationClass = 'org.elasticsearch.gradle.internal.JmhPlugin'
+    }
     javaModulePath {
       id = 'elasticsearch.java-module'
       implementationClass = 'org.elasticsearch.gradle.internal.ElasticsearchJavaModulePathPlugin'

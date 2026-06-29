@@ -53,12 +53,14 @@ public abstract class ElasticsearchJavaModulePathPlugin implements Plugin<Projec
         configureCompileModulePath(project);
     }
 
-    // List of root tasks, by name, whose compileJava task should not use the module path. These are test related sources.
+    // Projects whose compileJava task should not use the module path.
+    // These are test-related sources and JMH benchmark submodules that compile on the classpath.
     static final Set<String> EXCLUDES = Set.of(
         ":test:framework",
         ":x-pack:plugin:eql:qa:common",
         ":x-pack:plugin:esql:compute:test",
-        ":x-pack:plugin:esql:qa:testFixtures"
+        ":x-pack:plugin:esql:qa:testFixtures",
+        ":jmh"
     );
 
     void configureCompileModulePath(Project project) {
