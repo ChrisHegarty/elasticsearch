@@ -55,6 +55,7 @@ public class JmhPlugin implements Plugin<Project> {
         configureCompileJava(project);
         configureRunTask(project, buildParams);
         configureTestTask(project, buildParams);
+        wireParentCheck(project);
     }
 
     /**
@@ -123,6 +124,17 @@ public class JmhPlugin implements Plugin<Project> {
             task.jvmArgs("-Dorg.apache.lucene.vectorization.upperJavaFeatureVersion=" + runtimeMajor);
             task.args("-jvmArgsAppend", "-Des.nativelibs.path=" + nativeLibsPath);
         });
+    }
+
+    /**
+     * Makes the parent project's {@code check} task depend on this project's {@code check},
+     * so running e.g. {@code :libs:simdvec:check} also runs {@code :libs:simdvec:jmh:check}.
+     */
+    private static void wireParentCheck(Project project) {
+        Project parent = project.getParent();
+        if (parent != null) {
+            parent.getTasks().named("check").configure(t -> t.dependsOn(project.getTasks().named("check")));
+        }
     }
 
     /**
