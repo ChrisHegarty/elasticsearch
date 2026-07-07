@@ -37,8 +37,7 @@ public class DirectAccessIndexInput extends FilterIndexInput implements DirectAc
     }
 
     @Override
-    public boolean withMemorySegmentSlice(long offset, long length, CheckedConsumer<MemorySegment, IOException> action)
-        throws IOException {
+    public boolean withMemorySegmentSlice(long offset, long length, CheckedConsumer<MemorySegment, IOException> action) throws IOException {
         try (Arena arena = Arena.ofConfined()) {
             var seg = arena.allocate((int) length);
             MemorySegment.copy(data, (int) offset, seg, ValueLayout.JAVA_BYTE, 0L, (int) length);

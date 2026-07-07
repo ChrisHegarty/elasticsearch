@@ -1707,12 +1707,8 @@ public class SharedBlobCacheService<KeyType extends SharedBlobCacheService.KeyBa
          * then invokes the action. Each individual range must fit within a single region.
          */
         @SuppressWarnings({ "unchecked", "rawtypes" })
-        public boolean withMemorySegmentSlices(
-            long[] offsets,
-            int length,
-            int count,
-            CheckedConsumer<MemorySegment[], IOException> action
-        ) throws IOException {
+        public boolean withMemorySegmentSlices(long[] offsets, int length, int count, CheckedConsumer<MemorySegment[], IOException> action)
+            throws IOException {
             return withMemorySegmentSlices(offsets, length, count, action, SharedBytes.MADV_NORMAL);
         }
 

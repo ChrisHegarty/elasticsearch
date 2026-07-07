@@ -1043,11 +1043,9 @@ public class BlobCacheIndexInputTests extends ESIndexInputTestCase {
             }
 
             // After eviction, withMemorySegmentSlice should return false for file A
-            boolean availableAfter = indexInputA.withMemorySegmentSlice(
-                0,
-                inputA.length,
-                seg -> { fail("action should not be invoked after eviction"); }
-            );
+            boolean availableAfter = indexInputA.withMemorySegmentSlice(0, inputA.length, seg -> {
+                fail("action should not be invoked after eviction");
+            });
             assertFalse("expected buffer to be unavailable after eviction", availableAfter);
         }
     }

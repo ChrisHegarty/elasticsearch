@@ -231,8 +231,8 @@ public final class IndexInputUtils {
         for (int i = 0; i < count; i++) {
             assert segments[i] != null : "null MemorySegment at index " + i;
             assert segments[i].isNative() : "MemorySegment at index " + i + " is not native (off-heap)";
-            assert segments[i].byteSize() >= length : "MemorySegment at index " + i + " too small: " + segments[i].byteSize() + " < "
-                + length;
+            assert segments[i].byteSize() >= length
+                : "MemorySegment at index " + i + " too small: " + segments[i].byteSize() + " < " + length;
         }
         return true;
     }
