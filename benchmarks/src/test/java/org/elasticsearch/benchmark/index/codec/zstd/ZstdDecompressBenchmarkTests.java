@@ -12,7 +12,6 @@ package org.elasticsearch.benchmark.index.codec.zstd;
 import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
 
 import org.apache.lucene.codecs.compressing.Decompressor;
-import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.index.codec.zstd.ZstdCompressionMode;
