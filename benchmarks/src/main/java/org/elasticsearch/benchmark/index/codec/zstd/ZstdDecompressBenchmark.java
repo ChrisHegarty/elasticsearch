@@ -80,6 +80,7 @@ public class ZstdDecompressBenchmark {
     Directory dir;
     IndexInput input;
     long[] blockOffsets;
+    byte[][] originalBlocks;
     private Decompressor decompressor;
     private BytesRef bytes;
     private Path tempDir;
@@ -95,9 +96,11 @@ public class ZstdDecompressBenchmark {
 
         Random rng = new Random(42);
         byte[][] compressedBlocks = new byte[NUM_BLOCKS][];
+        originalBlocks = new byte[NUM_BLOCKS][];
         for (int i = 0; i < NUM_BLOCKS; i++) {
             byte[] original = new byte[blockSize];
             rng.nextBytes(original);
+            originalBlocks[i] = original;
             compressedBlocks[i] = compress(mode, original);
         }
 

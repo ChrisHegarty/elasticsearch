@@ -11,8 +11,14 @@ package org.elasticsearch.benchmark.index.codec.zstd;
 
 import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
 
+import org.apache.lucene.codecs.compressing.Decompressor;
+import org.apache.lucene.store.IOContext;
+import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.util.BytesRef;
+import org.elasticsearch.index.codec.zstd.ZstdCompressionMode;
 import org.elasticsearch.test.ESTestCase;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -36,10 +42,21 @@ public class ZstdDecompressBenchmarkTests extends ESTestCase {
         bench.decompressMode = decompressMode;
         bench.setup();
         try {
-            byte[] result = bench.decompressAll();
-            assertNotNull(result);
-            int expectedLen = decompressMode.equals("FULL") ? 4096 : 4096 / 2;
-            assertTrue("result buffer should be at least " + expectedLen, result.length >= expectedLen);
+            Decompressor decompressor = new ZstdCompressionMode(1).newDecompressor();
+            BytesRef bytes = new BytesRef();
+            IndexInput in = bench.input;
+
+            int off = decompressMode.equals("FULL") ? 0 : 4096 / 4;
+            int len = decompressMode.equals("FULL") ? 4096 : 4096 / 2;
+
+            for (int i = 0; i < bench.blockOffsets.length; i++) {
+                in.seek(bench.blockOffsets[i]);
+                decompressor.decompress(in, 4096, off, len, bytes);
+
+                byte[] expected = Arrays.copyOfRange(bench.originalBlocks[i], off, off + len);
+                byte[] actual = Arrays.copyOfRange(bytes.bytes, bytes.offset, bytes.offset + bytes.length);
+                assertArrayEquals("block " + i + " mismatch", expected, actual);
+            }
         } finally {
             bench.tearDown();
         }
