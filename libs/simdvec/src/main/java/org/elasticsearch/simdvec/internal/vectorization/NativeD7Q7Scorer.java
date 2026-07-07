@@ -11,7 +11,7 @@ package org.elasticsearch.simdvec.internal.vectorization;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.store.IndexInput;
 import org.elasticsearch.simdvec.ESVectorUtil;
-import org.elasticsearch.simdvec.internal.IndexInputUtils;
+import org.elasticsearch.simdvec.IndexInputUtils;
 import org.elasticsearch.simdvec.internal.MemorySegmentES92NativeInt7VectorsScorer;
 
 import java.io.IOException;

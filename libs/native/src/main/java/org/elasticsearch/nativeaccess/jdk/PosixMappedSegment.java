@@ -9,6 +9,7 @@
 
 package org.elasticsearch.nativeaccess.jdk;
 
+import org.elasticsearch.nativeaccess.MappedSegment;
 import org.elasticsearch.nativeaccess.lib.NativeLibraryProvider;
 import org.elasticsearch.nativeaccess.lib.PosixCLibrary;
 
@@ -19,26 +20,25 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.util.Objects;
 
-public class PosixCloseableMappedByteBuffer extends JdkCloseableMappedByteBuffer {
+public class PosixMappedSegment extends JdkMappedSegment {
 
     static final PosixCLibrary LIB = NativeLibraryProvider.instance().getLibrary(PosixCLibrary.class);
     static final int PAGE_SIZE = LIB.getPageSize();
 
-    public static PosixCloseableMappedByteBuffer ofShared(FileChannel fileChannel, MapMode mode, long position, long size)
-        throws IOException {
+    public static PosixMappedSegment ofShared(FileChannel fileChannel, MapMode mode, long position, long size) throws IOException {
         var arena = Arena.ofShared();
         var seg = fileChannel.map(mode, position, size, arena);
-        return new PosixCloseableMappedByteBuffer(seg, arena);
+        return new PosixMappedSegment(seg, arena);
     }
 
-    protected PosixCloseableMappedByteBuffer(MemorySegment seg, Arena arena) {
+    protected PosixMappedSegment(MemorySegment seg, Arena arena) {
         super(seg, arena);
     }
 
     @Override
-    public PosixCloseableMappedByteBuffer slice(long index, long length) {
+    public MappedSegment slice(long index, long length) {
         var slice = segment.asSlice(index, length);
-        return new PosixCloseableMappedByteBuffer(slice, null);
+        return new PosixMappedSegment(slice, null);
     }
 
     @Override
@@ -49,17 +49,13 @@ public class PosixCloseableMappedByteBuffer extends JdkCloseableMappedByteBuffer
     @Override
     public void madvise(long offset, long length, int advice) {
         Objects.checkFromIndexSize(offset, length, segment.byteSize());
-        // Align offset with the page size, this is required for madvise.
-        // Compute the offset of the current position in the OS's page.
         final long offsetInPage = (segment.address() + offset) % PAGE_SIZE;
         offset -= offsetInPage;
         length += offsetInPage;
         if (offset < 0) {
-            // start of the page is before the start of this segment, ignore the first page.
             offset += PAGE_SIZE;
             length -= PAGE_SIZE;
             if (length <= 0) {
-                // This segment has no data beyond the first page.
                 return;
             }
         }

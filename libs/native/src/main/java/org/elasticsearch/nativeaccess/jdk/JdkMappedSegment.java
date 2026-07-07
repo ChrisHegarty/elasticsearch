@@ -9,38 +9,34 @@
 
 package org.elasticsearch.nativeaccess.jdk;
 
-import org.elasticsearch.nativeaccess.CloseableMappedByteBuffer;
+import org.elasticsearch.nativeaccess.MappedSegment;
 
 import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
 import java.util.Objects;
 
-public class JdkCloseableMappedByteBuffer implements CloseableMappedByteBuffer {
+public class JdkMappedSegment implements MappedSegment {
 
     private final Arena arena;
     protected final MemorySegment segment;
-    private final MappedByteBuffer bufferView;
 
-    public static JdkCloseableMappedByteBuffer ofShared(FileChannel fileChannel, MapMode mode, long position, long size)
-        throws IOException {
+    public static JdkMappedSegment ofShared(FileChannel fileChannel, MapMode mode, long position, long size) throws IOException {
         var arena = Arena.ofShared();
         var seg = fileChannel.map(mode, position, size, arena);
-        return new JdkCloseableMappedByteBuffer(seg, arena);
+        return new JdkMappedSegment(seg, arena);
     }
 
-    protected JdkCloseableMappedByteBuffer(MemorySegment seg, Arena arena) {
+    protected JdkMappedSegment(MemorySegment seg, Arena arena) {
         this.arena = arena;
         this.segment = seg;
-        this.bufferView = (MappedByteBuffer) seg.asByteBuffer();
     }
 
     @Override
-    public MappedByteBuffer buffer() {
-        return bufferView;
+    public MemorySegment segment() {
+        return segment;
     }
 
     @Override
@@ -51,20 +47,18 @@ public class JdkCloseableMappedByteBuffer implements CloseableMappedByteBuffer {
     }
 
     @Override
-    public CloseableMappedByteBuffer slice(long index, long length) {
+    public MappedSegment slice(long index, long length) {
         var slice = segment.asSlice(index, length);
-        return new JdkCloseableMappedByteBuffer(slice, null); // closing a slice does not close the parent.
+        return new JdkMappedSegment(slice, null);
     }
 
     @Override
     public void prefetch(long offset, long length) {
         Objects.checkFromIndexSize(offset, length, segment.byteSize());
-        // no explicit action, override in subclass if needed.
     }
 
     @Override
     public void madvise(long offset, long length, int advice) {
         Objects.checkFromIndexSize(offset, length, segment.byteSize());
-        // no explicit action, override in subclass if needed.
     }
 }

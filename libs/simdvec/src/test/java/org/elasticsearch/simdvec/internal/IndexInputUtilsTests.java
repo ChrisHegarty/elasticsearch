@@ -19,6 +19,7 @@ import org.apache.lucene.store.NIOFSDirectory;
 import org.elasticsearch.common.lucene.store.DirectAccessIndexInput;
 import org.elasticsearch.core.DirectAccessInput;
 import org.elasticsearch.nativeaccess.NativeAccess;
+import org.elasticsearch.simdvec.IndexInputUtils;
 import org.elasticsearch.test.ESTestCase;
 
 import java.io.IOException;
