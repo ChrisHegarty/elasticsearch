@@ -16,29 +16,30 @@ import org.apache.lucene.codecs.compressing.Compressor;
 import org.apache.lucene.store.ByteBuffersDataInput;
 import org.apache.lucene.store.ByteBuffersDataOutput;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.FilterDirectory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.NIOFSDirectory;
 import org.apache.lucene.util.BytesRef;
+import org.elasticsearch.common.lucene.store.DirectAccessIndexInput;
 import org.elasticsearch.index.codec.zstd.ZstdCompressionMode.ZstdDecompressor;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.xpack.searchablesnapshots.store.SearchableSnapshotDirectoryFactory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 
-// Tests ZstdDecompressor against real Directory implementations (NIOFS, MMap, searchable snapshots)
+// Tests ZstdDecompressor against real Directory implementations (NIOFS, MMap, DirectAccessInput)
 // to exercise the different IndexInput code paths: heap copy, memory-mapped, and DirectAccessInput.
 public class ZstdDecompressorDirectoryTests extends ESTestCase {
 
     public enum DirectoryType {
         NIOFS,
         MMAP,
-        SNAP
+        DIRECT_ACCESS
     }
 
     private final DirectoryType directoryType;
@@ -56,8 +57,28 @@ public class ZstdDecompressorDirectoryTests extends ESTestCase {
         return switch (directoryType) {
             case NIOFS -> new NIOFSDirectory(createTempDir());
             case MMAP -> new MMapDirectory(createTempDir());
-            case SNAP -> SearchableSnapshotDirectoryFactory.newDirectory(createTempDir());
+            case DIRECT_ACCESS -> new DirectAccessDirectory(new NIOFSDirectory(createTempDir()));
         };
+    }
+
+    /**
+     * A Directory wrapper whose openInput returns a DirectAccessIndexInput, exercising the
+     * DirectAccessInput code path in ZstdDecompressor without needing searchable-snapshots.
+     */
+    private static class DirectAccessDirectory extends FilterDirectory {
+        DirectAccessDirectory(Directory delegate) {
+            super(delegate);
+        }
+
+        @Override
+        public IndexInput openInput(String name, IOContext context) throws IOException {
+            IndexInput delegate = in.openInput(name, context);
+            byte[] data = new byte[(int) in.fileLength(name)];
+            try (IndexInput reader = in.openInput(name, IOContext.READONCE)) {
+                reader.readBytes(data, 0, data.length);
+            }
+            return new DirectAccessIndexInput("direct-access(" + name + ")", delegate, data);
+        }
     }
 
     // Decompresses the full block and verifies all bytes match.

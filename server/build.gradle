@@ -91,12 +91,6 @@ dependencies {
   internalClusterTestImplementation(project(":test:framework")) {
     exclude group: 'org.elasticsearch', module: 'server'
   }
-  testImplementation(project(':x-pack:plugin:searchable-snapshots')) {
-    capabilities {
-      requireCapability('org.elasticsearch.plugin:searchable-snapshots-test-artifacts')
-    }
-    exclude group: 'org.elasticsearch', module: 'server'
-  }
 
   internalClusterTestImplementation(project(':modules:reindex'))
   internalClusterTestImplementation(project(':modules:mapper-extras'))
