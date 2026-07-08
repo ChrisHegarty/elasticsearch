@@ -225,10 +225,8 @@ public abstract class EngineTestCase extends ESTestCase {
         return List.of();
     }
 
-    @Override
     @Before
-    public void setUp() throws Exception {
-        super.setUp();
+    public void initializeEngineTestResources() throws Exception {
         primaryTerm.set(randomLongBetween(1, Long.MAX_VALUE));
         CodecService codecService = newCodecService();
         String name = Codec.getDefault().getName();
@@ -283,9 +281,12 @@ public abstract class EngineTestCase extends ESTestCase {
     }
 
     @Override
+    public final void setUp() throws Exception {
+        super.setUp();
+    }
+
     @After
-    public void tearDown() throws Exception {
-        super.tearDown();
+    public void verifyAndCloseEngines() throws Exception {
         try {
             if (engine != null && engine.isClosed.get() == false) {
                 engine.getTranslog().getDeletionPolicy().assertNoOpenTranslogRefs();
@@ -304,6 +305,11 @@ public abstract class EngineTestCase extends ESTestCase {
         } finally {
             IOUtils.close(replicaEngine, storeReplica, engine, store, () -> terminate(threadPool), nodeEnvironment);
         }
+    }
+
+    @Override
+    public final void tearDown() throws Exception {
+        super.tearDown();
     }
 
     protected static LuceneDocument testDocumentWithTextField() {
@@ -675,6 +681,18 @@ public abstract class EngineTestCase extends ESTestCase {
                 protected long doGenerateSeqNo() {
                     return seqNoForOperation != null ? seqNoForOperation.applyAsLong(this) : super.doGenerateSeqNo();
                 }
+
+                @Override
+                protected long doGenerateSeqNos(int count) {
+                    if (seqNoForOperation != null) {
+                        long first = doGenerateSeqNo();
+                        for (int i = 1; i < count; i++) {
+                            doGenerateSeqNo();
+                        }
+                        return first;
+                    }
+                    return super.doGenerateSeqNos(count);
+                }
             };
         } else {
             return new InternalTestEngine(config, IndexWriter.MAX_DOCS, localCheckpointTrackerSupplier) {
@@ -688,6 +706,18 @@ public abstract class EngineTestCase extends ESTestCase {
                 @Override
                 protected long doGenerateSeqNo() {
                     return seqNoForOperation != null ? seqNoForOperation.applyAsLong(this) : super.doGenerateSeqNo();
+                }
+
+                @Override
+                protected long doGenerateSeqNos(int count) {
+                    if (seqNoForOperation != null) {
+                        long first = doGenerateSeqNo();
+                        for (int i = 1; i < count; i++) {
+                            doGenerateSeqNo();
+                        }
+                        return first;
+                    }
+                    return super.doGenerateSeqNos(count);
                 }
             };
         }

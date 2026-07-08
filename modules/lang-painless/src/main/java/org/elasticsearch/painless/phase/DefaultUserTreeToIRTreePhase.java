@@ -208,6 +208,7 @@ import org.elasticsearch.painless.symbol.IRDecorations.IRCStatic;
 import org.elasticsearch.painless.symbol.IRDecorations.IRCStaticCancellationCheck;
 import org.elasticsearch.painless.symbol.IRDecorations.IRCSynthetic;
 import org.elasticsearch.painless.symbol.IRDecorations.IRCVarArgs;
+import org.elasticsearch.painless.symbol.IRDecorations.IRDAllocationEstimator;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDArrayName;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDArrayType;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDBinaryType;
@@ -233,6 +234,7 @@ import org.elasticsearch.painless.symbol.IRDecorations.IRDInstanceBinding;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDInstanceType;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDIterableName;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDIterableType;
+import org.elasticsearch.painless.symbol.IRDecorations.IRDMaxAllocationBytes;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDMaxLoopCounter;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDMethod;
 import org.elasticsearch.painless.symbol.IRDecorations.IRDModifiers;
@@ -259,6 +261,7 @@ import org.objectweb.asm.Opcodes;
 import java.lang.invoke.CallSite;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -276,6 +279,30 @@ public class DefaultUserTreeToIRTreePhase implements UserTreeVisitor<ScriptScope
             irFunctionNode.attachCondition(IRCInstanceCancellationCheck.class);
         }
         irFunctionNode.attachDecoration(new IRDMaxLoopCounter(scriptScope.getCompilerSettings().getMaxLoopCounter()));
+    }
+
+    /**
+     * Attaches the per-context allocation byte limit to {@code irFunctionNode} so the ASM phase can emit allocation
+     * pre-checks inside the function. A value of {@code -1} means tracking is disabled and no allocation bytecode is
+     * emitted. Kept separate from {@link #attachLoopProtection} on purpose: loop protection and allocation tracking are
+     * independent concerns with different gating, mirroring how each rides its own decoration through to the writer.
+     */
+    protected static void attachAllocationLimit(FunctionNode irFunctionNode, ScriptScope scriptScope) {
+        irFunctionNode.attachDecoration(new IRDMaxAllocationBytes(scriptScope.getCompilerSettings().getMaxAllocationBytes()));
+    }
+
+    /**
+     * Attaches the member's resolved {@code @allocates_dynamic} estimator (from the {@code PainlessLookup} side table) when
+     * allocation tracking is enabled, so the ASM phase emits the pre-check from the decoration alone.
+     */
+    protected static void attachAllocationEstimator(ExpressionNode irExpressionNode, ScriptScope scriptScope, Object member) {
+        if (scriptScope.getCompilerSettings().isAllocationTrackingEnabled()) {
+            Method allocationEstimator = scriptScope.getPainlessLookup().getAllocationEstimator(member);
+
+            if (allocationEstimator != null) {
+                irExpressionNode.attachDecoration(new IRDAllocationEstimator(allocationEstimator));
+            }
+        }
     }
 
     /**
@@ -658,6 +685,7 @@ public class DefaultUserTreeToIRTreePhase implements UserTreeVisitor<ScriptScope
         }
 
         attachLoopProtection(irFunctionNode, scriptScope);
+        attachAllocationLimit(irFunctionNode, scriptScope);
 
         scriptScope.putDecoration(userFunctionNode, new IRNodeDecoration(irFunctionNode));
     }
@@ -1245,6 +1273,7 @@ public class DefaultUserTreeToIRTreePhase implements UserTreeVisitor<ScriptScope
         NewObjectNode irNewObjectNode = new NewObjectNode(userNewObjectNode.getLocation());
         irNewObjectNode.attachDecoration(new IRDExpressionType(valueType));
         irNewObjectNode.attachDecoration(new IRDConstructor(painlessConstructor));
+        attachAllocationEstimator(irNewObjectNode, scriptScope, painlessConstructor);
 
         if (scriptScope.getCondition(userNewObjectNode, Read.class)) {
             irNewObjectNode.attachCondition(IRCRead.class);
@@ -1270,6 +1299,7 @@ public class DefaultUserTreeToIRTreePhase implements UserTreeVisitor<ScriptScope
         } else if (scriptScope.hasDecoration(callLocalNode, StandardPainlessMethod.class)) {
             PainlessMethod importedMethod = scriptScope.getDecoration(callLocalNode, StandardPainlessMethod.class).standardPainlessMethod();
             irInvokeCallMemberNode.attachDecoration(new IRDMethod(importedMethod));
+            attachAllocationEstimator(irInvokeCallMemberNode, scriptScope, importedMethod);
         } else if (scriptScope.hasDecoration(callLocalNode, StandardPainlessClassBinding.class)) {
             PainlessClassBinding painlessClassBinding = scriptScope.getDecoration(callLocalNode, StandardPainlessClassBinding.class)
                 .painlessClassBinding();
@@ -1419,6 +1449,7 @@ public class DefaultUserTreeToIRTreePhase implements UserTreeVisitor<ScriptScope
         }
         irFunctionNode.attachCondition(IRCSynthetic.class);
         attachLoopProtection(irFunctionNode, scriptScope);
+        attachAllocationLimit(irFunctionNode, scriptScope);
         irClassNode.addFunctionNode(irFunctionNode);
 
         boolean injectCancelCapture = irFunctionNode.hasCondition(IRCStatic.class)
@@ -1964,6 +1995,7 @@ public class DefaultUserTreeToIRTreePhase implements UserTreeVisitor<ScriptScope
             irInvokeCallNode.attachDecoration(new IRDExpressionType(valueType));
             irInvokeCallNode.setMethod(scriptScope.getDecoration(userCallNode, StandardPainlessMethod.class).standardPainlessMethod());
             irInvokeCallNode.setBox(boxType);
+            attachAllocationEstimator(irInvokeCallNode, scriptScope, method);
             irExpressionNode = irInvokeCallNode;
 
             if (cancellationAware) {
