@@ -56,6 +56,9 @@ import java.util.concurrent.TimeUnit;
  * - NIOFS: heap copy via copyAndDecompress
  * - MMAP: zero-copy via MemorySegmentAccessInput
  * - SNAP: zero-copy via DirectAccessInput (blob-cache backed)
+ *
+ * By default uses random (incompressible) data. To benchmark with real compressible data,
+ * pass -DdataFile=/path/to/file (e.g. a Project Gutenberg text file).
  */
 @Fork(value = 1, jvmArgsPrepend = { "--enable-native-access=ALL-UNNAMED", "--add-modules=jdk.incubator.vector" })
 @Warmup(iterations = 3, time = 3)
@@ -94,12 +97,14 @@ public class ZstdDecompressBenchmark {
         bytes = new BytesRef();
         blockOffsets = new long[NUM_BLOCKS];
 
-        Random rng = new Random(42);
         byte[][] compressedBlocks = new byte[NUM_BLOCKS][];
         originalBlocks = new byte[NUM_BLOCKS][];
+        byte[] sourceData = loadSourceData();
+        int usableLength = sourceData.length - blockSize;
         for (int i = 0; i < NUM_BLOCKS; i++) {
             byte[] original = new byte[blockSize];
-            rng.nextBytes(original);
+            int offset = (i * blockSize) % (usableLength > 0 ? usableLength : 1);
+            System.arraycopy(sourceData, offset, original, 0, blockSize);
             originalBlocks[i] = original;
             compressedBlocks[i] = compress(mode, original);
         }
@@ -113,6 +118,22 @@ public class ZstdDecompressBenchmark {
             CodecUtil.writeFooter(out);
         }
         input = dir.openInput(FILE_NAME, IOContext.DEFAULT);
+    }
+
+    private byte[] loadSourceData() throws IOException {
+        String dataFile = System.getProperty("dataFile");
+        if (dataFile != null) {
+            byte[] fileData = Files.readAllBytes(Path.of(dataFile));
+            if (fileData.length < blockSize) {
+                throw new IllegalArgumentException("dataFile too small: " + fileData.length + " < blockSize " + blockSize);
+            }
+            return fileData;
+        }
+        // Default: random (incompressible) data
+        Random rng = new Random(42);
+        byte[] data = new byte[NUM_BLOCKS * blockSize];
+        rng.nextBytes(data);
+        return data;
     }
 
     @TearDown(Level.Trial)
