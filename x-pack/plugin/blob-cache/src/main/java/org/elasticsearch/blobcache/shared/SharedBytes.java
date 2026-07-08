@@ -409,7 +409,7 @@ public class SharedBytes extends AbstractRefCounted {
             final int bytesRead;
             if (mmap) {
                 bytesRead = remaining;
-                MemorySegment.copy(mmapSegment, position, MemorySegment.ofBuffer(dst), dst.position(), bytesRead);
+                MemorySegment.copy(mmapSegment, position, MemorySegment.ofBuffer(dst), 0, bytesRead);
                 dst.position(dst.position() + bytesRead);
             } else {
                 bytesRead = fileChannel.read(dst, pageStart + position);
