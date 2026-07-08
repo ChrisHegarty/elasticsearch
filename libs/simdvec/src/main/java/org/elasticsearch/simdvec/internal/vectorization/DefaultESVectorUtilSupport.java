@@ -943,15 +943,8 @@ public final class DefaultESVectorUtilSupport implements ESVectorUtilSupport {
 
     @Override
     public void orByteArrays(MemorySegment src, byte[] dest, int destOffset, int length) {
-        long i = 0;
-        final long upperBound = length & -Long.BYTES;
-        for (; i < upperBound; i += Long.BYTES) {
-            long s = src.get(ValueLayout.JAVA_LONG_UNALIGNED, i);
-            long d = (long) BitUtil.VH_NATIVE_LONG.get(dest, destOffset + (int) i);
-            BitUtil.VH_NATIVE_LONG.set(dest, destOffset + (int) i, s | d);
-        }
-        for (; i < length; i++) {
-            dest[destOffset + (int) i] |= src.get(ValueLayout.JAVA_BYTE, i);
+        for (int i = 0; i < length; i++) {
+            dest[destOffset + i] |= src.get(ValueLayout.JAVA_BYTE, i);
         }
     }
 
