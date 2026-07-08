@@ -147,6 +147,8 @@ public class MappedSegmentTests extends ESTestCase {
         }
     }
 
+    // Validates that a slice of the mapped segment has correct bounds, content, and that
+    // closing the slice does not invalidate the parent segment.
     static void assertSliceOfSegment(MappedSegment mapped, int offset, int length) {
         var parentSegment = mapped.segment();
         try (var slice = mapped.slice(offset, length)) {
@@ -161,6 +163,8 @@ public class MappedSegmentTests extends ESTestCase {
 
             assertOutOfBounds(slice, length);
         }
+        // a closed slice should not close the parent — verify the parent is still readable
+        assertThat(parentSegment.get(ValueLayout.JAVA_BYTE, offset), equalTo((byte) offset));
     }
 
     public void testMadviseWithVariousAdvice() throws IOException {
@@ -212,6 +216,8 @@ public class MappedSegmentTests extends ESTestCase {
         }
     }
 
+    // Creates a byte array where bytes at positions [offset..size-1] contain values 0, 1, 2, ...
+    // and bytes before the offset are 0xFF. This allows tests to verify correct file mapping offsets.
     private byte[] newByteArray(int size, int offset) {
         byte[] buffer = new byte[size];
         Arrays.fill(buffer, (byte) 0xFF);

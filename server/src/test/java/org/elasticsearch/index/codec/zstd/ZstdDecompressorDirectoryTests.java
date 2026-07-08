@@ -127,16 +127,22 @@ public class ZstdDecompressorDirectoryTests extends ESTestCase {
         try (Directory dir = newParametrizedDirectory()) {
             writeCompressed(dir, "data", original);
             try (IndexInput in = dir.openInput("data", IOContext.DEFAULT)) {
-                ZstdDecompressor decompressor = newDecompressor();
-                BytesRef result = new BytesRef(new byte[original.length + 512]);
-                decompressor.decompress(in, original.length, offset, length, result);
-                assertEquals(offset, result.offset);
-                assertEquals(length, result.length);
-                byte[] expected = new byte[length];
-                System.arraycopy(original, offset, expected, 0, length);
-                byte[] actual = new byte[length];
-                System.arraycopy(result.bytes, result.offset, actual, 0, length);
-                assertArrayEquals(expected, actual);
+                for (int overSize : new int[] { 0, 512, randomIntBetween(1, 512) }) {
+                    in.seek(0L);
+                    ZstdDecompressor decompressor = newDecompressor();
+                    BytesRef result = new BytesRef(new byte[original.length + overSize]);
+                    final byte[] originalBytesRefArray = result.bytes;
+                    decompressor.decompress(in, original.length, offset, length, result);
+                    assertEquals(offset, result.offset);
+                    assertEquals(length, result.length);
+                    byte[] expected = new byte[length];
+                    System.arraycopy(original, offset, expected, 0, length);
+                    byte[] actual = new byte[length];
+                    System.arraycopy(result.bytes, result.offset, actual, 0, length);
+                    assertArrayEquals(expected, actual);
+                    // reuse should retain the same byte array instance
+                    assertTrue(result.bytes == originalBytesRefArray);
+                }
             }
         }
     }

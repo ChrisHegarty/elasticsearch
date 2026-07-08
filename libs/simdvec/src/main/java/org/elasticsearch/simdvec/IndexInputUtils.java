@@ -233,10 +233,10 @@ public final class IndexInputUtils {
     private static boolean validateMemorySegments(MemorySegment[] segments, int count, int length) {
         assert segments.length >= count : "MemorySegment array too small: " + segments.length + " < " + count;
         for (int i = 0; i < count; i++) {
+            final long segByteSize = segments[i].byteSize();
             assert segments[i] != null : "null MemorySegment at index " + i;
             assert segments[i].isNative() : "MemorySegment at index " + i + " is not native (off-heap)";
-            assert segments[i].byteSize() >= length
-                : "MemorySegment at index " + i + " too small: " + segments[i].byteSize() + " < " + length;
+            assert segByteSize >= length : "MemorySegment at index " + i + " too small: " + segByteSize + " < " + length;
         }
         return true;
     }
