@@ -12,6 +12,7 @@ package org.elasticsearch.script.field.vectors;
 
 import org.elasticsearch.simdvec.ESVectorUtil;
 
+import java.lang.foreign.MemorySegment;
 import java.util.List;
 
 /**
@@ -191,7 +192,7 @@ public interface DenseVector {
     }
 
     static float getBitMagnitude(byte[] vector, int dims) {
-        return (float) Math.sqrt(ESVectorUtil.popcount(vector, 0, dims));
+        return (float) Math.sqrt(ESVectorUtil.popcount(MemorySegment.ofArray(vector), dims));
     }
 
     static float getMagnitude(float[] vector) {

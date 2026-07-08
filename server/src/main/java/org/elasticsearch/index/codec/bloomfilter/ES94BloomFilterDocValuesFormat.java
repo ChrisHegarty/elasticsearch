@@ -442,8 +442,8 @@ public class ES94BloomFilterDocValuesFormat extends DocValuesFormat {
                     System.arraycopy(scratchRef.bytes, scratchRef.offset, targetPageScratch.bytes, 0, pageLen);
 
                     final int len = pageLen;
-                    RandomAccessInputUtils.withByteBufferSlice(source, sourceOffset + offset, len, this::getScratch, buf -> {
-                        ESVectorUtil.orByteArrays(buf, targetPageScratch.bytes, 0, len);
+                    RandomAccessInputUtils.withSlice(source, sourceOffset + offset, len, this::getScratch, seg -> {
+                        ESVectorUtil.orByteArrays(seg, targetPageScratch.bytes, 0, len);
                         return null;
                     });
 
@@ -857,8 +857,8 @@ public class ES94BloomFilterDocValuesFormat extends DocValuesFormat {
             while (remaining > 0) {
                 int pageLen = Math.min(PageCacheRecycler.PAGE_SIZE_IN_BYTES, remaining);
                 final int len = pageLen;
-                setBits += RandomAccessInputUtils.withByteBufferSlice(bloomFilterIn, offset, len, this::getScratch, buf -> {
-                    return ESVectorUtil.popcount(buf, len);
+                setBits += RandomAccessInputUtils.withSlice(bloomFilterIn, offset, len, this::getScratch, seg -> {
+                    return ESVectorUtil.popcount(seg, len);
                 });
                 offset += pageLen;
                 remaining -= pageLen;

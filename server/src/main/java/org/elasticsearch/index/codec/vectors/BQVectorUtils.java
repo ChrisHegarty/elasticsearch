@@ -22,6 +22,7 @@ package org.elasticsearch.index.codec.vectors;
 import org.apache.lucene.util.ArrayUtil;
 import org.elasticsearch.simdvec.ESVectorUtil;
 
+import java.lang.foreign.MemorySegment;
 /** Utility class for vector quantization calculations */
 public class BQVectorUtils {
     // NOTE: this is currently > 1e-4f due to bfloat16
@@ -63,7 +64,7 @@ public class BQVectorUtils {
      * @return count of flipped bits in the byte array
      */
     public static int popcount(byte[] d) {
-        return (int) ESVectorUtil.popcount(d, 0, d.length);
+        return (int) ESVectorUtil.popcount(MemorySegment.ofArray(d), d.length);
     }
 
     // TODO: move to VectorUtil & vectorize?

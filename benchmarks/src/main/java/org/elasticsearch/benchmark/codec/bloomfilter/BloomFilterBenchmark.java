@@ -16,11 +16,11 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.RandomAccessInput;
-import org.apache.lucene.util.BitUtil;
 import org.elasticsearch.benchmark.Utils;
 import org.elasticsearch.core.IOUtils;
-import org.elasticsearch.simdvec.ESVectorUtil;
+import org.elasticsearch.simdvec.ESVectorizationProvider;
 import org.elasticsearch.simdvec.RandomAccessInputUtils;
+import org.elasticsearch.simdvec.internal.vectorization.ESVectorUtilSupport;
 import org.elasticsearch.xpack.stateless.lucene.StatelessDirectoryFactory;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -36,6 +36,7 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -81,6 +82,9 @@ public class BloomFilterBenchmark {
     @Param({ "0.5" })
     public double saturation;
 
+    @Param({ "SCALAR", "PANAMA" })
+    public String implementation;
+
     private static final int NUM_PAGES = 1024;
     private static final String DATA_FILE = "bloom.dat";
 
@@ -90,6 +94,7 @@ public class BloomFilterBenchmark {
     private IndexInput indexInput;
     private RandomAccessInput randomAccessInput;
 
+    private ESVectorUtilSupport impl;
     private byte[] scratch;
     private byte[] destScratch;
     private int pageIndex;
@@ -127,6 +132,12 @@ public class BloomFilterBenchmark {
 
         scratch = new byte[pageSize];
         destScratch = new byte[pageSize];
+
+        impl = switch (implementation) {
+            case "SCALAR" -> ESVectorizationProvider.lookup(false, false).getVectorUtilSupport();
+            case "PANAMA" -> ESVectorizationProvider.lookup(true, true).getVectorUtilSupport();
+            default -> throw new IllegalArgumentException("Unknown implementation: " + implementation);
+        };
     }
 
     private void writeDataFile(Path dir) throws IOException {
@@ -168,83 +179,43 @@ public class BloomFilterBenchmark {
     // --- popcount benchmarks ---
 
     @Benchmark
-    public long popcountReadBytesThenScalar() throws IOException {
+    @Fork(jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
+    public long popcountReadBytes() throws IOException {
         long offset = pageOffset();
         randomAccessInput.readBytes(offset, scratch, 0, pageSize);
-        return scalarPopcount(scratch, 0, pageSize);
+        return impl.popcount(MemorySegment.ofArray(scratch), pageSize);
     }
 
     @Benchmark
     @Fork(jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
-    public long popcountReadBytesThenSimd() throws IOException {
-        long offset = pageOffset();
-        randomAccessInput.readBytes(offset, scratch, 0, pageSize);
-        return ESVectorUtil.popcount(scratch, 0, pageSize);
-    }
-
-    @Benchmark
-    @Fork(jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
-    public long popcountDirectAccessThenSimd() throws IOException {
+    public long popcountDirectAccess() throws IOException {
         long offset = pageOffset();
         int len = pageSize;
-        return RandomAccessInputUtils.withByteBufferSlice(randomAccessInput, offset, len, n -> scratch, buf -> ESVectorUtil.popcount(buf, len));
+        return RandomAccessInputUtils.withSlice(randomAccessInput, offset, len, n -> scratch, seg -> impl.popcount(seg, len));
     }
 
     // --- OR benchmarks ---
 
     @Benchmark
-    public void orReadBytesThenScalar() throws IOException {
+    @Fork(jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
+    public void orReadBytes() throws IOException {
         long offset = pageOffset();
         randomAccessInput.readBytes(offset, scratch, 0, pageSize);
-        scalarOr(scratch, destScratch, 0, pageSize);
+        impl.orByteArrays(MemorySegment.ofArray(scratch), destScratch, 0, pageSize);
     }
 
     @Benchmark
     @Fork(jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
-    public void orReadBytesThenSimd() throws IOException {
-        long offset = pageOffset();
-        randomAccessInput.readBytes(offset, scratch, 0, pageSize);
-        ESVectorUtil.orByteArrays(scratch, destScratch, 0, pageSize);
-    }
-
-    @Benchmark
-    @Fork(jvmArgsPrepend = { "--add-modules=jdk.incubator.vector" })
-    public void orDirectAccessThenSimd() throws IOException {
+    public void orDirectAccess() throws IOException {
         long offset = pageOffset();
         int len = pageSize;
-        RandomAccessInputUtils.withByteBufferSlice(randomAccessInput, offset, len, n -> scratch, buf -> {
-            ESVectorUtil.orByteArrays(buf, destScratch, 0, len);
+        RandomAccessInputUtils.withSlice(randomAccessInput, offset, len, n -> scratch, seg -> {
+            impl.orByteArrays(seg, destScratch, 0, len);
             return null;
         });
     }
 
     // --- helpers ---
-
-    static long scalarPopcount(byte[] data, int offset, int length) {
-        long cnt = 0;
-        int i = offset;
-        final int upperBound = offset + (length & -Integer.BYTES);
-        for (; i < upperBound; i += Integer.BYTES) {
-            cnt += Integer.bitCount((int) BitUtil.VH_NATIVE_INT.get(data, i));
-        }
-        for (; i < offset + length; i++) {
-            cnt += Integer.bitCount(data[i] & 0xFF);
-        }
-        return cnt;
-    }
-
-    static void scalarOr(byte[] source, byte[] dest, int offset, int length) {
-        int i = offset;
-        final int upperBound = offset + (length & -Long.BYTES);
-        for (; i < upperBound; i += Long.BYTES) {
-            long s = (long) BitUtil.VH_NATIVE_LONG.get(source, i);
-            long d = (long) BitUtil.VH_NATIVE_LONG.get(dest, i);
-            BitUtil.VH_NATIVE_LONG.set(dest, i, s | d);
-        }
-        for (; i < offset + length; i++) {
-            dest[i] |= source[i];
-        }
-    }
 
     private static byte[] generatePage(Random random, int size, double saturation) {
         byte[] page = new byte[size];

@@ -14,7 +14,7 @@ import org.elasticsearch.simdvec.MultiBFloat16VectorsSource;
 import org.elasticsearch.simdvec.MultiByteVectorsSource;
 import org.elasticsearch.simdvec.MultiFloatVectorsSource;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteOrder;
 
 public interface ESVectorUtilSupport {
@@ -193,15 +193,9 @@ public interface ESVectorUtilSupport {
 
     void pow2DiffAndScaleNQT(float[] v1, float[] v2, float a, float eps, float[] result);
 
-    /** Counts the number of set bits in the byte array region {@code [offset, offset+length)}. */
-    long popcount(byte[] data, int offset, int length);
+    /** Counts the number of set bits in the first {@code length} bytes of the segment. */
+    long popcount(MemorySegment segment, int length);
 
-    /** Counts the number of set bits in the first {@code length} bytes from the buffer's current position. */
-    long popcount(ByteBuffer buf, int length);
-
-    /** Bitwise OR: {@code dest[offset+i] |= source[offset+i]} for {@code i} in {@code [0, length)}. */
-    void orByteArrays(byte[] source, byte[] dest, int offset, int length);
-
-    /** Bitwise OR: {@code dest[destOffset+i] |= src.get(src.position()+i)} for {@code i} in {@code [0, length)}. */
-    void orByteArrays(ByteBuffer src, byte[] dest, int destOffset, int length);
+    /** Bitwise OR: {@code dest[destOffset+i] |= segment.get(JAVA_BYTE, i)} for {@code i} in {@code [0, length)}. */
+    void orByteArrays(MemorySegment src, byte[] dest, int destOffset, int length);
 }

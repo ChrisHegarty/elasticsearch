@@ -30,7 +30,6 @@ import org.elasticsearch.simdvec.MultiByteVectorsSource;
 import org.elasticsearch.simdvec.MultiFloatVectorsSource;
 
 import java.lang.foreign.MemorySegment;
-import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 import static jdk.incubator.vector.VectorOperators.ADD;
@@ -2720,24 +2719,7 @@ public sealed class PanamaESVectorUtilSupport implements ESVectorUtilSupport per
     }
 
     @Override
-    public long popcount(byte[] data, int offset, int length) {
-        long cnt = 0;
-        int i = offset;
-        final int byteLen = BYTE_SPECIES.length();
-        final int upperBound = offset + BYTE_SPECIES.loopBound(length);
-        for (; i < upperBound; i += byteLen) {
-            var vec = ByteVector.fromArray(BYTE_SPECIES, data, i);
-            cnt += vec.reinterpretAsLongs().lanewise(VectorOperators.BIT_COUNT).reduceLanes(ADD);
-        }
-        for (; i < offset + length; i++) {
-            cnt += Integer.bitCount(data[i] & 0xFF);
-        }
-        return cnt;
-    }
-
-    @Override
-    public long popcount(ByteBuffer buf, int length) {
-        MemorySegment seg = MemorySegment.ofBuffer(buf);
+    public long popcount(MemorySegment seg, int length) {
         long cnt = 0;
         final long upperBound = BYTE_SPECIES.loopBound(length);
         long i = 0;
@@ -2752,31 +2734,16 @@ public sealed class PanamaESVectorUtilSupport implements ESVectorUtilSupport per
     }
 
     @Override
-    public void orByteArrays(byte[] source, byte[] dest, int offset, int length) {
-        int i = offset;
-        final int upperBound = offset + BYTE_SPECIES.loopBound(length);
-        for (; i < upperBound; i += BYTE_SPECIES.length()) {
-            var s = ByteVector.fromArray(BYTE_SPECIES, source, i);
-            var d = ByteVector.fromArray(BYTE_SPECIES, dest, i);
-            d.or(s).intoArray(dest, i);
-        }
-        for (; i < offset + length; i++) {
-            dest[i] |= source[i];
-        }
-    }
-
-    @Override
-    public void orByteArrays(ByteBuffer src, byte[] dest, int destOffset, int length) {
-        MemorySegment seg = MemorySegment.ofBuffer(src);
+    public void orByteArrays(MemorySegment src, byte[] dest, int destOffset, int length) {
         int i = 0;
         final int upperBound = BYTE_SPECIES.loopBound(length);
         for (; i < upperBound; i += BYTE_SPECIES.length()) {
-            var s = ByteVector.fromMemorySegment(BYTE_SPECIES, seg, i, ByteOrder.nativeOrder());
+            var s = ByteVector.fromMemorySegment(BYTE_SPECIES, src, i, ByteOrder.nativeOrder());
             var d = ByteVector.fromArray(BYTE_SPECIES, dest, destOffset + i);
             d.or(s).intoArray(dest, destOffset + i);
         }
         for (; i < length; i++) {
-            dest[destOffset + i] |= seg.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i);
+            dest[destOffset + i] |= src.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i);
         }
     }
 
