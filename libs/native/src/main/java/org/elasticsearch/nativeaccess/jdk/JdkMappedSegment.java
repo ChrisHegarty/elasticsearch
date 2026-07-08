@@ -55,10 +55,12 @@ public class JdkMappedSegment implements MappedSegment {
     @Override
     public void prefetch(long offset, long length) {
         Objects.checkFromIndexSize(offset, length, segment.byteSize());
+        // no explicit action, override in subclass if needed.
     }
 
     @Override
     public void madvise(long offset, long length, int advice) {
         Objects.checkFromIndexSize(offset, length, segment.byteSize());
+        // no explicit action, override in subclass if needed.
     }
 }

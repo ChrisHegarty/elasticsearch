@@ -49,13 +49,17 @@ public class PosixMappedSegment extends JdkMappedSegment {
     @Override
     public void madvise(long offset, long length, int advice) {
         Objects.checkFromIndexSize(offset, length, segment.byteSize());
+        // Align offset with the page size, this is required for madvise.
+        // Compute the offset of the current position in the OS's page.
         final long offsetInPage = (segment.address() + offset) % PAGE_SIZE;
         offset -= offsetInPage;
         length += offsetInPage;
         if (offset < 0) {
+            // start of the page is before the start of this segment, ignore the first page.
             offset += PAGE_SIZE;
             length -= PAGE_SIZE;
             if (length <= 0) {
+                // This segment has no data beyond the first page.
                 return;
             }
         }

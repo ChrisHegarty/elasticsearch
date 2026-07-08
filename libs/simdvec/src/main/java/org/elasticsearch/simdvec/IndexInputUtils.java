@@ -179,6 +179,10 @@ public final class IndexInputUtils {
         try {
             action.accept(addrs);
         } finally {
+            // We rely on the MSAI contract that segments returned by
+            // segmentSliceOrNull remain valid until the input is closed:
+            // keeping msai reachable across the native call keeps the
+            // backing memory alive.
             Reference.reachabilityFence(msai);
         }
         return true;
