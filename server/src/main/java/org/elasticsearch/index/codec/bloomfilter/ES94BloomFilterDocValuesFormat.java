@@ -857,9 +857,13 @@ public class ES94BloomFilterDocValuesFormat extends DocValuesFormat {
             while (remaining > 0) {
                 int pageLen = Math.min(PageCacheRecycler.PAGE_SIZE_IN_BYTES, remaining);
                 final int len = pageLen;
-                setBits += RandomAccessInputUtils.withSlice(bloomFilterIn, offset, len, this::getScratch, seg -> {
-                    return ESVectorUtil.popcount(seg, len);
-                });
+                setBits += RandomAccessInputUtils.withSlice(
+                    bloomFilterIn,
+                    offset,
+                    len,
+                    this::getScratch,
+                    seg -> { return ESVectorUtil.popcount(seg, len); }
+                );
                 offset += pageLen;
                 remaining -= pageLen;
             }

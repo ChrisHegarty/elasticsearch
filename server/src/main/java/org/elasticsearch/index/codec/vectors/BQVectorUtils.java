@@ -23,6 +23,7 @@ import org.apache.lucene.util.ArrayUtil;
 import org.elasticsearch.simdvec.ESVectorUtil;
 
 import java.lang.foreign.MemorySegment;
+
 /** Utility class for vector quantization calculations */
 public class BQVectorUtils {
     // NOTE: this is currently > 1e-4f due to bfloat16
