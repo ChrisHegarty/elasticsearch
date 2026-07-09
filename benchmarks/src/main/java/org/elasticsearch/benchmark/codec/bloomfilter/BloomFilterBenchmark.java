@@ -17,6 +17,7 @@ import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.RandomAccessInput;
 import org.elasticsearch.benchmark.Utils;
+import org.elasticsearch.benchmark.vector.VectorImplementation;
 import org.elasticsearch.core.IOUtils;
 import org.elasticsearch.simdvec.ESVectorizationProvider;
 import org.elasticsearch.simdvec.RandomAccessInputUtils;
@@ -83,7 +84,7 @@ public class BloomFilterBenchmark {
     public double saturation;
 
     @Param({ "SCALAR", "PANAMA" })
-    public String implementation;
+    public VectorImplementation implementation;
 
     private static final int NUM_PAGES = 1024;
     private static final String DATA_FILE = "bloom.dat";
@@ -134,9 +135,9 @@ public class BloomFilterBenchmark {
         destScratch = new byte[pageSize];
 
         impl = switch (implementation) {
-            case "SCALAR" -> ESVectorizationProvider.lookup(false, false).getVectorUtilSupport();
-            case "PANAMA" -> ESVectorizationProvider.lookup(true, true).getVectorUtilSupport();
-            default -> throw new IllegalArgumentException("Unknown implementation: " + implementation);
+            case SCALAR -> ESVectorizationProvider.lookup(false, false).getVectorUtilSupport();
+            case PANAMA -> ESVectorizationProvider.lookup(true, true).getVectorUtilSupport();
+            default -> throw new IllegalArgumentException("Unsupported implementation: " + implementation);
         };
     }
 
