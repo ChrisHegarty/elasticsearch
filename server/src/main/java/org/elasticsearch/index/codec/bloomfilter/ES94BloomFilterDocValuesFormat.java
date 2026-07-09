@@ -365,9 +365,6 @@ public class ES94BloomFilterDocValuesFormat extends DocValuesFormat {
             List<Integer> bloomFilterSizes = bloomFilterReaders.sizesInBytes();
             initBitSetBufferForMerge(bloomFilterSizes);
 
-            final var pageSizeInBytes = PageCacheRecycler.PAGE_SIZE_IN_BYTES;
-            final var sourcePageScratch = new BytesRef(pageSizeInBytes);
-            final var targetPageScratch = new BytesRef(pageSizeInBytes);
             final var firstBloomFilter = new AtomicBoolean(true);
             bloomFilterReaders.forEach(bloomFilterFieldReader -> {
                 assert bitSetBuffer != null;
@@ -389,8 +386,6 @@ public class ES94BloomFilterDocValuesFormat extends DocValuesFormat {
                             i * targetBitSetSizeInBytes,
                             0,
                             targetBitSetSizeInBytes,
-                            sourcePageScratch,
-                            targetPageScratch,
                             firstBloomFilter.get() && i == 0
                         );
                     }
@@ -403,15 +398,7 @@ public class ES94BloomFilterDocValuesFormat extends DocValuesFormat {
                     // (hash mod targetSize) mod sourceSize == hash mod sourceSize
                     int expandFactor = targetBitSetSizeInBytes / sourceSizeInBytes;
                     for (int i = 0; i < expandFactor; i++) {
-                        orRegion(
-                            bloomFilterData,
-                            0,
-                            i * sourceSizeInBytes,
-                            sourceSizeInBytes,
-                            sourcePageScratch,
-                            targetPageScratch,
-                            firstBloomFilter.get()
-                        );
+                        orRegion(bloomFilterData, 0, i * sourceSizeInBytes, sourceSizeInBytes, firstBloomFilter.get());
                     }
                 }
                 firstBloomFilter.set(false);
@@ -425,20 +412,8 @@ public class ES94BloomFilterDocValuesFormat extends DocValuesFormat {
             return scratch;
         }
 
-        private void orRegion(
-            RandomAccessInput source,
-            int sourceOffset,
-            int targetOffset,
-            int length,
-            BytesRef sourcePageScratch,
-            BytesRef targetPageScratch,
-            boolean firstPass
-        ) throws IOException {
-            assert sourcePageScratch.bytes.length == PageCacheRecycler.PAGE_SIZE_IN_BYTES
-                : sourcePageScratch.bytes.length + " vs " + PageCacheRecycler.PAGE_SIZE_IN_BYTES;
-            assert targetPageScratch.bytes.length == PageCacheRecycler.PAGE_SIZE_IN_BYTES
-                : targetPageScratch.bytes.length + " vs " + PageCacheRecycler.PAGE_SIZE_IN_BYTES;
-
+        private void orRegion(RandomAccessInput source, int sourceOffset, int targetOffset, int length, boolean firstPass)
+            throws IOException {
             // throwaway, just to call bitSetBuffer.get()
             BytesRef scratchRef = new BytesRef();
 
@@ -447,21 +422,26 @@ public class ES94BloomFilterDocValuesFormat extends DocValuesFormat {
                 int pageLen = Math.min(PageCacheRecycler.PAGE_SIZE_IN_BYTES, length - offset);
 
                 var materialized = bitSetBuffer.get(targetOffset + offset, pageLen, scratchRef);
-                assert materialized == false : "Unexpected materialized array";
+                if (materialized) {
+                    throw new IllegalStateException("Expected direct reference into bitSetBuffer backing page");
+                }
 
                 if (firstPass) {
-                    source.readBytes(sourceOffset + offset, sourcePageScratch.bytes, 0, pageLen);
-                    bitSetBuffer.set(targetOffset + offset, sourcePageScratch.bytes, 0, pageLen);
+                    // On the first pass the bitSetBuffer pages may still be the shared ZERO_PAGE,
+                    // so we cannot write into scratchRef.bytes directly. Read into a scratch buffer
+                    // and use bitSetBuffer.set which calls getPageForWriting to allocate a real page.
+                    byte[] buf = getScratch(pageLen);
+                    source.readBytes(sourceOffset + offset, buf, 0, pageLen);
+                    bitSetBuffer.set(targetOffset + offset, buf, 0, pageLen);
                 } else {
-                    System.arraycopy(scratchRef.bytes, scratchRef.offset, targetPageScratch.bytes, 0, pageLen);
-
+                    // After firstPass, pages are allocated (no longer ZERO_PAGE), so we can
+                    // OR the source bytes directly into the bitSetBuffer's backing page.
                     final int len = pageLen;
+                    final int dstOffset = scratchRef.offset;
                     RandomAccessInputUtils.withSlice(source, sourceOffset + offset, len, this::getScratch, seg -> {
-                        ESVectorUtil.orByteArrays(seg, targetPageScratch.bytes, 0, len);
+                        ESVectorUtil.orByteArrays(seg, scratchRef.bytes, dstOffset, len);
                         return null;
                     });
-
-                    bitSetBuffer.set(targetOffset + offset, targetPageScratch.bytes, 0, pageLen);
                 }
 
                 offset += pageLen;
