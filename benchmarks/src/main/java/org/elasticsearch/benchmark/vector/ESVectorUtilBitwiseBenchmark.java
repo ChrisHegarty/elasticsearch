@@ -7,7 +7,7 @@
  * License v3.0 only", or the "Server Side Public License, v 1".
  */
 
-package org.elasticsearch.benchmark.codec.bloomfilter;
+package org.elasticsearch.benchmark.vector;
 
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
@@ -17,7 +17,6 @@ import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.RandomAccessInput;
 import org.elasticsearch.benchmark.Utils;
-import org.elasticsearch.benchmark.vector.VectorImplementation;
 import org.elasticsearch.core.IOUtils;
 import org.elasticsearch.simdvec.ESVectorizationProvider;
 import org.elasticsearch.simdvec.RandomAccessInputUtils;
@@ -63,7 +62,7 @@ import java.util.stream.Stream;
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @State(Scope.Thread)
 @Fork(value = 1)
-public class BloomFilterBenchmark {
+public class ESVectorUtilBitwiseBenchmark {
 
     static {
         Utils.configureBenchmarkLogging();
