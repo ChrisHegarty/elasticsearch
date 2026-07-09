@@ -30,6 +30,7 @@ import org.elasticsearch.simdvec.MultiByteVectorsSource;
 import org.elasticsearch.simdvec.MultiFloatVectorsSource;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.ByteOrder;
 
 import static jdk.incubator.vector.VectorOperators.ADD;
@@ -2721,14 +2722,17 @@ public sealed class PanamaESVectorUtilSupport implements ESVectorUtilSupport per
     @Override
     public long popcount(MemorySegment seg, int length) {
         long cnt = 0;
-        final long upperBound = BYTE_SPECIES.loopBound(length);
+        final int longLen = LONG_SPECIES.length();
+        final long upperBound = LONG_SPECIES.loopBound(length / Long.BYTES) * Long.BYTES;
+        LongVector acc = LongVector.zero(LONG_SPECIES);
         long i = 0;
-        for (; i < upperBound; i += BYTE_SPECIES.length()) {
-            var vec = ByteVector.fromMemorySegment(BYTE_SPECIES, seg, i, ByteOrder.nativeOrder());
-            cnt += vec.reinterpretAsLongs().lanewise(VectorOperators.BIT_COUNT).reduceLanes(ADD);
+        for (; i < upperBound; i += (long) longLen * Long.BYTES) {
+            var vec = LongVector.fromMemorySegment(LONG_SPECIES, seg, i, ByteOrder.nativeOrder());
+            acc = acc.add(vec.lanewise(VectorOperators.BIT_COUNT));
         }
+        cnt += acc.reduceLanes(ADD);
         for (; i < length; i++) {
-            cnt += Integer.bitCount(seg.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i) & 0xFF);
+            cnt += Integer.bitCount(seg.get(ValueLayout.JAVA_BYTE, i) & 0xFF);
         }
         return cnt;
     }
@@ -2743,7 +2747,7 @@ public sealed class PanamaESVectorUtilSupport implements ESVectorUtilSupport per
             d.or(s).intoArray(dest, destOffset + i);
         }
         for (; i < length; i++) {
-            dest[destOffset + i] |= src.get(java.lang.foreign.ValueLayout.JAVA_BYTE, i);
+            dest[destOffset + i] |= src.get(ValueLayout.JAVA_BYTE, i);
         }
     }
 
