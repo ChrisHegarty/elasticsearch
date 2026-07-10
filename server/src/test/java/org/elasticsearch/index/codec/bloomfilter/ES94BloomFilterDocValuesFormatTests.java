@@ -453,7 +453,7 @@ public class ES94BloomFilterDocValuesFormatTests extends ESTestCase {
             LogMergePolicy mergePolicy = newLogMergePolicy();
             mergePolicy.setMergeFactor(1000);
             conf.setMergePolicy(mergePolicy);
-            conf.setMaxBufferedDocs(5);
+            conf.setMaxBufferedDocs(IndexWriterConfig.DISABLE_AUTO_FLUSH);
             conf.setUseCompoundFile(false);
             conf.setMergeScheduler(new SerialMergeScheduler());
             try (IndexWriter writer = new IndexWriter(directory, conf)) {
