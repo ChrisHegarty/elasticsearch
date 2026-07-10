@@ -50,7 +50,6 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntUnaryOperator;
-import java.util.stream.Collectors;
 
 import static org.elasticsearch.index.codec.bloomfilter.ES94BloomFilterDocValuesFormat.DEFAULT_LOW_BITS_PER_DOC;
 import static org.elasticsearch.index.codec.bloomfilter.ES94BloomFilterDocValuesFormat.MAX_BLOOM_FILTER_SIZE;
@@ -437,19 +436,16 @@ public class ES94BloomFilterDocValuesFormatTests extends ESTestCase {
         assertOrRegionMergeCorrectness(sizes.length, ignored -> sizes[flushCount.getAndIncrement()]);
     }
 
-    private void assertOrRegionMergeCorrectness(int numSegments, IntUnaryOperator sizeForSegment)
-        throws IOException {
+    private void assertOrRegionMergeCorrectness(int numSegments, IntUnaryOperator sizeForSegment) throws IOException {
         try (var directory = newDirectory()) {
             Analyzer analyzer = new MockAnalyzer(random());
             IndexWriterConfig conf = newIndexWriterConfig(analyzer);
-            conf.setCodec(
-                new TestCodec(new ES94BloomFilterDocValuesFormat(BigArrays.NON_RECYCLING_INSTANCE, IdFieldMapper.NAME, true) {
-                    @Override
-                    public int bloomFilterSizeInBytesForNewSegment(int numDocs) {
-                        return sizeForSegment.applyAsInt(numDocs);
-                    }
-                })
-            );
+            conf.setCodec(new TestCodec(new ES94BloomFilterDocValuesFormat(BigArrays.NON_RECYCLING_INSTANCE, IdFieldMapper.NAME, true) {
+                @Override
+                public int bloomFilterSizeInBytesForNewSegment(int numDocs) {
+                    return sizeForSegment.applyAsInt(numDocs);
+                }
+            }));
             LogMergePolicy mergePolicy = newLogMergePolicy();
             mergePolicy.setMergeFactor(1000);
             conf.setMergePolicy(mergePolicy);
