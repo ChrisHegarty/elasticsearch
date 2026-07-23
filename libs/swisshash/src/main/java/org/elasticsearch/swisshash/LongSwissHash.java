@@ -520,11 +520,11 @@ public final class LongSwissHash extends SwissHash implements LongHashTable {
                     if (key(id) == key) {
                         return -1 - id;
                     }
-                    matches &= matches - 1; // clear the first set bit and try again
+                    matches &= matches - 1;
                 }
-                long empty = vec.eq(EMPTY).toLong();
-                if (empty != 0) {
-                    final int insertSlot = slot(group + Long.numberOfTrailingZeros(empty));
+                int emptyPos = firstEmpty(group);
+                if (emptyPos >= 0) {
+                    final int insertSlot = slot(group + emptyPos);
                     final int id = size;
                     setKey(id, key);
                     bigCore.insertAtSlot(insertSlot, control, id);
@@ -533,6 +533,20 @@ public final class LongSwissHash extends SwissHash implements LongHashTable {
                 }
                 group = (group + BYTE_VECTOR_LANES) & mask;
             }
+        }
+
+        private int firstEmpty(int group) {
+            long lo = (long) LONG_HANDLE.get(controlData, group);
+            long hiMaskLo = lo & 0x8080808080808080L;
+            if (hiMaskLo != 0) {
+                return Long.numberOfTrailingZeros(hiMaskLo) >>> 3;
+            }
+            long hi = (long) LONG_HANDLE.get(controlData, group + 8);
+            long hiMaskHi = hi & 0x8080808080808080L;
+            if (hiMaskHi != 0) {
+                return 8 + (Long.numberOfTrailingZeros(hiMaskHi) >>> 3);
+            }
+            return -1;
         }
 
         private void insertAtSlot(final int insertSlot, final byte control, final int id) {
