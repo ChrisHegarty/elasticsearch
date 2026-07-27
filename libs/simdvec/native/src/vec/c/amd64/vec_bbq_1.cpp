@@ -222,11 +222,8 @@ static inline void dotd1q4_bulk_4doc(
         const int8_t* a2 = mapper(a, c + 2, offsets, pitch);
         const int8_t* a3 = mapper(a, c + 3, offsets, pitch);
 
-        // 4 accumulators per doc × 4 docs = 16 accumulators
-        // Process 2 docs at a time within each inner iteration to manage register pressure
-        __m256i acc01[8]; // docs 0,1 × 4 query bits
-        __m256i acc23[8]; // docs 2,3 × 4 query bits
-        for (int k = 0; k < 8; k++) { acc01[k] = zero; acc23[k] = zero; }
+        // 4 accumulators — one per doc, pre-weighted by query bit position
+        __m256i wacc0 = zero, wacc1 = zero, wacc2 = zero, wacc3 = zero;
 
         for (int r = 0; r < upperBound; r += (int)sizeof(__m256i)) {
             __m256i v0 = _mm256_loadu_si256((const __m256i_u*)(a0 + r));
@@ -240,57 +237,58 @@ static inline void dotd1q4_bulk_4doc(
                 __m256i and0 = _mm256_and_si256(v0, qv);
                 __m256i lo0 = _mm256_and_si256(and0, low_mask);
                 __m256i hi0 = _mm256_and_si256(_mm256_srli_epi16(and0, 4), low_mask);
-                acc01[qi] = _mm256_add_epi64(acc01[qi], _mm256_sad_epu8(
+                __m256i sad0 = _mm256_sad_epu8(
                     _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo0),
-                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi0)), zero));
+                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi0)), zero);
+                wacc0 = _mm256_add_epi64(wacc0, _mm256_slli_epi64(sad0, qi));
 
                 __m256i and1 = _mm256_and_si256(v1, qv);
                 __m256i lo1 = _mm256_and_si256(and1, low_mask);
                 __m256i hi1 = _mm256_and_si256(_mm256_srli_epi16(and1, 4), low_mask);
-                acc01[4 + qi] = _mm256_add_epi64(acc01[4 + qi], _mm256_sad_epu8(
+                __m256i sad1 = _mm256_sad_epu8(
                     _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo1),
-                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi1)), zero));
+                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi1)), zero);
+                wacc1 = _mm256_add_epi64(wacc1, _mm256_slli_epi64(sad1, qi));
 
                 __m256i and2 = _mm256_and_si256(v2, qv);
                 __m256i lo2 = _mm256_and_si256(and2, low_mask);
                 __m256i hi2 = _mm256_and_si256(_mm256_srli_epi16(and2, 4), low_mask);
-                acc23[qi] = _mm256_add_epi64(acc23[qi], _mm256_sad_epu8(
+                __m256i sad2 = _mm256_sad_epu8(
                     _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo2),
-                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi2)), zero));
+                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi2)), zero);
+                wacc2 = _mm256_add_epi64(wacc2, _mm256_slli_epi64(sad2, qi));
 
                 __m256i and3 = _mm256_and_si256(v3, qv);
                 __m256i lo3 = _mm256_and_si256(and3, low_mask);
                 __m256i hi3 = _mm256_and_si256(_mm256_srli_epi16(and3, 4), low_mask);
-                acc23[4 + qi] = _mm256_add_epi64(acc23[4 + qi], _mm256_sad_epu8(
+                __m256i sad3 = _mm256_sad_epu8(
                     _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo3),
-                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi3)), zero));
+                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi3)), zero);
+                wacc3 = _mm256_add_epi64(wacc3, _mm256_slli_epi64(sad3, qi));
             }
         }
 
-        int64_t r0[4], r1[4], r2[4], r3[4];
-        for (int qi = 0; qi < 4; qi++) {
-            r0[qi] = mm256_reduce_epi64<_mm_add_epi64>(acc01[qi]);
-            r1[qi] = mm256_reduce_epi64<_mm_add_epi64>(acc01[4 + qi]);
-            r2[qi] = mm256_reduce_epi64<_mm_add_epi64>(acc23[qi]);
-            r3[qi] = mm256_reduce_epi64<_mm_add_epi64>(acc23[4 + qi]);
-        }
+        int64_t sum0 = mm256_reduce_epi64<_mm_add_epi64>(wacc0);
+        int64_t sum1 = mm256_reduce_epi64<_mm_add_epi64>(wacc1);
+        int64_t sum2 = mm256_reduce_epi64<_mm_add_epi64>(wacc2);
+        int64_t sum3 = mm256_reduce_epi64<_mm_add_epi64>(wacc3);
 
         // Handle tail bytes
         for (int r = upperBound; r < length; r++) {
             int8_t va0 = *(a0 + r), va1 = *(a1 + r), va2 = *(a2 + r), va3 = *(a3 + r);
             for (int qi = 0; qi < 4; qi++) {
                 int8_t qb = *(query + r + qi * length);
-                r0[qi] += __builtin_popcount((uint8_t)(va0 & qb));
-                r1[qi] += __builtin_popcount((uint8_t)(va1 & qb));
-                r2[qi] += __builtin_popcount((uint8_t)(va2 & qb));
-                r3[qi] += __builtin_popcount((uint8_t)(va3 & qb));
+                sum0 += (int64_t)__builtin_popcount((uint8_t)(va0 & qb)) << qi;
+                sum1 += (int64_t)__builtin_popcount((uint8_t)(va1 & qb)) << qi;
+                sum2 += (int64_t)__builtin_popcount((uint8_t)(va2 & qb)) << qi;
+                sum3 += (int64_t)__builtin_popcount((uint8_t)(va3 & qb)) << qi;
             }
         }
 
-        results[c]     = (f32_t)(r0[0] + (r0[1] << 1) + (r0[2] << 2) + (r0[3] << 3));
-        results[c + 1] = (f32_t)(r1[0] + (r1[1] << 1) + (r1[2] << 2) + (r1[3] << 3));
-        results[c + 2] = (f32_t)(r2[0] + (r2[1] << 1) + (r2[2] << 2) + (r2[3] << 3));
-        results[c + 3] = (f32_t)(r3[0] + (r3[1] << 1) + (r3[2] << 2) + (r3[3] << 3));
+        results[c]     = (f32_t)sum0;
+        results[c + 1] = (f32_t)sum1;
+        results[c + 2] = (f32_t)sum2;
+        results[c + 3] = (f32_t)sum3;
     }
 
     // Tail: remaining docs (fewer than 4)
