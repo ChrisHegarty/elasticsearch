@@ -12,6 +12,7 @@
 // this first tier include functions for processors supporting at least AVX2.
 
 #include <stdint.h>
+#include <algorithm>
 #include "vec.h"
 #include "vec_common.h"
 #include "amd64/amd64_vec_common.h"
@@ -121,6 +122,30 @@ EXPORT int64_t vec_dotd1q1(
     return dotd1qN_inner<1>(a_ptr, query_ptr, length);
 }
 
+// One doc plane × one query-bit plane: Mula popcount byte partials (no sad yet)
+static inline void dotd1q4_bulk_add_bytes(
+    __m256i v,
+    __m256i qv,
+    const __m256i low_mask,
+    __m256i& byte_acc
+) {
+    __m256i andv = _mm256_and_si256(v, qv);
+    __m256i lo = _mm256_and_si256(andv, low_mask);
+    __m256i hi = _mm256_and_si256(_mm256_srli_epi16(andv, 4), low_mask);
+    byte_acc = _mm256_add_epi8(byte_acc,
+        _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo),
+                        _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi)));
+}
+
+static inline void dotd1q4_bulk_flush_sad(
+    __m256i& byte_acc,
+    const __m256i zero,
+    __m256i& int64_acc
+) {
+    int64_acc = _mm256_add_epi64(int64_acc, _mm256_sad_epu8(byte_acc, zero));
+    byte_acc = zero;
+}
+
 // Hand-inlined D1Q4 bulk: process 2 docs simultaneously for better ILP
 template <typename TData, const int8_t*(*mapper)(const TData*, const int32_t, const int32_t*, const int32_t)>
 static inline void dotd1q4_bulk_2doc(
@@ -228,42 +253,34 @@ static inline void dotd1q4_bulk_4doc(
         __m256i acc23[8]; // docs 2,3 × 4 query bits
         for (int k = 0; k < 8; k++) { acc01[k] = zero; acc23[k] = zero; }
 
-        for (int r = 0; r < upperBound; r += (int)sizeof(__m256i)) {
-            __m256i v0 = _mm256_loadu_si256((const __m256i_u*)(a0 + r));
-            __m256i v1 = _mm256_loadu_si256((const __m256i_u*)(a1 + r));
-            __m256i v2 = _mm256_loadu_si256((const __m256i_u*)(a2 + r));
-            __m256i v3 = _mm256_loadu_si256((const __m256i_u*)(a3 + r));
+        constexpr int sad_chunk_steps = 8;
+        const int chunk_bytes = sad_chunk_steps * (int)sizeof(__m256i);
 
-            for (int qi = 0; qi < 4; qi++) {
-                __m256i qv = _mm256_loadu_si256((const __m256i_u*)(query + r + qi * length));
+        for (int r = 0; r < upperBound; ) {
+            __m256i byte01[8];
+            __m256i byte23[8];
+            for (int k = 0; k < 8; k++) { byte01[k] = zero; byte23[k] = zero; }
 
-                __m256i and0 = _mm256_and_si256(v0, qv);
-                __m256i lo0 = _mm256_and_si256(and0, low_mask);
-                __m256i hi0 = _mm256_and_si256(_mm256_srli_epi16(and0, 4), low_mask);
-                acc01[qi] = _mm256_add_epi64(acc01[qi], _mm256_sad_epu8(
-                    _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo0),
-                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi0)), zero));
+            const int chunk_end = std::min(r + chunk_bytes, upperBound);
+            for (; r < chunk_end; r += (int)sizeof(__m256i)) {
+                __m256i v0 = _mm256_loadu_si256((const __m256i_u*)(a0 + r));
+                __m256i v1 = _mm256_loadu_si256((const __m256i_u*)(a1 + r));
+                __m256i v2 = _mm256_loadu_si256((const __m256i_u*)(a2 + r));
+                __m256i v3 = _mm256_loadu_si256((const __m256i_u*)(a3 + r));
 
-                __m256i and1 = _mm256_and_si256(v1, qv);
-                __m256i lo1 = _mm256_and_si256(and1, low_mask);
-                __m256i hi1 = _mm256_and_si256(_mm256_srli_epi16(and1, 4), low_mask);
-                acc01[4 + qi] = _mm256_add_epi64(acc01[4 + qi], _mm256_sad_epu8(
-                    _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo1),
-                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi1)), zero));
+                for (int qi = 0; qi < 4; qi++) {
+                    __m256i qv = _mm256_loadu_si256((const __m256i_u*)(query + r + qi * length));
 
-                __m256i and2 = _mm256_and_si256(v2, qv);
-                __m256i lo2 = _mm256_and_si256(and2, low_mask);
-                __m256i hi2 = _mm256_and_si256(_mm256_srli_epi16(and2, 4), low_mask);
-                acc23[qi] = _mm256_add_epi64(acc23[qi], _mm256_sad_epu8(
-                    _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo2),
-                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi2)), zero));
+                    dotd1q4_bulk_add_bytes(v0, qv, low_mask, byte01[qi]);
+                    dotd1q4_bulk_add_bytes(v1, qv, low_mask, byte01[4 + qi]);
+                    dotd1q4_bulk_add_bytes(v2, qv, low_mask, byte23[qi]);
+                    dotd1q4_bulk_add_bytes(v3, qv, low_mask, byte23[4 + qi]);
+                }
+            }
 
-                __m256i and3 = _mm256_and_si256(v3, qv);
-                __m256i lo3 = _mm256_and_si256(and3, low_mask);
-                __m256i hi3 = _mm256_and_si256(_mm256_srli_epi16(and3, 4), low_mask);
-                acc23[4 + qi] = _mm256_add_epi64(acc23[4 + qi], _mm256_sad_epu8(
-                    _mm256_add_epi8(_mm256_shuffle_epi8(POPCOUNT_LOOKUP, lo3),
-                                     _mm256_shuffle_epi8(POPCOUNT_LOOKUP, hi3)), zero));
+            for (int k = 0; k < 8; k++) {
+                dotd1q4_bulk_flush_sad(byte01[k], zero, acc01[k]);
+                dotd1q4_bulk_flush_sad(byte23[k], zero, acc23[k]);
             }
         }
 
