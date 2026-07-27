@@ -18,6 +18,47 @@
 #include "amd64/amd64_vec_common.h"
 #include "amd64/amd64_bbq_common.h"
 
+// Explicit D1Q4 inner loop — no apply_indexed lambdas for clearer codegen on the hot bulk path.
+static inline int64_t dotd1q4_inner_avx512(const int8_t* a, const int8_t* q, const int32_t length) {
+    __m512i acc0 = _mm512_setzero_si512();
+    __m512i acc1 = _mm512_setzero_si512();
+    __m512i acc2 = _mm512_setzero_si512();
+    __m512i acc3 = _mm512_setzero_si512();
+
+    int r = 0;
+    const int upperBound = length & ~(sizeof(__m512i) - 1);
+    for (; r < upperBound; r += (int)sizeof(__m512i)) {
+        __m512i value = _mm512_loadu_si512((const __m512i_u*)(a + r));
+        __m512i q0 = _mm512_loadu_si512((const __m512i_u*)(q + r));
+        __m512i q1 = _mm512_loadu_si512((const __m512i_u*)(q + r + length));
+        __m512i q2 = _mm512_loadu_si512((const __m512i_u*)(q + r + 2 * length));
+        __m512i q3 = _mm512_loadu_si512((const __m512i_u*)(q + r + 3 * length));
+        acc0 = _mm512_add_epi64(acc0, _mm512_popcnt_epi64(_mm512_and_si512(value, q0)));
+        acc1 = _mm512_add_epi64(acc1, _mm512_popcnt_epi64(_mm512_and_si512(value, q1)));
+        acc2 = _mm512_add_epi64(acc2, _mm512_popcnt_epi64(_mm512_and_si512(value, q2)));
+        acc3 = _mm512_add_epi64(acc3, _mm512_popcnt_epi64(_mm512_and_si512(value, q3)));
+    }
+
+    const int remaining = length - r;
+    if (remaining > 0) {
+        const __mmask64 mask = (1ULL << remaining) - 1;
+        __m512i value = _mm512_maskz_loadu_epi8(mask, a + r);
+        __m512i q0 = _mm512_maskz_loadu_epi8(mask, q + r);
+        __m512i q1 = _mm512_maskz_loadu_epi8(mask, q + r + length);
+        __m512i q2 = _mm512_maskz_loadu_epi8(mask, q + r + 2 * length);
+        __m512i q3 = _mm512_maskz_loadu_epi8(mask, q + r + 3 * length);
+        acc0 = _mm512_add_epi64(acc0, _mm512_popcnt_epi64(_mm512_and_si512(value, q0)));
+        acc1 = _mm512_add_epi64(acc1, _mm512_popcnt_epi64(_mm512_and_si512(value, q1)));
+        acc2 = _mm512_add_epi64(acc2, _mm512_popcnt_epi64(_mm512_and_si512(value, q2)));
+        acc3 = _mm512_add_epi64(acc3, _mm512_popcnt_epi64(_mm512_and_si512(value, q3)));
+    }
+
+    return _mm512_reduce_add_epi64(acc0)
+        + (_mm512_reduce_add_epi64(acc1) << 1)
+        + (_mm512_reduce_add_epi64(acc2) << 2)
+        + (_mm512_reduce_add_epi64(acc3) << 3);
+}
+
 template<int query_bits>
 static inline int64_t dotd1qN_inner_avx512(const int8_t* a, const int8_t* q, const int32_t length) {
     __m512i acc[query_bits];
@@ -113,7 +154,7 @@ static inline void dotd1q4_bulk_packed4(
 
     // Tail: remaining vectors
     for (; c < count; c++) {
-        results[c] = (f32_t)dotd1qN_inner_avx512<4>(a + (int64_t)c * length, query, length);
+        results[c] = (f32_t)dotd1q4_inner_avx512(a + (int64_t)c * length, query, length);
     }
 }
 
@@ -173,7 +214,7 @@ static inline void dotd1q4_bulk_packed2(
 
     // Tail: remaining vector
     for (; c < count; c++) {
-        results[c] = (f32_t)dotd1qN_inner_avx512<4>(a + (int64_t)c * length, query, length);
+        results[c] = (f32_t)dotd1q4_inner_avx512(a + (int64_t)c * length, query, length);
     }
 }
 
@@ -182,7 +223,7 @@ EXPORT int64_t vec_dotd1q4_2(
     const int8_t* query_ptr,
     const int32_t length
 ) {
-    return dotd1qN_inner_avx512<4>(a_ptr, query_ptr, length);
+    return dotd1q4_inner_avx512(a_ptr, query_ptr, length);
 }
 
 EXPORT int64_t vec_dotd1q1_2(
@@ -204,7 +245,7 @@ EXPORT void vec_dotd1q4_bulk_2(
     } else if (length <= 32) {
         dotd1q4_bulk_packed2(a, query, length, count, results);
     } else {
-        dotd1q_inner_bulk<int8_t, sequential_mapper, dotd1qN_inner_avx512<4>>(a, query, length, length, NULL, count, results);
+        dotd1q_inner_bulk<int8_t, sequential_mapper, dotd1q4_inner_avx512>(a, query, length, length, NULL, count, results);
     }
 }
 
@@ -216,7 +257,7 @@ EXPORT void vec_dotd1q4_bulk_offsets_2(
     const int32_t* offsets,
     const int32_t count,
     f32_t* results) {
-    dotd1q_inner_bulk<int8_t, offsets_mapper, dotd1qN_inner_avx512<4>>(a, query, length, pitch, offsets, count, results);
+    dotd1q_inner_bulk<int8_t, offsets_mapper, dotd1q4_inner_avx512>(a, query, length, pitch, offsets, count, results);
 }
 
 EXPORT void vec_dotd1q4_bulk_sparse_2(
@@ -225,7 +266,7 @@ EXPORT void vec_dotd1q4_bulk_sparse_2(
     const int32_t length,
     const int32_t count,
     f32_t* results) {
-    dotd1q_inner_bulk<const int8_t*, sparse_mapper, dotd1qN_inner_avx512<4>>
+    dotd1q_inner_bulk<const int8_t*, sparse_mapper, dotd1q4_inner_avx512>
         ((const int8_t* const*)addresses, query, length, 0, NULL, count, results);
 }
 
