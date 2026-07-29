@@ -111,6 +111,11 @@ public class ZstdCompressionMode extends CompressionMode {
         // we can safely store and share a single Zstd instance, since we only use thread-safe decompress
         static final Zstd ZSTD = Objects.requireNonNull(NativeAccess.instance().getZstd());
 
+        // Reusable staging buffer for the copy-and-decompress path. Grown as needed, never shrunk.
+        // Each Decompressor instance is single-threaded (Lucene clones per reader), so no
+        // synchronization needed.
+        private byte[] compressedBuf = new byte[0];
+
         private ZstdDecompressor() {}
 
         @Override
@@ -155,7 +160,7 @@ public class ZstdCompressionMode extends CompressionMode {
             }
         }
 
-        static int decompressInput(DataInput in, int compressedLength, MemorySegment dst) throws IOException {
+        int decompressInput(DataInput in, int compressedLength, MemorySegment dst) throws IOException {
             if (in instanceof IndexInput indexIn && IndexInputUtils.canUseSegmentSlices(indexIn)) {
                 try {
                     return IndexInputUtils.withSlice(indexIn, compressedLength, byte[]::new, src -> ZSTD.decompress(dst, src));
@@ -163,7 +168,10 @@ public class ZstdCompressionMode extends CompressionMode {
                     // Region evicted mid-read — fall through to copy path
                 }
             }
-            return copyAndDecompress(in, compressedLength, dst);
+            // Reuse the staging buffer across calls to avoid per-block allocation
+            compressedBuf = ArrayUtil.grow(compressedBuf, compressedLength);
+            in.readBytes(compressedBuf, 0, compressedLength);
+            return ZSTD.decompress(dst, MemorySegment.ofArray(compressedBuf).asSlice(0, compressedLength));
         }
 
         static int copyAndDecompress(DataInput in, int compressedLength, MemorySegment dst) throws IOException {
