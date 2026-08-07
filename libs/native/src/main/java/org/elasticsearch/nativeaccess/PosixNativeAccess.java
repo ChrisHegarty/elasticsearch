@@ -16,6 +16,7 @@ import org.elasticsearch.nativeaccess.lib.ParquetRsLibrary;
 import org.elasticsearch.nativeaccess.lib.PosixCLibrary;
 
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -220,6 +221,34 @@ public abstract class PosixNativeAccess extends AbstractNativeAccess {
     @Override
     public MappedSegment map(FileChannel fileChannel, FileChannel.MapMode mode, long position, long size) throws IOException {
         return PosixMappedSegment.ofShared(fileChannel, mode, position, size);
+    }
+
+    /**
+     * Advises the kernel about the expected access pattern for the given native memory region.
+     * This calls the madvise(2) system call directly, without throttling.
+     *
+     * @param segment a native memory segment (e.g. from an mmap'd file)
+     * @param offset  the offset within the segment
+     * @param length  the length of the region
+     * @param advice  one of the {@link MadviseAdvice} constants
+     */
+    public void madvise(MemorySegment segment, long offset, long length, int advice) {
+        int pageSize = libc.getPageSize();
+        final long offsetInPage = (segment.address() + offset) % pageSize;
+        offset -= offsetInPage;
+        length += offsetInPage;
+        if (offset < 0) {
+            offset += pageSize;
+            length -= pageSize;
+            if (length <= 0) {
+                return;
+            }
+        }
+        int ret = libc.madvise(segment, offset, length, advice);
+        if (ret != 0) {
+            int errno = libc.errno();
+            logger.warn("madvise failed with error={}: {}", errno, libc.strerror(errno));
+        }
     }
 
     String rlimitToString(long value) {

@@ -30,10 +30,15 @@ import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.VectorScorer;
 import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.store.MemorySegmentAccessInput;
 import org.elasticsearch.common.lucene.search.Queries;
+import org.elasticsearch.nativeaccess.MadviseAdvice;
+import org.elasticsearch.nativeaccess.NativeAccess;
+import org.elasticsearch.nativeaccess.PosixNativeAccess;
 import org.elasticsearch.search.profile.query.QueryProfiler;
 
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -276,7 +281,14 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
     }
 
     private static class DirectRescoreKnnVectorQuery extends Query {
-        private static final int PREFETCH_BUFFER_SIZE = 100;
+        /**
+         * The number of vectors to prefetch ahead of scoring. A larger buffer gives the kernel more time to fault pages in
+         * before they are needed, reducing IO-wait during scoring. The value is a trade-off: too small and page faults stall
+         * the scorer; too large and prefetch hints become stale (evicted before use) or memory pressure increases.
+         * 256 provides ~2.5× more lead time than the previous value of 100, which significantly reduces page fault stalls
+         * for large-dimension vectors (≥512d) on datasets that exceed available RAM.
+         */
+        private static final int PREFETCH_BUFFER_SIZE = 256;
         private static final int BULK_SCORE_SIZE = 32;
 
         private final VectorQueryTarget target;
@@ -434,6 +446,7 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
 
                 final int vectorByteSize = knnVectorValues.getVectorByteLength();
                 final IndexInput input = getIndexSliceOrNull(knnVectorValues);
+                final MemorySegmentAccessInput msInput = input instanceof MemorySegmentAccessInput ms ? ms : null;
                 KnnVectorValues.DocIndexIterator vectorIter = knnVectorValues.iterator();
                 DocIdSetIterator conjunction = ConjunctionUtils.intersectIterators(List.of(vectorIter, filterIterator));
                 VectorScorer vecScorer = switch (target) {
@@ -446,7 +459,9 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
                     assert doc == vectorIter.docID();
                     final int ord = vectorIter.index();
 
-                    if (input != null) {
+                    if (msInput != null) {
+                        directPrefetch(msInput, (long) ord * vectorByteSize, vectorByteSize);
+                    } else if (input != null) {
                         input.prefetch((long) ord * vectorByteSize, vectorByteSize);
                     }
 
@@ -470,6 +485,20 @@ public abstract class RescoreKnnVectorQuery extends Query implements QueryProfil
         private static IndexInput getIndexSliceOrNull(KnnVectorValues vectorValues) {
             return vectorValues instanceof HasIndexSlice h ? h.getSlice() : null;
         }
+
+        /**
+         * Issues madvise(MADV_WILLNEED) directly via ES native access, bypassing Lucene's throttled prefetch
+         * which only issues the syscall on power-of-two invocation counts. This ensures every vector in the
+         * prefetch ring actually gets an madvise hint sent to the kernel.
+         */
+        private static void directPrefetch(MemorySegmentAccessInput msInput, long offset, long length) throws IOException {
+            MemorySegment segment = msInput.segmentSliceOrNull(offset, length);
+            if (segment != null && POSIX_NATIVE_ACCESS != null) {
+                POSIX_NATIVE_ACCESS.madvise(segment, 0, length, MadviseAdvice.WILLNEED);
+            }
+        }
+
+        private static final PosixNativeAccess POSIX_NATIVE_ACCESS = NativeAccess.onPosixReturn(p -> p).orElse(null);
 
         private static int scoreEntries(PrefetchRing ring, DocAndFloatFeatureBuffer buffer, List<ScoreDoc> results) throws IOException {
             int docBase = ring.docBases[ring.head];
