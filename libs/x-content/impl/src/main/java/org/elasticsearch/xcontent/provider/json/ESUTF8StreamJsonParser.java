@@ -37,6 +37,7 @@ public class ESUTF8StreamJsonParser extends UTF8StreamJsonParser implements Opti
     protected byte[] lastOptimisedValue;
 
     private final List<Integer> backslashes = new ArrayList<>();
+    private final Text reusableText = new Text(new XContentString.UTF8Bytes(new byte[0]));
 
     public ESUTF8StreamJsonParser(
         IOContext ctxt,
@@ -62,11 +63,13 @@ public class ESUTF8StreamJsonParser extends UTF8StreamJsonParser implements Opti
         // _tokenIncomplete is true when UTF8StreamJsonParser has already processed this value.
         if (_currToken == JsonToken.VALUE_STRING && _tokenIncomplete) {
             if (lastOptimisedValue != null) {
-                return new Text(new XContentString.UTF8Bytes(lastOptimisedValue), stringLength);
+                reusableText.reset(new XContentString.UTF8Bytes(lastOptimisedValue));
+                return reusableText;
             }
             if (stringEnd > 0) {
                 final int len = stringEnd - 1 - _inputPtr;
-                return new Text(new XContentString.UTF8Bytes(_inputBuffer, _inputPtr, len), stringLength);
+                reusableText.reset(new XContentString.UTF8Bytes(_inputBuffer, _inputPtr, len));
+                return reusableText;
             }
             return _finishAndReturnText();
         }
@@ -136,7 +139,8 @@ public class ESUTF8StreamJsonParser extends UTF8StreamJsonParser implements Opti
 
         stringEnd = ptr + 1;
         if (backslashes.isEmpty()) {
-            return new Text(new XContentString.UTF8Bytes(inputBuffer, startPtr, ptr - startPtr), stringLength);
+            reusableText.reset(new XContentString.UTF8Bytes(inputBuffer, startPtr, ptr - startPtr));
+            return reusableText;
         } else {
             byte[] buff = new byte[ptr - startPtr - backslashes.size()];
             int copyPtr = startPtr;
@@ -149,7 +153,8 @@ public class ESUTF8StreamJsonParser extends UTF8StreamJsonParser implements Opti
             }
             System.arraycopy(inputBuffer, copyPtr, buff, destPtr, ptr - copyPtr);
             lastOptimisedValue = buff;
-            return new Text(new XContentString.UTF8Bytes(buff), stringLength);
+            reusableText.reset(new XContentString.UTF8Bytes(buff));
+            return reusableText;
         }
     }
 

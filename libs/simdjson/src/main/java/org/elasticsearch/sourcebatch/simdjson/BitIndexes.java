@@ -21,12 +21,13 @@
 
 package org.elasticsearch.sourcebatch.simdjson;
 
-class BitIndexes {
+public class BitIndexes {
 
-    private final int[] indexes;
+    private int[] indexes;
 
     private int writeIdx;
     private int readIdx;
+    private int readEnd;
 
     BitIndexes(int capacity) {
         indexes = new int[capacity];
@@ -65,39 +66,39 @@ class BitIndexes {
         return bits & (bits - 1);
     }
 
-    void advance() {
+    public void advance() {
         readIdx++;
     }
 
-    int getAndAdvance() {
-        assert readIdx <= writeIdx;
+    public int getAndAdvance() {
+        assert readIdx <= readEnd;
         return indexes[readIdx++];
     }
 
     int getLast() {
-        return indexes[writeIdx - 1];
+        return indexes[readEnd - 1];
     }
 
     int advanceAndGet() {
-        assert readIdx + 1 <= writeIdx;
+        assert readIdx + 1 <= readEnd;
         return indexes[++readIdx];
     }
 
-    int peek() {
-        assert readIdx <= writeIdx;
+    public int peek() {
+        assert readIdx <= readEnd;
         return indexes[readIdx];
     }
 
     boolean hasNext() {
-        return writeIdx > readIdx;
+        return readEnd > readIdx;
     }
 
-    boolean isEnd() {
-        return writeIdx == readIdx;
+    public boolean isEnd() {
+        return readEnd == readIdx;
     }
 
     boolean isPastEnd() {
-        return readIdx > writeIdx;
+        return readIdx > readEnd;
     }
 
     void finish() {
@@ -114,10 +115,87 @@ class BitIndexes {
         // are invalid sequences and will be detected by the iterator, which will then stop processing and throw an
         // exception informing about the invalid JSON.
         indexes[writeIdx] = 0;
+        readEnd = writeIdx;
     }
 
-    void reset() {
+    public void reset() {
         writeIdx = 0;
         readIdx = 0;
+        readEnd = 0;
+    }
+
+    /** Returns the total number of structural indices written so far. */
+    public int writeCount() {
+        return writeIdx;
+    }
+
+    /**
+     * Restricts the read window to {@code [from, to)} within the underlying index array.
+     * The sentinel at {@code indexes[to]} must already be set (e.g. via {@link #finish()} or
+     * by storing the first index of the next document).
+     */
+    public void setReadWindow(int from, int to) {
+        this.readIdx = from;
+        this.readEnd = to;
+    }
+
+    /**
+     * Ensures the internal array can hold at least {@code minCapacity} index entries.
+     * Grows geometrically if needed.
+     */
+    public void ensureCapacity(int minCapacity) {
+        if (indexes.length < minCapacity) {
+            int newLen = Math.max(indexes.length * 2, minCapacity);
+            int[] bigger = new int[newLen];
+            System.arraycopy(indexes, 0, bigger, 0, writeIdx);
+            indexes = bigger;
+        }
+    }
+
+    /**
+     * Returns the byte-offset value stored at position {@code pos} in the index array.
+     * Does not affect the read cursor.
+     */
+    public int getIndexAt(int pos) {
+        return indexes[pos];
+    }
+
+    /**
+     * Writes a sentinel value at position {@code pos}. Used by batch parsing to mark
+     * the end of a per-document sub-range so that overrunning produces a detectable
+     * invalid-JSON sequence.
+     */
+    public void writeSentinel(int pos, int sentinelValue) {
+        indexes[pos] = sentinelValue;
+    }
+
+    /**
+     * Finds the first structural index whose byte offset is {@code >= docStart}. Uses a linear
+     * scan from {@code searchFrom} since documents are processed in order and the target is
+     * typically very close to the current position.
+     */
+    public int findFirstIndexAtOrAfter(int searchFrom, int docStart) {
+        for (int i = searchFrom; i < writeIdx; i++) {
+            if (indexes[i] >= docStart) {
+                return i;
+            }
+        }
+        return writeIdx;
+    }
+
+    /**
+     * Returns the raw index array for direct bulk writes (e.g. from a native FFI call).
+     * The caller must also call {@link #setWriteIdx(int)} after writing.
+     */
+    public int[] rawIndexes() {
+        return indexes;
+    }
+
+    /**
+     * Sets the write cursor position. Used after a native FFI call bulk-writes
+     * structural indices into the raw array returned by {@link #rawIndexes()}.
+     */
+    public void setWriteIdx(int idx) {
+        this.writeIdx = idx;
     }
 }

@@ -58,6 +58,17 @@ public final class Text implements XContentString, Comparable<Text>, ToXContentF
     }
 
     /**
+     * Resets this instance to wrap new UTF-8 bytes, clearing any cached String and hash.
+     * Intended for parser-internal reuse to avoid per-value allocation.
+     */
+    public void reset(UTF8Bytes bytes) {
+        this.bytes = bytes;
+        this.string = null;
+        this.hash = 0;
+        this.stringLength = -1;
+    }
+
+    /**
      * Whether an {@link UTF8Bytes} view of the data is already materialized.
      */
     public boolean hasBytes() {

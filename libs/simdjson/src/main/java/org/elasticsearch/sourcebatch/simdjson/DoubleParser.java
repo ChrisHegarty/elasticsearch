@@ -36,7 +36,7 @@ import static org.elasticsearch.sourcebatch.simdjson.NumberParserTables.NUMBER_O
 import static org.elasticsearch.sourcebatch.simdjson.NumberParserTables.POWERS_OF_FIVE;
 import static org.elasticsearch.sourcebatch.simdjson.NumberParserTables.POWER_OF_FIVE_DIGITS;
 
-class DoubleParser {
+public class DoubleParser {
 
     // When parsing doubles, we assume that a long used to store digits is unsigned. Thus, it can safely accommodate
     // up to 19 digits (9999999999999999999 < 2^64).
@@ -94,7 +94,7 @@ class DoubleParser {
     private final SlowPathDecimal slowPathDecimal = new SlowPathDecimal();
     private final ExponentParser exponentParser = new ExponentParser();
 
-    double parse(byte[] buffer, int offset, boolean negative, int digitsStartIdx, int digitCount, long digits, long exponent) {
+    public double parse(byte[] buffer, int offset, boolean negative, int digitsStartIdx, int digitCount, long digits, long exponent) {
         if (shouldBeHandledBySlowPath(buffer, digitsStartIdx, digitCount)) {
             return slowlyParseDouble(buffer, offset);
         } else {

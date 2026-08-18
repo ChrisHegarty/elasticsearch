@@ -9,42 +9,39 @@
 
 package org.elasticsearch.escf;
 
+import org.elasticsearch.logging.LogManager;
+import org.elasticsearch.logging.Logger;
+import org.elasticsearch.sourcebatch.simdjson.FieldNameTable;
+import org.elasticsearch.sourcebatch.simdjson.SimdJsonBatchParser;
 import org.elasticsearch.sourcebatch.simdjson.SimdJsonSupport;
-import org.elasticsearch.sourcebatch.simdjson.SimdJsonXContentParser;
 
 /**
- * Thread-local pool of {@link SimdJsonXContentParser} instances for use by {@link EscfEncoder}.
+ * Thread-local pool of {@link SimdJsonBatchParser} and {@link SimdJsonDirectWalker} instances
+ * for use by {@link EscfEncoder}.
  *
- * <p>{@link SimdJsonXContentParser} is not thread-safe and allocates ~14 × {@code capacity} bytes
- * up front: two {@code byte[capacity]} arrays plus {@code int[capacity]} and {@code long[capacity]}.
- * At the chosen capacity of {@code 2 × MAX_DOC_BYTES} (32 KiB) that is roughly 450 KiB per thread,
- * which is acceptable for long-lived write-pool threads. A fresh {@link EscfEncoder} is created per
- * concrete index per bulk request, so the parser must not live on the encoder.
+ * <p>All SIMD parser instances on all threads share a single {@link FieldNameTable} root.
+ * Each thread-local walker holds a {@link FieldNameTable.Child} that starts with a
+ * read-only snapshot of the shared names. New field names discovered during parsing are
+ * added locally and merged back to the root via {@code release()}, making them available
+ * to future parsers on any thread — the same parent/child pattern Jackson uses for
+ * {@code ByteQuadsCanonicalizer}.
  *
- * <p>A scratch byte array of {@code MAX_DOC_BYTES + 64} bytes is pooled for the same reason:
- * {@link SimdJsonXContentParser#reset} needs the source bytes starting at offset 0, so any slice
- * whose {@code arrayOffset() != 0} is copied once into this buffer before parsing.
+ * <p>When the native simdjson library is available, each thread-local batch parser is wired
+ * to a {@link NativeStructuralIndexer} that delegates stage 1 to the C++ simdjson library.
+ * If the native library is not present, the pure-Java {@code StructuralIndexer} is used.
  *
- * <p>{@link #AVAILABLE} must be checked before calling {@link #parser()} — the parser constructor
- * throws {@link IllegalStateException} when {@code jdk.incubator.vector} is absent at runtime.
+ * <p>{@link #AVAILABLE} must be checked before calling any accessor — the constructors
+ * throw {@link IllegalStateException} when {@code jdk.incubator.vector} is absent at runtime.
  */
 final class SimdJsonPool {
+
+    private static final Logger logger = LogManager.getLogger(SimdJsonPool.class);
 
     /** Documents larger than this threshold are handled by the Jackson parser. */
     static final int MAX_DOC_BYTES = 16 * 1024;
 
-    /**
-     * Parser capacity: 2x MAX_DOC_BYTES so the internal string buffer (capacity bytes) is large
-     * enough even for pathological documents where every byte is a distinct single-character string
-     * (each needing a 4-byte length prefix), plus headroom for the SIMD overshoot (up to 64 bytes).
-     */
-    private static final int CAPACITY = 2 * MAX_DOC_BYTES;
-
-    /**
-     * Nesting depth limit. The index-mapping default depth limit is 20; 64 leaves comfortable
-     * headroom while keeping the per-thread depth-stack allocation negligible.
-     */
-    private static final int MAX_DEPTH = 64;
+    /** Default batch capacity: 256 KiB, enough for ~90 clickbench_flat documents. */
+    private static final int BATCH_CAPACITY = 256 * 1024;
 
     /**
      * True when {@code jdk.incubator.vector} is available at runtime. When false, every
@@ -53,23 +50,36 @@ final class SimdJsonPool {
      */
     static final boolean AVAILABLE = SimdJsonSupport.isAvailable();
 
-    private static final ThreadLocal<SimdJsonXContentParser> PARSER = ThreadLocal.withInitial(
-        () -> new SimdJsonXContentParser(CAPACITY, MAX_DEPTH)
-    );
+    /** True when the native simdjson C++ library is loaded and stage 1 can be delegated. */
+    static final boolean NATIVE_AVAILABLE = NativeStructuralIndexer.AVAILABLE;
 
     /**
-     * Scratch buffer: {@code MAX_DOC_BYTES + 64} bytes so that
-     * {@link SimdJsonXContentParser#reset} never needs to allocate a padded copy internally.
-     * (The parser requires {@code buffer.length - len >= 64}.)
+     * Shared root field name table. All thread-local walkers hold children of this root,
+     * enabling cross-thread field name sharing without synchronization during parsing.
+     */
+    private static final FieldNameTable NAME_TABLE = new FieldNameTable();
+
+    /**
+     * Scratch buffer: {@code MAX_DOC_BYTES + 64} bytes so that the SIMD structural indexer
+     * has sufficient padding past the document end.
      */
     private static final ThreadLocal<byte[]> SCRATCH = ThreadLocal.withInitial(() -> new byte[MAX_DOC_BYTES + 64]);
 
-    private SimdJsonPool() {}
+    private static final ThreadLocal<SimdJsonBatchParser> BATCH_PARSER = ThreadLocal.withInitial(() -> {
+        SimdJsonBatchParser parser = new SimdJsonBatchParser(BATCH_CAPACITY);
+        if (NATIVE_AVAILABLE) {
+            NativeStructuralIndexer nativeIndexer = new NativeStructuralIndexer(BATCH_CAPACITY);
+            parser.setNativeDelegate(nativeIndexer::index);
+            logger.debug("Thread [{}] using native simdjson stage 1", Thread.currentThread().getName());
+        }
+        return parser;
+    });
 
-    /** Returns the thread-local parser instance. Only call when {@link #AVAILABLE} is true. */
-    static SimdJsonXContentParser parser() {
-        return PARSER.get();
-    }
+    private static final ThreadLocal<SimdJsonDirectWalker> DIRECT_WALKER = ThreadLocal.withInitial(
+        () -> new SimdJsonDirectWalker(NAME_TABLE.makeChild())
+    );
+
+    private SimdJsonPool() {}
 
     /**
      * Returns the thread-local scratch buffer of length {@code MAX_DOC_BYTES + 64}.
@@ -78,5 +88,15 @@ final class SimdJsonPool {
      */
     static byte[] scratch() {
         return SCRATCH.get();
+    }
+
+    /** Returns the thread-local batch parser. Only call when {@link #AVAILABLE} is true. */
+    static SimdJsonBatchParser batchParser() {
+        return BATCH_PARSER.get();
+    }
+
+    /** Returns the thread-local fused stage2+walk instance. Only call when {@link #AVAILABLE} is true. */
+    static SimdJsonDirectWalker directWalker() {
+        return DIRECT_WALKER.get();
     }
 }

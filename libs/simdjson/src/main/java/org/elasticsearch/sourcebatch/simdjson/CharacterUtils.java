@@ -21,7 +21,7 @@
 
 package org.elasticsearch.sourcebatch.simdjson;
 
-class CharacterUtils {
+public class CharacterUtils {
 
     // @formatter:off
     private static final boolean[] STRUCTURAL_OR_WHITESPACE = new boolean[] {
@@ -286,7 +286,7 @@ class CharacterUtils {
         false };
     // @formatter:on
 
-    static boolean isStructuralOrWhitespace(byte b) {
+    public static boolean isStructuralOrWhitespace(byte b) {
         if (b < 0) {
             return false;
         }

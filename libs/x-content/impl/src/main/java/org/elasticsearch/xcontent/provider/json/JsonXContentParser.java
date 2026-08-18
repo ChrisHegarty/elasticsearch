@@ -38,6 +38,7 @@ import java.nio.CharBuffer;
 public class JsonXContentParser extends AbstractXContentParser {
 
     final JsonParser parser;
+    private final Text reusableText = new Text(new XContentString.UTF8Bytes(new byte[0]));
 
     public JsonXContentParser(XContentParserConfiguration config, JsonParser parser) {
         super(config.registry(), config.deprecationHandler(), config.restApiVersion());
@@ -158,7 +159,8 @@ public class JsonXContentParser extends AbstractXContentParser {
                 return bytesRef;
             }
         }
-        return new Text(text());
+        reusableText.reset(new XContentString.UTF8Bytes(text().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        return reusableText;
     }
 
     private void throwOnNoText() {

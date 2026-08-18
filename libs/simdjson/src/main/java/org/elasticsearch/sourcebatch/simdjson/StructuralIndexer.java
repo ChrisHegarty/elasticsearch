@@ -72,6 +72,19 @@ class StructuralIndexer {
 
     void index(byte[] buffer, int length) {
         bitIndexes.reset();
+        doIndex(buffer, length);
+    }
+
+    /**
+     * Runs stage-1 structural indexing without resetting {@link BitIndexes}. Structural positions
+     * are appended after any previously written indices. Call {@link BitIndexes#reset()} once
+     * before the first call in a batch, then call this method for each document segment.
+     */
+    void indexAppend(byte[] buffer, int length) {
+        doIndex(buffer, length);
+    }
+
+    private void doIndex(byte[] buffer, int length) {
         switch (VECTOR_BIT_SIZE) {
             case 128 -> index128(buffer, length);
             case 256 -> index256(buffer, length);

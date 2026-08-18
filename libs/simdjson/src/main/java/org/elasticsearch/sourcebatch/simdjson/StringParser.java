@@ -26,7 +26,7 @@ import jdk.incubator.vector.ByteVector;
 import static org.elasticsearch.sourcebatch.simdjson.CharacterUtils.escape;
 import static org.elasticsearch.sourcebatch.simdjson.CharacterUtils.hexToInt;
 
-class StringParser {
+public class StringParser {
 
     private static final byte BACKSLASH = '\\';
     private static final byte QUOTE = '"';
@@ -36,14 +36,7 @@ class StringParser {
     private static final int MIN_LOW_SURROGATE = 0xDC00;
     private static final int MAX_LOW_SURROGATE = 0xDFFF;
 
-    int parseString(byte[] buffer, int idx, byte[] stringBuffer, int stringBufferIdx) {
-        int dst = doParseString(buffer, idx, stringBuffer, stringBufferIdx + Integer.BYTES);
-        int len = dst - stringBufferIdx - Integer.BYTES;
-        IntegerUtils.toBytes(len, stringBuffer, stringBufferIdx);
-        return dst;
-    }
-
-    int parseString(byte[] buffer, int idx, byte[] stringBuffer) {
+    public int parseString(byte[] buffer, int idx, byte[] stringBuffer) {
         return doParseString(buffer, idx, stringBuffer, 0);
     }
 
@@ -86,48 +79,6 @@ class StringParser {
             }
         }
         return dst;
-    }
-
-    char parseChar(byte[] buffer, int startIdx) {
-        int idx = startIdx + 1;
-        char character;
-        if (buffer[idx] == '\\') {
-            byte escapeChar = buffer[idx + 1];
-            if (escapeChar == 'u') {
-                int codePoint = hexToInt(buffer, idx + 2);
-                if (codePoint >= MIN_HIGH_SURROGATE && codePoint <= MAX_LOW_SURROGATE) {
-                    throw new JsonParsingException("Invalid code point. Should be within the range U+0000–U+D777 or U+E000–U+FFFF.");
-                }
-                if (codePoint < 0) {
-                    throw new JsonParsingException("Invalid unicode escape sequence.");
-                }
-                character = (char) codePoint;
-                idx += 6;
-            } else {
-                character = (char) escape(escapeChar);
-                idx += 2;
-            }
-        } else if (buffer[idx] >= 0) {
-            // We have an ASCII character
-            character = (char) buffer[idx];
-            idx++;
-        } else if ((buffer[idx] & 0b11100000) == 0b11000000) {
-            // We have a two-byte UTF-8 character
-            int codePoint = (buffer[idx] & 0b00011111) << 6 | (buffer[idx + 1] & 0b00111111);
-            character = (char) codePoint;
-            idx += 2;
-        } else if ((buffer[idx] & 0b11110000) == 0b11100000) {
-            // We have a three-byte UTF-8 character
-            int codePoint = (buffer[idx] & 0b00001111) << 12 | (buffer[idx + 1] & 0b00111111) << 6 | (buffer[idx + 2] & 0b00111111);
-            character = (char) codePoint;
-            idx += 3;
-        } else {
-            throw new JsonParsingException("String cannot be deserialized to a char. Expected a single 16-bit code unit character.");
-        }
-        if (buffer[idx] != '"') {
-            throw new JsonParsingException("String cannot be deserialized to a char. Expected a single-character string.");
-        }
-        return character;
     }
 
     private int parseLowSurrogate(byte[] buffer, int src, int codePoint) {

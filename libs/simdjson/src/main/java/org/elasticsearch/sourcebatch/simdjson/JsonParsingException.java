@@ -23,11 +23,11 @@ package org.elasticsearch.sourcebatch.simdjson;
 
 public class JsonParsingException extends RuntimeException {
 
-    JsonParsingException(String message) {
+    public JsonParsingException(String message) {
         super(message);
     }
 
-    JsonParsingException(String message, Throwable throwable) {
+    public JsonParsingException(String message, Throwable throwable) {
         super(message, throwable);
     }
 }

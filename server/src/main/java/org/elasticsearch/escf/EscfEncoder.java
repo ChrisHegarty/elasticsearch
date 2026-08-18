@@ -20,7 +20,7 @@ import org.elasticsearch.sourcebatch.LeafSink;
 import org.elasticsearch.sourcebatch.SourceBatchEncodeHelper;
 import org.elasticsearch.sourcebatch.SourceBatchEncoder;
 import org.elasticsearch.sourcebatch.SourceValueType;
-import org.elasticsearch.sourcebatch.simdjson.SimdJsonXContentParser;
+import org.elasticsearch.sourcebatch.simdjson.SimdJsonBatchParser;
 import org.elasticsearch.transport.BytesRefRecycler;
 import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.xcontent.XContentParserConfiguration;
@@ -44,11 +44,8 @@ import java.util.List;
  *
  * <p><strong>Parser dispatch:</strong>
  * <ol>
- *   <li>JSON and ≤ {@link SimdJsonPool#MAX_DOC_BYTES}: pooled {@link SimdJsonXContentParser} (SIMD
- *       two-stage algorithm). The source bytes are passed directly if they start at offset 0,
- *       otherwise copied to a thread-local scratch buffer first.</li>
- *   <li>JSON and contiguous ({@link BytesReference#hasArray()}): Jackson byte-array parser
- *       ({@code ESUTF8StreamJsonParser}), zero-copy via {@code optimizedText()}.</li>
+ *   <li>JSON and ≤ {@link SimdJsonPool#MAX_DOC_BYTES}: {@link SimdJsonDirectWalker} (SIMD stage 1
+ *       + fused stage 2/walk). Falls back to Jackson on any failure.</li>
  *   <li>Otherwise: Jackson stream parser.</li>
  * </ol>
  */
@@ -78,16 +75,53 @@ public final class EscfEncoder implements SourceBatchEncoder {
 
     @Override
     public void parseToScratch(BytesReference source, XContentType xContentType, LeafSink sink) throws IOException {
-        SimdJsonXContentParser simd = trySimdParse(source, xContentType, sink);
-        if (simd != null) {
-            flattenDocument(simd, sink);
-            // do not close: simd is a pooled thread-local; closing just flips a flag that the
-            // next reset() clears anyway
+        if (tryDirectWalkSingle(source, xContentType, sink)) {
             return;
         }
         try (XContentParser parser = XContentHelper.createParserNotCompressed(XContentParserConfiguration.EMPTY, source, xContentType)) {
             parser.allowDuplicateKeys(true);
             flattenDocument(parser, sink);
+        }
+    }
+
+    /**
+     * Attempts to parse a single document using the direct walker (SIMD stage 1 + fused walk).
+     * Returns true if successful, false if the document is ineligible or parsing failed
+     * (in which case the caller falls back to Jackson).
+     */
+    private boolean tryDirectWalkSingle(BytesReference source, XContentType xContentType, LeafSink sink) {
+        if (allowSimd == false
+            || SimdJsonPool.AVAILABLE == false
+            || xContentType.canonical() != XContentType.JSON
+            || source.length() > SimdJsonPool.MAX_DOC_BYTES) {
+            return false;
+        }
+
+        SimdJsonBatchParser batchParser = SimdJsonPool.batchParser();
+        SimdJsonDirectWalker walker = SimdJsonPool.directWalker();
+
+        byte[] buf;
+        try {
+            buf = simdInput(source);
+        } catch (java.io.IOException e) {
+            return false;
+        }
+        int len = source.length();
+
+        try {
+            batchParser.stage1(buf, len);
+            batchParser.prepareDocumentWindow(0, len);
+
+            EscfRowBuffer row = backend.beginRow();
+            boolean rawTextMode = sink != LeafSink.NO_OP && sink.passRawText();
+            walker.walkDocument(buf, len, batchParser.bitIndexes(), row, backend, sink, rawTextMode);
+            row.finishRow();
+            walker.releaseNames();
+            return true;
+        } catch (RuntimeException e) {
+            // TODO: revert to debug before merging — temporarily WARN to detect fallbacks during Rally benchmarking
+            logger.warn("Direct walk single-doc failed, falling back: {}", e.getMessage());
+            return false;
         }
     }
 
@@ -99,44 +133,75 @@ public final class EscfEncoder implements SourceBatchEncoder {
     }
 
     /**
-     * Returns the pooled {@link SimdJsonXContentParser} positioned before the root token, or
-     * {@code null} if the document is ineligible for the SIMD path. When {@code null} is returned,
-     * no row state has been staged, so the caller can fall back to Jackson cleanly.
+     * Fused stage-2 + token-walk: runs SIMD stage 1 once, then for each document walks the
+     * structural indices directly into an {@link EscfRowBuffer}. Falls back to Jackson for
+     * any document that fails.
      */
-    private SimdJsonXContentParser trySimdParse(BytesReference source, XContentType xContentType, LeafSink sink) throws IOException {
-        if (allowSimd == false
-            || SimdJsonPool.AVAILABLE == false
-            || xContentType.canonical() != XContentType.JSON
-            || source.length() > SimdJsonPool.MAX_DOC_BYTES
-            || sink.passRawText()) {
-            return null;
+    public void parseBatchDirect(byte[] buffer, int[] docOffsets, int[] docLens, int docCount, int partitionKey, LeafSink sink)
+        throws IOException {
+        if (allowSimd == false || SimdJsonPool.AVAILABLE == false || docCount == 0) {
+            parseBatchJackson(buffer, docOffsets, docLens, docCount, partitionKey, sink);
+            return;
         }
-        SimdJsonXContentParser parser = SimdJsonPool.parser();
+
+        SimdJsonBatchParser batchParser = SimdJsonPool.batchParser();
+        SimdJsonDirectWalker walker = SimdJsonPool.directWalker();
+
+        int totalLen = docOffsets[docCount - 1] + docLens[docCount - 1];
+
         try {
-            parser.reset(simdInput(source), source.length());
+            batchParser.stage1(buffer, totalLen);
         } catch (RuntimeException e) {
-            // Unicode escapes, unusual number formats, and over-deep nesting are known gaps in the
-            // SIMD parser. reset() runs both stages before we touch any row state, so nothing has
-            // been staged: fall through to Jackson, which either handles the document or surfaces
-            // the canonical parse error.
-            byte[] raw = simdInput(source);
-            logger.debug(
-                "SIMD JSON fallback [{}]: {}\nsource ({} bytes, utf8 view): {}\nunicode escapes (raw hex): {}",
-                e.getClass().getSimpleName(),
-                e.getMessage(),
-                source.length(),
-                source.utf8ToString(),
-                unicodeEscapeHex(raw, source.length()),
-                e
-            );
-            return null;
+            logger.debug("Batch SIMD stage1 failed, falling back to per-document Jackson: {}", e.getMessage());
+            parseBatchJackson(buffer, docOffsets, docLens, docCount, partitionKey, sink);
+            return;
         }
-        return parser;
+
+        for (int i = 0; i < docCount; i++) {
+            try {
+                batchParser.prepareDocumentWindow(docOffsets[i], docLens[i]);
+
+                EscfRowBuffer row = backend.beginRow();
+                boolean rawTextMode = sink != LeafSink.NO_OP && sink.passRawText();
+                walker.walkDocument(buffer, docLens[i], batchParser.bitIndexes(), row, backend, sink, rawTextMode);
+                row.finishRow();
+            } catch (RuntimeException e) {
+                logger.debug(
+                    "Direct walk failed for doc {} (offset={}, len={}), falling back to Jackson: {}",
+                    i,
+                    docOffsets[i],
+                    docLens[i],
+                    e.getMessage()
+                );
+                parseDocumentJackson(buffer, docOffsets[i], docLens[i], sink);
+            }
+            commitScratchTo(partitionKey);
+        }
+
+        walker.releaseNames();
+    }
+
+    private void parseBatchJackson(byte[] buffer, int[] docOffsets, int[] docLens, int docCount, int partitionKey, LeafSink sink)
+        throws IOException {
+        for (int i = 0; i < docCount; i++) {
+            parseDocumentJackson(buffer, docOffsets[i], docLens[i], sink);
+            commitScratchTo(partitionKey);
+        }
+    }
+
+    private void parseDocumentJackson(byte[] buffer, int offset, int len, LeafSink sink) throws IOException {
+        BytesReference source = new org.elasticsearch.common.bytes.BytesArray(buffer, offset, len);
+        try (
+            XContentParser parser = XContentHelper.createParserNotCompressed(XContentParserConfiguration.EMPTY, source, XContentType.JSON)
+        ) {
+            parser.allowDuplicateKeys(true);
+            flattenDocument(parser, sink);
+        }
     }
 
     /**
      * Returns a byte array containing the source bytes starting at offset 0, suitable for passing
-     * directly to {@link SimdJsonXContentParser#reset}.
+     * to the SIMD structural indexer.
      *
      * <ul>
      *   <li>Zero-copy: if the source is already array-backed with {@code arrayOffset() == 0}.</li>
@@ -165,31 +230,6 @@ public final class EscfEncoder implements SourceBatchEncoder {
             assert pos == len : pos + " != " + len;
         }
         return scratch;
-    }
-
-    /**
-     * Scans {@code buf[0..len)} for {@code \\u} byte sequences (0x5C 0x75) and returns a string
-     * showing each occurrence with the 6 raw bytes printed as hex. This bypasses
-     * {@code utf8ToString()} / {@code UnicodeUtil#UTF8toUTF16}, which replaces malformed UTF-8
-     * with U+FFFD and can hide what bytes are actually following the {@code \\u} prefix.
-     */
-    private static String unicodeEscapeHex(byte[] buf, int len) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < len - 1; i++) {
-            if ((buf[i] & 0xFF) == 0x5C && (buf[i + 1] & 0xFF) == 0x75) {
-                if (sb.length() > 0) {
-                    sb.append(", ");
-                }
-                sb.append('[');
-                int end = Math.min(i + 6, len);
-                for (int j = i; j < end; j++) {
-                    if (j > i) sb.append(' ');
-                    sb.append(String.format("%02x", buf[j] & 0xFF));
-                }
-                sb.append(']');
-            }
-        }
-        return sb.isEmpty() ? "(none)" : sb.toString();
     }
 
     @Override

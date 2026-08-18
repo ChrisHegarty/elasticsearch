@@ -8,17 +8,19 @@
  */
 
 /**
- * Vendored DOM/tape JSON parser adapted from
- * <a href="https://github.com/simdjson/simdjson-java">simdjson-java</a>, with an
- * additional 128-bit NEON kernel for AWS Graviton2 / Neoverse N1 hosts.
+ * SIMD-accelerated JSON structural indexer adapted from
+ * <a href="https://github.com/simdjson/simdjson-java">simdjson-java</a>.
  *
- * <p>The entry point is {@link org.elasticsearch.sourcebatch.simdjson.SimdJsonParser}.
- * See {@link org.elasticsearch.sourcebatch.simdjson.SimdJsonSupport} for runtime
+ * <p>Provides {@link org.elasticsearch.sourcebatch.simdjson.StructuralIndexer} for stage 1
+ * (SIMD structural identification), {@link org.elasticsearch.sourcebatch.simdjson.BitIndexes}
+ * for the resulting structural index array, and utilities for field name canonicalization,
+ * string parsing, and double parsing. The caller walks the structural indices directly
+ * (fused stage 2 + token walk) rather than building an intermediate tape.
+ *
+ * <p>See {@link org.elasticsearch.sourcebatch.simdjson.SimdJsonSupport} for runtime
  * module-graph setup (the {@code jdk.incubator.vector} read-edge must be added
  * before any vector class is loaded).
  */
 module org.elasticsearch.simdjson {
-    requires org.elasticsearch.xcontent;
-
-    exports org.elasticsearch.sourcebatch.simdjson to org.elasticsearch.server;
+    exports org.elasticsearch.sourcebatch.simdjson;
 }
