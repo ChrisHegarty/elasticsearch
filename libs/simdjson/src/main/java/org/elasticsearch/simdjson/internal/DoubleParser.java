@@ -1,25 +1,28 @@
 /*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the "Elastic License
+ * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
+ * Public License v 1"; you may not use this file except in compliance with, at
+ * your election, the "Elastic License 2.0", the "GNU Affero General Public
+ * License v3.0 only", or the "Server Side Public License, v 1".
+ *
  * @notice
- *
  * Copyright 2021-2024 The simdjson-java contributors
- *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
  *     http://www.apache.org/licenses/LICENSE-2.0
- *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Based on a modification of https://github.com/simdjson/simdjson-java,
- * licensed under the Apache License 2.0.
+ * The write() method is derived from https://github.com/simdjson/simdjson-java.
+ * All other code in this file is original to Elasticsearch. TODO: update comment
  */
 
-package org.elasticsearch.sourcebatch.simdjson;
+package org.elasticsearch.simdjson.internal;
 
 import static java.lang.Double.NEGATIVE_INFINITY;
 import static java.lang.Double.POSITIVE_INFINITY;
@@ -30,13 +33,13 @@ import static java.lang.Long.numberOfLeadingZeros;
 import static java.lang.Long.remainderUnsigned;
 import static java.lang.Math.abs;
 import static java.lang.Math.unsignedMultiplyHigh;
-import static org.elasticsearch.sourcebatch.simdjson.ExponentParser.isExponentIndicator;
-import static org.elasticsearch.sourcebatch.simdjson.NumberParserTables.MIN_POWER_OF_FIVE;
-import static org.elasticsearch.sourcebatch.simdjson.NumberParserTables.NUMBER_OF_ADDITIONAL_DIGITS_AFTER_LEFT_SHIFT;
-import static org.elasticsearch.sourcebatch.simdjson.NumberParserTables.POWERS_OF_FIVE;
-import static org.elasticsearch.sourcebatch.simdjson.NumberParserTables.POWER_OF_FIVE_DIGITS;
+import static org.elasticsearch.simdjson.internal.ExponentParser.isExponentIndicator;
+import static org.elasticsearch.simdjson.internal.NumberParserTables.MIN_POWER_OF_FIVE;
+import static org.elasticsearch.simdjson.internal.NumberParserTables.NUMBER_OF_ADDITIONAL_DIGITS_AFTER_LEFT_SHIFT;
+import static org.elasticsearch.simdjson.internal.NumberParserTables.POWERS_OF_FIVE;
+import static org.elasticsearch.simdjson.internal.NumberParserTables.POWER_OF_FIVE_DIGITS;
 
-public class DoubleParser {
+public final class DoubleParser {
 
     // When parsing doubles, we assume that a long used to store digits is unsigned. Thus, it can safely accommodate
     // up to 19 digits (9999999999999999999 < 2^64).

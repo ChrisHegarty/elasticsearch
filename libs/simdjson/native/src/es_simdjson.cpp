@@ -57,19 +57,15 @@ void es_stage1_destroy(es_stage1_ctx* ctx) {
 }
 
 /*
- * Runs stage 1 over buf[0..len). The buffer must have at least
- * SIMDJSON_PADDING (typically 64) bytes of readable space past `len`.
- *
- * On success returns 0 and sets *out_indexes to the internal structural_indexes
- * array and *out_count to the number of structural indices found. The pointers
- * remain valid until the next call to es_stage1_run on the same context.
- *
- * On failure (invalid UTF-8, capacity exceeded, etc.) returns a non-zero
- * simdjson error code.
+ * Runs stage 1 over buf[offset..offset+len) and writes structural indices into
+ * out_buf. Adds `offset` to each index so outputs are absolute positions within
+ * the original buffer. Stage 1 copies its remainder block to a stack-local
+ * buffer, so no readable padding past offset+len is required.
  */
 int es_stage1_run(es_stage1_ctx* ctx,
-                  const uint8_t* buf, uint32_t len,
-                  const uint32_t** out_indexes, uint32_t* out_count) {
+              const uint8_t* buf, uint32_t offset, uint32_t len,
+              int32_t* out_buf, uint32_t out_buf_capacity,
+              uint32_t* out_count) {
     if (!ctx || !ctx->impl) return -1;
 
     if (len > ctx->impl->capacity()) {
@@ -77,52 +73,36 @@ int es_stage1_run(es_stage1_ctx* ctx,
         if (err) return static_cast<int>(err);
     }
 
-    auto err = ctx->impl->stage1(buf, len, stage1_mode::regular);
-    if (err) return static_cast<int>(err);
-
-    *out_indexes = ctx->impl->structural_indexes.get();
-    *out_count = ctx->impl->n_structural_indexes;
-    return 0;
-}
-
-/*
- * Runs stage 1 and copies the resulting structural indices into a caller-owned
- * int32_t buffer, avoiding the need for the Java side to dereference a native
- * pointer and perform a second copy.
- *
- * `out_buf` must have space for at least `out_buf_capacity` int32_t entries.
- * On success returns 0 and sets *out_count. If the result exceeds the output
- * capacity, returns -2 without writing.
- */
-int es_stage1_run_into(es_stage1_ctx* ctx,
-                       const uint8_t* buf, uint32_t len,
-                       int32_t* out_buf, uint32_t out_buf_capacity,
-                       uint32_t* out_count) {
-    if (!ctx || !ctx->impl) return -1;
-
-    if (len > ctx->impl->capacity()) {
-        auto err = ctx->impl->set_capacity(len);
-        if (err) return static_cast<int>(err);
-    }
-
-    auto err = ctx->impl->stage1(buf, len, stage1_mode::regular);
+    auto err = ctx->impl->stage1(buf + offset, len, stage1_mode::regular);
     if (err) return static_cast<int>(err);
 
     uint32_t n = ctx->impl->n_structural_indexes;
     if (n > out_buf_capacity) return -2;
 
     const uint32_t* src = ctx->impl->structural_indexes.get();
-    __builtin_memcpy(out_buf, src, n * sizeof(uint32_t));
+    if (offset == 0) {
+        __builtin_memcpy(out_buf, src, n * sizeof(uint32_t));
+    } else {
+        for (uint32_t i = 0; i < n; i++) {
+            out_buf[i] = static_cast<int32_t>(src[i] + offset);
+        }
+    }
     *out_count = n;
     return 0;
 }
 
 /*
- * Returns the SIMDJSON_PADDING constant so the Java side knows how much
- * readable slack to provide past the document end.
+ * Returns a human-readable error message for the given error code returned by
+ * es_stage1_run. Returns a static string — the caller must not free it.
+ * Unknown codes yield "UNEXPECTED_ERROR".
  */
-uint32_t es_stage1_padding(void) {
-    return simdjson::SIMDJSON_PADDING;
+const char* es_stage1_error_message(int err) {
+    if (err == -1) return "null or invalid context";
+    if (err == -2) return "output buffer too small";
+    if (err >= 0 && err < static_cast<int>(error_code::NUM_ERROR_CODES)) {
+        return error_message(static_cast<error_code>(err));
+    }
+    return "UNEXPECTED_ERROR";
 }
 
 } /* extern "C" */

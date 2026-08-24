@@ -16,11 +16,12 @@ import org.elasticsearch.common.recycler.Recycler;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.logging.LogManager;
 import org.elasticsearch.logging.Logger;
+import org.elasticsearch.simdjson.SimdJsonBatchParser;
+import org.elasticsearch.simdjson.SimdJsonDirectWalker;
 import org.elasticsearch.sourcebatch.LeafSink;
 import org.elasticsearch.sourcebatch.SourceBatchEncodeHelper;
 import org.elasticsearch.sourcebatch.SourceBatchEncoder;
 import org.elasticsearch.sourcebatch.SourceValueType;
-import org.elasticsearch.sourcebatch.simdjson.SimdJsonBatchParser;
 import org.elasticsearch.transport.BytesRefRecycler;
 import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.xcontent.XContentParserConfiguration;
@@ -44,8 +45,8 @@ import java.util.List;
  *
  * <p><strong>Parser dispatch:</strong>
  * <ol>
- *   <li>JSON and ≤ {@link SimdJsonPool#MAX_DOC_BYTES}: {@link SimdJsonDirectWalker} (SIMD stage 1
- *       + fused stage 2/walk). Falls back to Jackson on any failure.</li>
+ *   <li>JSON and ≤ {@link SimdJsonPool#MAX_DOC_BYTES}: {@link SimdJsonDirectWalker}
+ *       (native SIMD stage 1 + fused stage 2/walk). Falls back to Jackson on any failure.</li>
  *   <li>Otherwise: Jackson stream parser.</li>
  * </ol>
  */
@@ -114,7 +115,8 @@ public final class EscfEncoder implements SourceBatchEncoder {
 
             EscfRowBuffer row = backend.beginRow();
             boolean rawTextMode = sink != LeafSink.NO_OP && sink.passRawText();
-            walker.walkDocument(buf, len, batchParser.bitIndexes(), row, backend, sink, rawTextMode);
+            EscfDocumentHandler handler = new EscfDocumentHandler(row, backend, sink, rawTextMode);
+            walker.walkDocument(buf, len, batchParser, handler);
             row.finishRow();
             walker.releaseNames();
             return true;
@@ -133,9 +135,14 @@ public final class EscfEncoder implements SourceBatchEncoder {
     }
 
     /**
-     * Fused stage-2 + token-walk: runs SIMD stage 1 once, then for each document walks the
+     * Fused stage-2 + token-walk: runs SIMD stage 1 in chunks, then for each document walks the
      * structural indices directly into an {@link EscfRowBuffer}. Falls back to Jackson for
      * any document that fails.
+     *
+     * <p>Stage 1 is run lazily in chunks of {@link SimdJsonBatchParser#CHUNK_BYTE_LIMIT} bytes
+     * to keep the structural index working set in L2 cache.
+     *
+     * TODO: add param documentation
      */
     public void parseBatchDirect(byte[] buffer, int[] docOffsets, int[] docLens, int docCount, int partitionKey, LeafSink sink)
         throws IOException {
@@ -148,22 +155,16 @@ public final class EscfEncoder implements SourceBatchEncoder {
         SimdJsonDirectWalker walker = SimdJsonPool.directWalker();
 
         int totalLen = docOffsets[docCount - 1] + docLens[docCount - 1];
-
-        try {
-            batchParser.stage1(buffer, totalLen);
-        } catch (RuntimeException e) {
-            logger.debug("Batch SIMD stage1 failed, falling back to per-document Jackson: {}", e.getMessage());
-            parseBatchJackson(buffer, docOffsets, docLens, docCount, partitionKey, sink);
-            return;
-        }
+        batchParser.beginBatch(buffer, totalLen);
 
         for (int i = 0; i < docCount; i++) {
             try {
-                batchParser.prepareDocumentWindow(docOffsets[i], docLens[i]);
+                batchParser.prepareDocumentWindowChunked(docOffsets[i], docLens[i]);
 
                 EscfRowBuffer row = backend.beginRow();
                 boolean rawTextMode = sink != LeafSink.NO_OP && sink.passRawText();
-                walker.walkDocument(buffer, docLens[i], batchParser.bitIndexes(), row, backend, sink, rawTextMode);
+                EscfDocumentHandler handler = new EscfDocumentHandler(row, backend, sink, rawTextMode);
+                walker.walkDocument(buffer, docLens[i], batchParser, handler);
                 row.finishRow();
             } catch (RuntimeException e) {
                 logger.debug(
@@ -196,6 +197,72 @@ public final class EscfEncoder implements SourceBatchEncoder {
         ) {
             parser.allowDuplicateKeys(true);
             flattenDocument(parser, sink);
+        }
+    }
+
+    /**
+     * Prepares chunked SIMD batch processing over {@code bodyArray[bodyOffset..bodyOffset+bodyLength)}.
+     * Returns true if the SIMD path is available and ready, false otherwise.
+     *
+     * <p>Stage 1 is not run immediately — it is triggered lazily in chunks when
+     * {@link #parseWithPreIndexedWindow} encounters a document outside the currently-indexed
+     * range. This keeps the structural index working set in L2 cache.
+     */
+    public static boolean batchStage1(byte[] bodyArray, int bodyOffset, int bodyLength) {
+        if (SimdJsonPool.AVAILABLE == false) {
+            return false;
+        }
+        SimdJsonPool.batchParser().beginBatch(bodyArray, bodyOffset, bodyLength);
+        return true;
+    }
+
+    /**
+     * Parses a single document using the chunked batch stage 1 over the bulk body.
+     * The document's position within the bulk body is derived from the {@code docSource}
+     * {@link BytesReference}, which must be a slice of {@code bulkBodyArray}.
+     *
+     * <p>Stage 1 is run lazily in chunks — if the document falls outside the currently-indexed
+     * range, a new chunk is indexed automatically.
+     *
+     * <p>If the document does not share the same backing array as the bulk body (e.g. due to a
+     * copy or rewrite), falls back to the standard per-document path.
+     *
+     * @param bulkBodyArray the raw bulk body byte array that was batch-prepared
+     * @param docSource     the document's BytesReference (a slice of bulkBodyArray)
+     * @param sink          leaf sink for routing extraction
+     */
+    public void parseWithPreIndexedWindow(byte[] bulkBodyArray, BytesReference docSource, LeafSink sink) throws IOException {
+        if (docSource.hasArray() == false || docSource.array() != bulkBodyArray) {
+            parseToScratch(docSource, XContentType.JSON, sink);
+            return;
+        }
+
+        int docOffset = docSource.arrayOffset();
+        int docLen = docSource.length();
+
+        SimdJsonBatchParser batchParser = SimdJsonPool.batchParser();
+        SimdJsonDirectWalker walker = SimdJsonPool.directWalker();
+        try {
+            batchParser.prepareDocumentWindowChunked(docOffset, docLen);
+            EscfRowBuffer row = backend.beginRow();
+            boolean rawTextMode = sink != LeafSink.NO_OP && sink.passRawText();
+            EscfDocumentHandler handler = new EscfDocumentHandler(row, backend, sink, rawTextMode);
+            walker.walkDocument(bulkBodyArray, docLen, batchParser, handler);
+            row.finishRow();
+        } catch (RuntimeException e) {
+            logger.warn("Pre-indexed walk failed (offset={}, len={}), falling back: {}", docOffset, docLen, e.getMessage());
+            parseToScratch(docSource, XContentType.JSON, sink);
+        }
+    }
+
+    /**
+     * Releases any field names accumulated by the thread-local direct walker back to the shared
+     * root table. Call once after processing a batch of documents to ensure new field names
+     * are shared across threads.
+     */
+    public static void releaseWalkerNames() {
+        if (SimdJsonPool.AVAILABLE) {
+            SimdJsonPool.releaseNames();
         }
     }
 

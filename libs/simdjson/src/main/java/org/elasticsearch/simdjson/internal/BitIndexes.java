@@ -1,27 +1,55 @@
 /*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the "Elastic License
+ * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
+ * Public License v 1"; you may not use this file except in compliance with, at
+ * your election, the "Elastic License 2.0", the "GNU Affero General Public
+ * License v3.0 only", or the "Server Side Public License, v 1".
+ *
  * @notice
- *
  * Copyright 2021-2024 The simdjson-java contributors
- *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
  *     http://www.apache.org/licenses/LICENSE-2.0
- *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Based on a modification of https://github.com/simdjson/simdjson-java,
- * licensed under the Apache License 2.0.
+ * The write() method is derived from https://github.com/simdjson/simdjson-java.
+ * All other code in this file is original to Elasticsearch. TODO: update comment
  */
 
-package org.elasticsearch.sourcebatch.simdjson;
+package org.elasticsearch.simdjson.internal;
 
-public class BitIndexes {
+/**
+ * A compact array of byte-offset indices into a JSON buffer, identifying the positions of
+ * structural characters ({@code { } [ ] : ,}) and pseudo-structural value starts
+ * ({@code " t f n} and digit/minus characters).
+ *
+ * <p>Originally derived from
+ * <a href="https://github.com/simdjson/simdjson-java">simdjson-java</a>'s {@code BitIndexes}.
+ * The core {@link #write(int, long)} method — which extracts set-bit positions from a 64-bit
+ * mask using an 8/16/rest unrolling strategy — is unchanged from upstream. Everything else has
+ * been extended for Elasticsearch's needs:
+ * <ul>
+ *   <li><b>Dynamic growth</b> ({@link #ensureCapacity}) — upstream uses a fixed-size array
+ *       sized once at construction; we grow geometrically because the native FFI path may
+ *       produce more indices than initially estimated.</li>
+ *   <li><b>Read windowing</b> ({@link #setReadWindow}) — allows restricting the read cursor
+ *       to a sub-range of the index array, enabling per-document iteration within a batch of
+ *       concatenated documents.</li>
+ *   <li><b>Direct bulk write</b> ({@link #rawIndexes}, {@link #setWriteIdx}) — the native
+ *       stage 1 writes structural indices directly into the backing array via FFI, bypassing
+ *       the bit-by-bit {@link #write} path.</li>
+ *   <li><b>Batch document support</b> ({@link #findFirstIndexAtOrAfter},
+ *       {@link #writeSentinel}, {@link #getIndexAt}) — used by the batch parser to locate
+ *       per-document boundaries and install sentinel values for overrun detection.</li>
+ * </ul>
+ */
+public final class BitIndexes {
 
     private int[] indexes;
 
@@ -29,7 +57,7 @@ public class BitIndexes {
     private int readIdx;
     private int readEnd;
 
-    BitIndexes(int capacity) {
+    public BitIndexes(int capacity) {
         indexes = new int[capacity];
     }
 

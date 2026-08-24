@@ -1,36 +1,44 @@
 /*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the "Elastic License
+ * 2.0", the "GNU Affero General Public License v3.0 only", and the "Server Side
+ * Public License v 1"; you may not use this file except in compliance with, at
+ * your election, the "Elastic License 2.0", the "GNU Affero General Public
+ * License v3.0 only", or the "Server Side Public License, v 1".
+ *
  * @notice
- *
  * Copyright 2021-2024 The simdjson-java contributors
- *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
  *     http://www.apache.org/licenses/LICENSE-2.0
- *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Based on a modification of https://github.com/simdjson/simdjson-java,
- * licensed under the Apache License 2.0.
+ * The write() method is derived from https://github.com/simdjson/simdjson-java.
+ * All other code in this file is original to Elasticsearch. TODO: update comment
  */
 
-package org.elasticsearch.sourcebatch.simdjson;
+package org.elasticsearch.simdjson.internal;
 
 import jdk.incubator.vector.ByteVector;
+import jdk.incubator.vector.VectorSpecies;
 
-import static org.elasticsearch.sourcebatch.simdjson.CharacterUtils.escape;
-import static org.elasticsearch.sourcebatch.simdjson.CharacterUtils.hexToInt;
+import org.elasticsearch.simdjson.JsonParsingException;
+import org.elasticsearch.simdjson.SimdJsonSupport;
 
-public class StringParser {
+import static org.elasticsearch.simdjson.internal.CharacterUtils.escape;
+import static org.elasticsearch.simdjson.internal.CharacterUtils.hexToInt;
 
+public final class StringParser {
+
+    private static final VectorSpecies<Byte> BYTE_SPECIES = SimdJsonSupport.BYTE_SPECIES;
     private static final byte BACKSLASH = '\\';
     private static final byte QUOTE = '"';
-    private static final int BYTES_PROCESSED = VectorUtils.BYTE_SPECIES.vectorByteSize();
+    private static final int BYTES_PROCESSED = BYTE_SPECIES.vectorByteSize();
     private static final int MIN_HIGH_SURROGATE = 0xD800;
     private static final int MAX_HIGH_SURROGATE = 0xDBFF;
     private static final int MIN_LOW_SURROGATE = 0xDC00;
@@ -43,15 +51,16 @@ public class StringParser {
     private int doParseString(byte[] buffer, int idx, byte[] stringBuffer, int offset) {
         int src = idx + 1;
         int dst = offset;
-        while (true) {
-            ByteVector srcVec = ByteVector.fromArray(VectorUtils.BYTE_SPECIES, buffer, src);
+        int loopBound = buffer.length - BYTES_PROCESSED;
+        while (src <= loopBound) {
+            ByteVector srcVec = ByteVector.fromArray(BYTE_SPECIES, buffer, src);
             srcVec.intoArray(stringBuffer, dst);
             long backslashBits = srcVec.eq(BACKSLASH).toLong();
             long quoteBits = srcVec.eq(QUOTE).toLong();
 
             if (hasQuoteFirst(backslashBits, quoteBits)) {
                 dst += Long.numberOfTrailingZeros(quoteBits);
-                break;
+                return dst;
             }
             if (hasBackslash(backslashBits, quoteBits)) {
                 int backslashDist = Long.numberOfTrailingZeros(backslashBits);
@@ -78,7 +87,39 @@ public class StringParser {
                 dst += BYTES_PROCESSED;
             }
         }
-        return dst;
+        return doParseStringScalar(buffer, src, stringBuffer, dst);
+    }
+
+    /** Byte-at-a-time fallback for the tail when fewer than BYTES_PROCESSED bytes remain in the buffer. */
+    private int doParseStringScalar(byte[] buffer, int src, byte[] stringBuffer, int dst) {
+        while (true) {
+            byte b = buffer[src];
+            if (b == QUOTE) {
+                return dst;
+            }
+            if (b == BACKSLASH) {
+                byte escapeChar = buffer[src + 1];
+                if (escapeChar == 'u') {
+                    int codePoint = hexToInt(buffer, src + 2);
+                    src += 6;
+                    if (codePoint >= MIN_HIGH_SURROGATE && codePoint <= MAX_HIGH_SURROGATE) {
+                        codePoint = parseLowSurrogate(buffer, src, codePoint);
+                        src += 6;
+                    } else if (codePoint >= MIN_LOW_SURROGATE && codePoint <= MAX_LOW_SURROGATE) {
+                        throw new JsonParsingException("Invalid code point. The range U+DC00–U+DFFF is reserved for low surrogate.");
+                    }
+                    dst += storeCodePointInStringBuffer(codePoint, dst, stringBuffer);
+                } else {
+                    stringBuffer[dst] = escape(escapeChar);
+                    src += 2;
+                    dst++;
+                }
+            } else {
+                stringBuffer[dst] = b;
+                src++;
+                dst++;
+            }
+        }
     }
 
     private int parseLowSurrogate(byte[] buffer, int src, int codePoint) {
@@ -139,4 +180,5 @@ public class StringParser {
     private boolean hasBackslash(long backslashBits, long quoteBits) {
         return ((quoteBits - 1) & backslashBits) != 0;
     }
+
 }

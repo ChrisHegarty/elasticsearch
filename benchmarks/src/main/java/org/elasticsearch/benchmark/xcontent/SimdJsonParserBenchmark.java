@@ -27,23 +27,24 @@ import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.nio.charset.StandardCharsets;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
  * Compares simdjson-backed vs Jackson-backed parsing through the full {@link EscfEncoder} pipeline,
  * matching the actual bulk indexing usage pattern: parse, flatten, stage into columnar row buffer,
  * commit, and build the batch.
  *
- * <p>Three benchmark methods exercise the same documents through different parser paths:
+ * <p>Benchmark methods exercise the same documents through different parser paths:
  * <ul>
  *   <li>{@code simdJsonEncode} — uses the default {@link EscfEncoder} which dispatches to the
  *       direct walker (SIMD stage 1 + fused walk) for eligible documents.</li>
@@ -58,8 +59,13 @@ import java.util.concurrent.TimeUnit;
  * <p><strong>Running.</strong>
  * <pre>{@code
  * cd benchmarks
+ * # Single-threaded (default):
  * ../gradlew run --args "org.elasticsearch.benchmark.xcontent.SimdJsonParserBenchmark \
  *   -rf json -rff build/jmh-result.json" | tee /tmp/bench/simdjson_vs_jackson
+ *
+ * # Multi-threaded (8 threads):
+ * ../gradlew run --args "org.elasticsearch.benchmark.xcontent.SimdJsonParserBenchmark \
+ *   -t 8 -rf json -rff build/jmh-result.json" | tee /tmp/bench/simdjson_vs_jackson_mt
  * }</pre>
  */
 @Fork(value = 1, jvmArgsAppend = { "--add-modules=jdk.incubator.vector" })
@@ -67,6 +73,7 @@ import java.util.concurrent.TimeUnit;
 @Measurement(iterations = 5)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
+@Threads(Threads.MAX)
 @State(Scope.Thread)
 public class SimdJsonParserBenchmark {
 
@@ -107,7 +114,7 @@ public class SimdJsonParserBenchmark {
         int minLen = Integer.MAX_VALUE, maxLen = 0;
         long totalLen = 0;
         for (int i = 0; i < docCount; i++) {
-            byte[] raw = generateDoc(random, shape, i).getBytes(StandardCharsets.UTF_8);
+            byte[] raw = generateDoc(random, shape, i).getBytes(UTF_8);
             docs[i] = new BytesArray(raw);
             minLen = Math.min(minLen, raw.length);
             maxLen = Math.max(maxLen, raw.length);
@@ -116,7 +123,7 @@ public class SimdJsonParserBenchmark {
 
         batchOffsets = new int[docCount];
         batchLens = new int[docCount];
-        batchBuffer = new byte[(int) totalLen + 64];
+        batchBuffer = new byte[(int) totalLen];
         int pos = 0;
         for (int i = 0; i < docCount; i++) {
             byte[] raw = docs[i].toBytesRef().bytes;
@@ -129,43 +136,26 @@ public class SimdJsonParserBenchmark {
 
         boolean nativeAvailable;
         try {
-            var f = Class.forName("org.elasticsearch.escf.NativeStructuralIndexer").getDeclaredField("AVAILABLE");
-            f.setAccessible(true);
-            nativeAvailable = (boolean) f.get(null);
+            var m = Class.forName("org.elasticsearch.simdjson.SimdJsonSupport").getDeclaredMethod("isSupported");
+            nativeAvailable = (boolean) m.invoke(null);
         } catch (Exception e) {
             nativeAvailable = false;
         }
         System.out.printf(
-            "[setup] thread=%s shape=%s docCount=%d docSize min=%d avg=%d max=%d simdAvailable=%s nativeStage1=%s maxSimdDocBytes=%d%n",
+            "[setup] thread=%s shape=%s docCount=%d docSize min=%d avg=%d max=%d nativeStage1=%s maxSimdDocBytes=%d%n",
             Thread.currentThread().getName(),
             shape,
             docCount,
             minLen,
             totalLen / docCount,
             maxLen,
-            org.elasticsearch.sourcebatch.simdjson.SimdJsonSupport.isAvailable(),
             nativeAvailable,
             16 * 1024
         );
     }
 
     @Benchmark
-    public int simdJsonEncode() {
-        try (EscfEncoder encoder = new EscfEncoder(BytesRefRecycler.NON_RECYCLING_INSTANCE)) {
-            for (BytesReference doc : docs) {
-                encoder.parseToScratch(doc, XContentType.JSON, LeafSink.NO_OP);
-                encoder.commitScratchTo(0);
-            }
-            try (EscfBatch batch = encoder.buildPartition(0)) {
-                return batch.schema().leafCount();
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
-    }
-
-    @Benchmark
-    public int jacksonEncode() {
+    public int jacksonEncode() throws IOException {
         try (EscfEncoder encoder = newEncoder(false)) {
             for (BytesReference doc : docs) {
                 encoder.parseToScratch(doc, XContentType.JSON, LeafSink.NO_OP);
@@ -174,20 +164,31 @@ public class SimdJsonParserBenchmark {
             try (EscfBatch batch = encoder.buildPartition(0)) {
                 return batch.schema().leafCount();
             }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
         }
     }
 
     @Benchmark
-    public int simdJsonDirectEncode() {
+    public int simdJsonEncode() throws IOException {
         try (EscfEncoder encoder = new EscfEncoder(BytesRefRecycler.NON_RECYCLING_INSTANCE)) {
-            encoder.parseBatchDirect(batchBuffer, batchOffsets, batchLens, docCount, 0, LeafSink.NO_OP);
+            for (BytesReference doc : docs) {
+                encoder.parseToScratch(doc, XContentType.JSON, LeafSink.NO_OP);
+                encoder.commitScratchTo(0);
+            }
+            EscfEncoder.releaseWalkerNames();
             try (EscfBatch batch = encoder.buildPartition(0)) {
                 return batch.schema().leafCount();
             }
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Benchmark
+    public int simdJsonBatchEncode() throws IOException {
+        try (EscfEncoder encoder = new EscfEncoder(BytesRefRecycler.NON_RECYCLING_INSTANCE)) {
+            encoder.parseBatchDirect(batchBuffer, batchOffsets, batchLens, docCount, 0, LeafSink.NO_OP);
+            EscfEncoder.releaseWalkerNames();
+            try (EscfBatch batch = encoder.buildPartition(0)) {
+                return batch.schema().leafCount();
+            }
         }
     }
 

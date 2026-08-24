@@ -8,19 +8,40 @@
  */
 
 /**
- * SIMD-accelerated JSON structural indexer adapted from
+ * JSON parsing support library adapted from
  * <a href="https://github.com/simdjson/simdjson-java">simdjson-java</a>.
  *
- * <p>Provides {@link org.elasticsearch.sourcebatch.simdjson.StructuralIndexer} for stage 1
- * (SIMD structural identification), {@link org.elasticsearch.sourcebatch.simdjson.BitIndexes}
- * for the resulting structural index array, and utilities for field name canonicalization,
- * string parsing, and double parsing. The caller walks the structural indices directly
- * (fused stage 2 + token walk) rather than building an intermediate tape.
+ * <p>Provides native-accelerated structural indexing (backed by the {@code libes_simdjson}
+ * C++ library), a fused stage 2 + token walk via
+ * {@link org.elasticsearch.simdjson.SimdJsonDirectWalker}, and field name canonicalization
+ * via {@link org.elasticsearch.simdjson.fieldnames.FrozenFieldNameTable}.
  *
- * <p>See {@link org.elasticsearch.sourcebatch.simdjson.SimdJsonSupport} for runtime
- * module-graph setup (the {@code jdk.incubator.vector} read-edge must be added
- * before any vector class is loaded).
+ * <h2>Usage</h2>
+ *
+ * <ol>
+ *   <li>Check {@link org.elasticsearch.simdjson.SimdJsonSupport#isSupported()} to
+ *       confirm the native library is loaded and the vector API is available.</li>
+ *   <li>Create a {@link org.elasticsearch.simdjson.SimdJsonBatchParser} (one per thread,
+ *       owns a native structural indexer, implements {@link java.lang.AutoCloseable}).</li>
+ *   <li>Create a {@link org.elasticsearch.simdjson.SimdJsonDirectWalker} with a
+ *       {@link org.elasticsearch.simdjson.fieldnames.FieldNameLookup} (typically a
+ *       {@link org.elasticsearch.simdjson.fieldnames.FrozenFieldNameTable.Child}).</li>
+ *   <li>For each batch: call {@code beginBatch}, then for each document call
+ *       {@code prepareDocumentWindowChunked} followed by
+ *       {@code walker.walkDocument(buffer, docLen, batchParser, handler)}.</li>
+ *   <li>After each batch, call {@code walker.releaseNames()} to merge new field names
+ *       back to the shared parent table.</li>
+ * </ol>
+ *
+ * @see org.elasticsearch.simdjson.SimdJsonBatchParser
+ * @see org.elasticsearch.simdjson.SimdJsonDirectWalker
+ * @see org.elasticsearch.simdjson.JsonDocumentHandler
  */
 module org.elasticsearch.simdjson {
-    exports org.elasticsearch.sourcebatch.simdjson;
+    requires org.elasticsearch.foreign;
+    requires org.elasticsearch.logging;
+    requires org.elasticsearch.base;
+
+    exports org.elasticsearch.simdjson;
+    exports org.elasticsearch.simdjson.fieldnames;
 }
