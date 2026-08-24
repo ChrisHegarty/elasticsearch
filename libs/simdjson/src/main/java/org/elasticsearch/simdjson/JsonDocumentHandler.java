@@ -9,6 +9,8 @@
 
 package org.elasticsearch.simdjson;
 
+import java.math.BigInteger;
+
 /**
  * Callback interface for receiving parsed JSON document events from
  * {@link SimdJsonDirectWalker}. Implementations map these events to a
@@ -53,6 +55,12 @@ public interface JsonDocumentHandler {
     void longField(String fieldName, long value, boolean fitsInt, byte[] srcBuf, int srcOff, int srcLen);
 
     /**
+     * An integer field whose value exceeds the range of {@code long}. The raw source bytes
+     * ({@code srcBuf[srcOff..srcOff+srcLen)}) contain the original JSON text.
+     */
+    void bigIntegerField(String fieldName, BigInteger value, byte[] srcBuf, int srcOff, int srcLen);
+
+    /**
      * A float or double field. {@code fitsFloat} is true if {@code (float)value == value}.
      * The raw source bytes ({@code srcBuf[srcOff..srcOff+srcLen)}) contain the original
      * JSON text of the number, for callers that need the unparsed form.
@@ -83,6 +91,9 @@ public interface JsonDocumentHandler {
 
     /** An integer or long element inside an array. */
     void arrayElemLong(long value, boolean fitsInt);
+
+    /** An integer element inside an array whose value exceeds the range of {@code long}. */
+    void arrayElemBigInteger(BigInteger value);
 
     /** A float or double element inside an array. */
     void arrayElemDouble(double value, boolean fitsFloat);

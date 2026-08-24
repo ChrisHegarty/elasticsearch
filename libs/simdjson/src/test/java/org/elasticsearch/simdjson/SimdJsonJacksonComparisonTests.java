@@ -67,19 +67,7 @@ public class SimdJsonJacksonComparisonTests extends ESTestCase {
                     events.add("endArray()");
                 }
                 case VALUE_STRING -> events.add("string(" + fieldName + "=" + p.text() + ")");
-                case VALUE_NUMBER -> {
-                    XContentParser.NumberType numType = p.numberType();
-                    if (numType == XContentParser.NumberType.INT || numType == XContentParser.NumberType.LONG) {
-                        events.add(
-                            "long(" + fieldName + "=" + p.longValue() + ",fitsInt=" + (numType == XContentParser.NumberType.INT) + ")"
-                        );
-                    } else {
-                        double val = p.doubleValue();
-                        float fval = (float) val;
-                        boolean fitsFloat = (double) fval == val;
-                        events.add("double(" + fieldName + "=" + val + ",fitsFloat=" + fitsFloat + ")");
-                    }
-                }
+                case VALUE_NUMBER -> addJacksonNumberEvent(p, fieldName, events);
                 case VALUE_BOOLEAN -> events.add("bool(" + fieldName + "=" + p.booleanValue() + ")");
                 case VALUE_NULL -> events.add("null(" + fieldName + ")");
                 default -> throw new AssertionError("Unexpected token: " + token);
@@ -113,19 +101,7 @@ public class SimdJsonJacksonComparisonTests extends ESTestCase {
                     events.add("endArray()");
                 }
                 case VALUE_STRING -> events.add("string(" + fieldName + "=" + p.text() + ")");
-                case VALUE_NUMBER -> {
-                    XContentParser.NumberType numType = p.numberType();
-                    if (numType == XContentParser.NumberType.INT || numType == XContentParser.NumberType.LONG) {
-                        events.add(
-                            "long(" + fieldName + "=" + p.longValue() + ",fitsInt=" + (numType == XContentParser.NumberType.INT) + ")"
-                        );
-                    } else {
-                        double val = p.doubleValue();
-                        float fval = (float) val;
-                        boolean fitsFloat = (double) fval == val;
-                        events.add("double(" + fieldName + "=" + val + ",fitsFloat=" + fitsFloat + ")");
-                    }
-                }
+                case VALUE_NUMBER -> addJacksonNumberEvent(p, fieldName, events);
                 case VALUE_BOOLEAN -> events.add("bool(" + fieldName + "=" + p.booleanValue() + ")");
                 case VALUE_NULL -> events.add("null(" + fieldName + ")");
                 default -> throw new AssertionError("Unexpected token: " + token);
@@ -141,17 +117,7 @@ public class SimdJsonJacksonComparisonTests extends ESTestCase {
 
             switch (token) {
                 case VALUE_STRING -> events.add("arrayElemString(" + p.text() + ")");
-                case VALUE_NUMBER -> {
-                    XContentParser.NumberType numType = p.numberType();
-                    if (numType == XContentParser.NumberType.INT || numType == XContentParser.NumberType.LONG) {
-                        events.add("arrayElemLong(" + p.longValue() + ",fitsInt=" + (numType == XContentParser.NumberType.INT) + ")");
-                    } else {
-                        double val = p.doubleValue();
-                        float fval = (float) val;
-                        boolean fitsFloat = (double) fval == val;
-                        events.add("arrayElemDouble(" + val + ",fitsFloat=" + fitsFloat + ")");
-                    }
-                }
+                case VALUE_NUMBER -> addJacksonArrayNumberEvent(p, events);
                 case VALUE_BOOLEAN -> events.add("arrayElemBoolean(" + p.booleanValue() + ")");
                 case VALUE_NULL -> events.add("arrayElemNull()");
                 case START_OBJECT -> {
@@ -166,6 +132,34 @@ public class SimdJsonJacksonComparisonTests extends ESTestCase {
                 }
                 default -> throw new AssertionError("Unexpected token in array: " + token);
             }
+        }
+    }
+
+    private static void addJacksonNumberEvent(XContentParser p, String fieldName, List<String> events) throws IOException {
+        XContentParser.NumberType numType = p.numberType();
+        if (numType == XContentParser.NumberType.INT || numType == XContentParser.NumberType.LONG) {
+            events.add("long(" + fieldName + "=" + p.longValue() + ",fitsInt=" + (numType == XContentParser.NumberType.INT) + ")");
+        } else if (numType == XContentParser.NumberType.BIG_INTEGER) {
+            events.add("bigInteger(" + fieldName + "=" + p.text() + ")");
+        } else {
+            double val = p.doubleValue();
+            float fval = (float) val;
+            boolean fitsFloat = (double) fval == val;
+            events.add("double(" + fieldName + "=" + val + ",fitsFloat=" + fitsFloat + ")");
+        }
+    }
+
+    private static void addJacksonArrayNumberEvent(XContentParser p, List<String> events) throws IOException {
+        XContentParser.NumberType numType = p.numberType();
+        if (numType == XContentParser.NumberType.INT || numType == XContentParser.NumberType.LONG) {
+            events.add("arrayElemLong(" + p.longValue() + ",fitsInt=" + (numType == XContentParser.NumberType.INT) + ")");
+        } else if (numType == XContentParser.NumberType.BIG_INTEGER) {
+            events.add("arrayElemBigInteger(" + p.text() + ")");
+        } else {
+            double val = p.doubleValue();
+            float fval = (float) val;
+            boolean fitsFloat = (double) fval == val;
+            events.add("arrayElemDouble(" + val + ",fitsFloat=" + fitsFloat + ")");
         }
     }
 
@@ -311,6 +305,188 @@ public class SimdJsonJacksonComparisonTests extends ESTestCase {
 
     public void testNewlinesAndTabs() throws IOException {
         assertParsersAgree("{\n\t\"a\":\t1,\n\t\"b\":\t2\n}");
+    }
+
+    // ---- Numeric edge cases ----
+
+    public void testIntegerBoundaryMaxInt() throws IOException {
+        assertParsersAgree("{\"n\":" + Integer.MAX_VALUE + "}");
+    }
+
+    public void testIntegerBoundaryMinInt() throws IOException {
+        assertParsersAgree("{\"n\":" + Integer.MIN_VALUE + "}");
+    }
+
+    public void testIntegerBoundaryMaxIntPlusOne() throws IOException {
+        assertParsersAgree("{\"n\":" + ((long) Integer.MAX_VALUE + 1) + "}");
+    }
+
+    public void testIntegerBoundaryMinIntMinusOne() throws IOException {
+        assertParsersAgree("{\"n\":" + ((long) Integer.MIN_VALUE - 1) + "}");
+    }
+
+    public void testIntegerBoundaryMaxLong() throws IOException {
+        assertParsersAgree("{\"n\":" + Long.MAX_VALUE + "}");
+    }
+
+    public void testIntegerBoundaryMinLong() throws IOException {
+        assertParsersAgree("{\"n\":" + Long.MIN_VALUE + "}");
+    }
+
+    public void testIntegerBeyondLongMax() throws IOException {
+        assertParsersAgree("{\"n\":9223372036854775808}"); // Long.MAX_VALUE + 1
+    }
+
+    public void testIntegerBeyondLongMin() throws IOException {
+        assertParsersAgree("{\"n\":-9223372036854775809}"); // Long.MIN_VALUE - 1
+    }
+
+    public void testVeryLargeBigInteger() throws IOException {
+        assertParsersAgree("{\"n\":99999999999999999999999999999}");
+    }
+
+    public void testBigIntegerInArray() throws IOException {
+        assertParsersAgree("{\"arr\":[1,9223372036854775808,-9223372036854775809]}");
+    }
+
+    public void testDoubleMaxValue() throws IOException {
+        assertParsersAgree("{\"n\":" + Double.MAX_VALUE + "}");
+    }
+
+    public void testDoubleMinPositiveValue() throws IOException {
+        assertParsersAgree("{\"n\":" + Double.MIN_VALUE + "}");
+    }
+
+    public void testDoubleMinNormal() throws IOException {
+        assertParsersAgree("{\"n\":" + Double.MIN_NORMAL + "}");
+    }
+
+    public void testDoubleNearOverflow() throws IOException {
+        assertParsersAgree("{\"n\":1.7976931348623157e308}");
+    }
+
+    public void testDoubleNearUnderflow() throws IOException {
+        assertParsersAgree("{\"n\":5e-324}");
+    }
+
+    public void testScientificNotationPositiveExponent() throws IOException {
+        assertParsersAgree("{\"n\":1.23e5}");
+    }
+
+    public void testScientificNotationNegativeExponent() throws IOException {
+        assertParsersAgree("{\"n\":1.23e-5}");
+    }
+
+    public void testScientificNotationLargeExponent() throws IOException {
+        assertParsersAgree("{\"n\":1e308}");
+    }
+
+    public void testScientificNotationSmallExponent() throws IOException {
+        assertParsersAgree("{\"n\":1e-308}");
+    }
+
+    public void testScientificNotationExplicitPositiveSign() throws IOException {
+        assertParsersAgree("{\"n\":1.5e+10}");
+    }
+
+    public void testDoubleZero() throws IOException {
+        assertParsersAgree("{\"n\":0.0}");
+    }
+
+    public void testNegativeZeroDouble() throws IOException {
+        assertParsersAgree("{\"n\":-0.0}");
+    }
+
+    public void testNegativeZeroInt() throws IOException {
+        assertParsersAgree("{\"n\":-0}");
+    }
+
+    public void testDoublePrecisionClassic() throws IOException {
+        // 0.1 cannot be exactly represented in IEEE 754
+        assertParsersAgree("{\"n\":0.1}");
+    }
+
+    public void testDoublePrecisionOneThird() throws IOException {
+        assertParsersAgree("{\"n\":0.3333333333333333}");
+    }
+
+    public void testDoubleFitsFloat() throws IOException {
+        // 1.5 is exactly representable as both float and double
+        assertParsersAgree("{\"n\":1.5}");
+    }
+
+    public void testDoubleDoesNotFitFloat() throws IOException {
+        // This value differs between float and double precision
+        assertParsersAgree("{\"n\":1.1}");
+    }
+
+    public void testIntegerLeadingZeroInDouble() throws IOException {
+        assertParsersAgree("{\"n\":0.5}");
+    }
+
+    public void testLargeIntegerAsDouble() throws IOException {
+        // Integer-valued but beyond long range when written with exponent
+        assertParsersAgree("{\"n\":1e19}");
+    }
+
+    public void testSmallIntegerValues() throws IOException {
+        assertParsersAgree("{\"a\":0,\"b\":1,\"c\":-1,\"d\":127,\"e\":-128}");
+    }
+
+    public void testNumericArrayBoundaries() throws IOException {
+        assertParsersAgree(
+            "{\"arr\":[" + Integer.MAX_VALUE + "," + Integer.MIN_VALUE + "," + Long.MAX_VALUE + "," + Long.MIN_VALUE + ",3.14,1e100]}"
+        );
+    }
+
+    public void testManyDecimalPlaces() throws IOException {
+        assertParsersAgree("{\"n\":3.141592653589793238462643383279}");
+    }
+
+    public void testTrailingZerosInDecimal() throws IOException {
+        assertParsersAgree("{\"n\":1.50000000000000}");
+    }
+
+    // ---- Scientific notation edge cases ----
+
+    public void testScientificIntegerLikeZeroExponent() throws IOException {
+        assertParsersAgree("{\"n\":1e0}");
+    }
+
+    public void testScientificIntegerLikePositiveExponent() throws IOException {
+        assertParsersAgree("{\"n\":5e2}");
+    }
+
+    public void testScientificOverflowToInfinity() throws IOException {
+        assertParsersAgree("{\"n\":1e309}");
+    }
+
+    public void testScientificUnderflowToZero() throws IOException {
+        assertParsersAgree("{\"n\":1e-400}");
+    }
+
+    public void testScientificNegativeOverflow() throws IOException {
+        assertParsersAgree("{\"n\":-1e309}");
+    }
+
+    public void testScientificManyMantissaDigits() throws IOException {
+        assertParsersAgree("{\"n\":1.23456789012345678901234567890e10}");
+    }
+
+    public void testScientificVerySmallPositive() throws IOException {
+        assertParsersAgree("{\"n\":2.2250738585072014e-308}");
+    }
+
+    public void testScientificNegativeSmallExponent() throws IOException {
+        assertParsersAgree("{\"n\":-1.5e-3}");
+    }
+
+    public void testScientificCapitalE() throws IOException {
+        assertParsersAgree("{\"n\":1.5E10}");
+    }
+
+    public void testScientificInArray() throws IOException {
+        assertParsersAgree("{\"arr\":[1e0,5e2,1e308,1e-308,1e309,1e-400]}");
     }
 
     // ---- Random document generation ----

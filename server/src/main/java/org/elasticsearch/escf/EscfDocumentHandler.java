@@ -18,6 +18,7 @@ import org.elasticsearch.sourcebatch.SourceValueType;
 import org.elasticsearch.xcontent.XContentString;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.util.Arrays;
 
 /**
@@ -122,6 +123,23 @@ final class EscfDocumentHandler implements JsonDocumentHandler {
             sink.onTextPrimitive(colIdx, backend.columnPath(colIdx), type, new XContentString.UTF8Bytes(srcBuf, srcOff, srcLen));
         } else if (firePathSink) {
             sink.onLongPrimitive(colIdx, backend.columnPath(colIdx), type, value);
+        }
+    }
+
+    @Override
+    public void bigIntegerField(String fieldName, BigInteger value, byte[] srcBuf, int srcOff, int srcLen) {
+        if (kvDepth > 0) {
+            writeKvStringField(fieldName, srcBuf, srcOff, srcLen);
+            return;
+        }
+        int colIdx = row.stringField(fieldName, srcBuf, srcOff, srcLen);
+        if (firePathSink) {
+            sink.onTextPrimitive(
+                colIdx,
+                backend.columnPath(colIdx),
+                SourceValueType.STRING,
+                new XContentString.UTF8Bytes(srcBuf, srcOff, srcLen)
+            );
         }
     }
 
@@ -260,6 +278,20 @@ final class EscfDocumentHandler implements JsonDocumentHandler {
             elemTypes[elemCount] = SourceValueType.LONG;
             elemNumeric[elemCount] = value;
         }
+        elemCount++;
+    }
+
+    @Override
+    public void arrayElemBigInteger(BigInteger value) {
+        if (kvDepth > 0) {
+            byte[] text = value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            writeKvStringValue(text, 0, text.length);
+            return;
+        }
+        ensureArrayCapacity();
+        byte[] text = value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        elemTypes[elemCount] = SourceValueType.STRING;
+        elemVar[elemCount] = new XContentString.UTF8Bytes(text, 0, text.length);
         elemCount++;
     }
 

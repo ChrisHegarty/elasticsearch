@@ -17,6 +17,7 @@ import org.elasticsearch.simdjson.internal.StringParser;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.math.BigInteger;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -381,15 +382,18 @@ public final class SimdJsonDirectWalker {
         if (digitCount == 0) {
             throw new JsonParsingException("Invalid number at " + idx);
         }
+        int len = pos - idx;
         if (digitCount >= 19) {
             if (digitCount > 19 || (negative ? digits == Long.MIN_VALUE ? false : digits < 0 : digits < 0)) {
-                throw new JsonParsingException("Number value is out of long range.");
+                BigInteger bigVal = new BigInteger(new String(buffer, idx, len, java.nio.charset.StandardCharsets.US_ASCII));
+                handler.bigIntegerField(fieldName, bigVal, buffer, idx, len);
+                return;
             }
         }
 
         long val = negative ? -digits : digits;
         boolean fitsInt = val >= Integer.MIN_VALUE && val <= Integer.MAX_VALUE;
-        handler.longField(fieldName, val, fitsInt, buffer, idx, pos - idx);
+        handler.longField(fieldName, val, fitsInt, buffer, idx, len);
     }
 
     private void handleFloatingPoint(
@@ -496,8 +500,15 @@ public final class SimdJsonDirectWalker {
             float fval = (float) val;
             handler.arrayElemDouble(val, (double) fval == val);
         } else {
-            long val = negative ? -digits : digits;
-            handler.arrayElemLong(val, val >= Integer.MIN_VALUE && val <= Integer.MAX_VALUE);
+            int digitCount = pos - digitStart;
+            if (digitCount >= 19 && (digitCount > 19 || (negative ? digits == Long.MIN_VALUE ? false : digits < 0 : digits < 0))) {
+                int len = pos - idx;
+                BigInteger bigVal = new BigInteger(new String(buffer, idx, len, java.nio.charset.StandardCharsets.US_ASCII));
+                handler.arrayElemBigInteger(bigVal);
+            } else {
+                long val = negative ? -digits : digits;
+                handler.arrayElemLong(val, val >= Integer.MIN_VALUE && val <= Integer.MAX_VALUE);
+            }
         }
     }
 

@@ -126,6 +126,11 @@ public final class SimdJsonTestSupport {
         }
 
         @Override
+        public void bigIntegerField(String fieldName, java.math.BigInteger value, byte[] srcBuf, int srcOff, int srcLen) {
+            events.add("bigInteger(" + fieldName + "=" + value + ")");
+        }
+
+        @Override
         public void doubleField(String fieldName, double value, boolean fitsFloat, byte[] srcBuf, int srcOff, int srcLen) {
             events.add("double(" + fieldName + "=" + value + ",fitsFloat=" + fitsFloat + ")");
         }
@@ -158,6 +163,11 @@ public final class SimdJsonTestSupport {
         @Override
         public void arrayElemLong(long value, boolean fitsInt) {
             events.add("arrayElemLong(" + value + ",fitsInt=" + fitsInt + ")");
+        }
+
+        @Override
+        public void arrayElemBigInteger(java.math.BigInteger value) {
+            events.add("arrayElemBigInteger(" + value + ")");
         }
 
         @Override
