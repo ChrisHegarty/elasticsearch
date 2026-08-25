@@ -367,6 +367,19 @@ public final class SimdJsonDirectWalker {
 
         long digits = 0;
         int digitStart = pos;
+        int loopBound = buffer.length - 8;
+
+        while (pos <= loopBound) {
+            long word = (long) LONG_LE.get(buffer, pos);
+            long t = word - 0x3030303030303030L;
+            if ((t & 0xF0F0F0F0F0F0F0F0L) != 0) {
+                // Not all 8 bytes are digits — parse the leading digits from this word scalar
+                break;
+            }
+            digits = digits * 100_000_000L + parse8Digits(t);
+            pos += 8;
+        }
+        // Scalar tail for remaining digits
         byte ch = buffer[pos];
         while (ch >= '0' && ch <= '9') {
             digits = digits * 10 + (ch - '0');
@@ -394,6 +407,28 @@ public final class SimdJsonDirectWalker {
         long val = negative ? -digits : digits;
         boolean fitsInt = val >= Integer.MIN_VALUE && val <= Integer.MAX_VALUE;
         handler.longField(fieldName, val, fitsInt, buffer, idx, len);
+    }
+
+    /**
+     * Converts 8 pre-validated digit bytes (each 0x00..0x09) packed in a little-endian long
+     * into their decimal value. Byte 0 (bits 0-7) is the most significant digit.
+     * Uses SWAR pair/quad widening to avoid a per-byte multiply loop.
+     */
+    private static long parse8Digits(long t) {
+        // t has digits 0-9 in each byte, LE order (byte 0 = first/leftmost digit)
+        // Step 1: combine adjacent byte-pairs into 16-bit values: d0*10+d1, d2*10+d3, ...
+        // even bytes (d0, d2, d4, d6) are at positions 0,16,32,48
+        // odd bytes (d1, d3, d5, d7) are at positions 8,24,40,56
+        long m1 = (t & 0x00FF00FF00FF00FFL) * 10 + ((t >>> 8) & 0x00FF00FF00FF00FFL);
+        // m1 has 4x 16-bit values at positions 0, 16, 32, 48: (d0*10+d1), (d2*10+d3), (d4*10+d5), (d6*10+d7)
+
+        // Step 2: combine adjacent 16-bit pairs into 32-bit values
+        long m2 = (m1 & 0x0000FFFF0000FFFFL) * 100 + ((m1 >>> 16) & 0x0000FFFF0000FFFFL);
+        // m2 has 2x 32-bit values at positions 0 and 32
+
+        // Step 3: combine into single 64-bit value
+        long m3 = (m2 & 0xFFFFFFFFL) * 10000 + (m2 >>> 32);
+        return m3;
     }
 
     private void handleFloatingPoint(
@@ -455,6 +490,16 @@ public final class SimdJsonDirectWalker {
 
         long digits = 0;
         int digitStart = pos;
+        int loopBound = buffer.length - 8;
+        while (pos <= loopBound) {
+            long word = (long) LONG_LE.get(buffer, pos);
+            long t = word - 0x3030303030303030L;
+            if ((t & 0xF0F0F0F0F0F0F0F0L) != 0) {
+                break;
+            }
+            digits = digits * 100_000_000L + parse8Digits(t);
+            pos += 8;
+        }
         byte ch = buffer[pos];
         while (ch >= '0' && ch <= '9') {
             digits = digits * 10 + (ch - '0');
