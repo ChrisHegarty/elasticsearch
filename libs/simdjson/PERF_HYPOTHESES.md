@@ -1,17 +1,16 @@
 # simdjson Performance Hypotheses
 
-Benchmark results from commit `dd3b9c970e4` on AWS EC2, 8 threads,
-`nativeStage1=true`, JDK 26.0.1.
+Benchmark results on AWS EC2, 8 threads, `nativeStage1=true`, JDK 26.0.1.
 
 ## Benchmark Results
 
-### x64 (AMD EPYC 9R14, AVX-512 / ICE_LAKE)
+### x64 (AMD EPYC 9R14, AVX-512 / ICE_LAKE) — commit `b7add2bd696` (H2+H3)
 
 | Method               | clickbench_flat | otel_nested | small_sparse |
 |----------------------|-----------------|-------------|--------------|
-| jacksonEncode        |  85.3 ops/s     | 370.3 ops/s |  817.3 ops/s |
-| simdJsonEncode       | 107.8 ops/s     | 419.7 ops/s |  988.7 ops/s |
-| simdJsonBatchEncode  | 104.6 ops/s     | 455.2 ops/s | 1180.2 ops/s |
+| jacksonEncode        |  85.9 ops/s     | 373.7 ops/s |  877.4 ops/s |
+| simdJsonEncode       | 109.6 ops/s     | 430.1 ops/s | 1054.4 ops/s |
+| simdJsonBatchEncode  | 106.4 ops/s     | 491.5 ops/s | 1243.1 ops/s |
 
 ### ARM (Graviton, NEON)
 
@@ -179,13 +178,28 @@ parser itself and represents the cost of the ESCF encoding side.
 **Potential fix**: This is likely memory-copy bound. Reducing the number of
 intermediate copies or using bulk operations could help.
 
-### H3: Number parsing overhead (13-15%)
+### H3: Number parsing overhead (13-15%) — IMPLEMENTED, marginal gain
 
-`handleNumber` in the direct walker parses digits one-at-a-time in a loop. For
-`clickbench_flat` (~80 numeric fields), this is the #2 hotspot.
+`handleNumber` in the direct walker parsed digits one-at-a-time in a loop. For
+`clickbench_flat` (~80 numeric fields), this was the #2 hotspot.
 
-**Potential fix**: SWAR multi-digit integer parsing — read 8 bytes, check all are
-ASCII digits, convert in bulk using multiply-and-accumulate.
+**Fix applied**: SWAR 8-digit integer parsing — read 8 bytes via `LONG_LE`, check
+all are ASCII digits (`(t & 0xF0F0F0F0F0F0F0F0L) != 0`), convert 8 digits in
+parallel using pair/quad widening (3 multiplies instead of 8 scalar `*10+` steps).
+Falls back to byte-at-a-time for the remaining digits.
+
+**Result (x64, 8-thread):**
+
+| Method               | clickbench_flat  | otel_nested  | small_sparse  |
+|----------------------|------------------|--------------|---------------|
+| Before (H2)          | 107.8 ops/s      | 419.7 ops/s  |  988.7 ops/s  |
+| After (H3 SWAR)      | 109.6 ops/s      | 430.1 ops/s  | 1054.4 ops/s  |
+| Delta                | +1.7%            | +2.5%        | +6.6%         |
+
+Modest improvement. `handleNumber` / `parse8Digits` no longer appears in the top-30
+CPU hotspots in the flamegraph, confirming it's been effectively eliminated as a
+bottleneck. The remaining CPU is dominated by field name resolution (~12%),
+ESCF column building (~10%), and `commitScratchTo`/`drainScratchValue` (~8%).
 
 ### H4: BitIndexes.getAndAdvance (2-4%)
 

@@ -58,9 +58,11 @@ void es_stage1_destroy(es_stage1_ctx* ctx) {
 
 /*
  * Runs stage 1 over buf[offset..offset+len) and writes structural indices into
- * out_buf. Adds `offset` to each index so outputs are absolute positions within
- * the original buffer. Stage 1 copies its remainder block to a stack-local
- * buffer, so no readable padding past offset+len is required.
+ * out_buf. Indices are 0-based relative to buf+offset; the caller (Java side)
+ * adds `offset` to obtain absolute positions. This avoids a per-element
+ * offset-add loop in native code, allowing a single memcpy for all cases.
+ * Stage 1 copies its remainder block to a stack-local buffer, so no readable
+ * padding past offset+len is required.
  */
 int es_stage1_run(es_stage1_ctx* ctx,
               const uint8_t* buf, uint32_t offset, uint32_t len,
@@ -80,13 +82,7 @@ int es_stage1_run(es_stage1_ctx* ctx,
     if (n > out_buf_capacity) return -2;
 
     const uint32_t* src = ctx->impl->structural_indexes.get();
-    if (offset == 0) {
-        __builtin_memcpy(out_buf, src, n * sizeof(uint32_t));
-    } else {
-        for (uint32_t i = 0; i < n; i++) {
-            out_buf[i] = static_cast<int32_t>(src[i] + offset);
-        }
-    }
+    __builtin_memcpy(out_buf, src, n * sizeof(uint32_t));
     *out_count = n;
     return 0;
 }

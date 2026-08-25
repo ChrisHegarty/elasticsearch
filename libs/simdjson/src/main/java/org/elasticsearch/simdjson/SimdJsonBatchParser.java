@@ -56,11 +56,12 @@ import org.elasticsearch.simdjson.internal.StructuralIndexer;
 public class SimdJsonBatchParser implements AutoCloseable {
 
     /**
-     * Maximum number of bytes to index in a single stage 1 pass. Keeping this within
-     * L2 cache (~256 KiB) avoids the cache pressure and GC overhead observed when indexing
-     * multi-megabyte buffers in a single pass.
+     * Maximum number of bytes to index in a single stage 1 pass. Smaller values keep the
+     * structural index working set in L1/L2 cache; larger values amortize native FFI overhead.
+     * On ARM NEON (64 KB L1d), values around 32–64 KB may outperform the default 256 KB.
+     * Override at startup with {@code -Des.simdjson.chunk_byte_limit=65536}.
      */
-    public static final int CHUNK_BYTE_LIMIT = 256 * 1024;
+    public static final int CHUNK_BYTE_LIMIT = Integer.getInteger("es.simdjson.chunk_byte_limit", 256 * 1024);
 
     @FunctionalInterface
     interface Stage1Function {
@@ -88,7 +89,7 @@ public class SimdJsonBatchParser implements AutoCloseable {
      */
     public SimdJsonBatchParser(int capacity) {
         SimdJsonSupport.isSupported();
-        int indexCapacity = Math.max(capacity, 1024);
+        int indexCapacity = Math.max(capacity / 4, 1024);
         bitIndexes = new BitIndexes(indexCapacity);
         indexer = new StructuralIndexer(capacity);
         stage1Function = indexer::index;
@@ -99,7 +100,7 @@ public class SimdJsonBatchParser implements AutoCloseable {
      * (e.g. a scalar fallback that doesn't require the native library).
      */
     SimdJsonBatchParser(int capacity, Stage1Function stage1Function) {
-        int indexCapacity = Math.max(capacity, 1024);
+        int indexCapacity = Math.max(capacity / 4, 1024);
         bitIndexes = new BitIndexes(indexCapacity);
         this.indexer = null;
         this.stage1Function = stage1Function;

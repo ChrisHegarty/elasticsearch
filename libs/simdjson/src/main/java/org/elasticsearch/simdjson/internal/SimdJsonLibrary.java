@@ -56,7 +56,8 @@ public interface SimdJsonLibrary {
 
     /**
      * Runs stage 1 over {@code buf[offset..offset+len)} and writes structural indices into
-     * {@code outBuf}. Adds {@code offset} to each index so outputs are absolute positions.
+     * {@code outBuf}. Indices are 0-based relative to {@code buf + offset}; the caller must
+     * add {@code offset} to obtain absolute positions within the Java array.
      *
      * <p>Stage 1 copies its remainder block into a stack-local buffer padded with spaces, so
      * the native code never reads past {@code buf[offset + len - 1]}. The {@code paddingBytes = 0}

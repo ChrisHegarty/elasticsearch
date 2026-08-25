@@ -78,6 +78,11 @@ public final class StructuralIndexer implements AutoCloseable {
             throw new JsonParsingException("Native simdjson stage 1 failed: " + readErrorMessage(err));
         }
         int count = outCount[0];
+        if (offset != 0) {
+            for (int i = 0; i < count; i++) {
+                rawIndexes[i] += offset;
+            }
+        }
         bitIndexes.setWriteIdx(count);
     }
 
