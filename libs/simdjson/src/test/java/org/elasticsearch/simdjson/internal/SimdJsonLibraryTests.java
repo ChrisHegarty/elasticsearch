@@ -639,11 +639,6 @@ public class SimdJsonLibraryTests extends ESTestCase {
         assertEquals("stage 1 should succeed", 0, err);
 
         int count = outCount.get(ValueLayout.JAVA_INT, 0);
-        if (offset != 0) {
-            for (int i = 0; i < count; i++) {
-                out[i] += offset;
-            }
-        }
         BitIndexes bi = new BitIndexes(buffer.length);
         bi.ensureCapacity(count);
         System.arraycopy(out, 0, bi.rawIndexes(), 0, count);
