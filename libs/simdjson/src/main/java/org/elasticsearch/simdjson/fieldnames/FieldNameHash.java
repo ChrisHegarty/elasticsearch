@@ -77,6 +77,64 @@ public final class FieldNameHash {
     }
 
     /**
+     * Computes the wyhash from an already-loaded little-endian 8-byte word. The word must
+     * contain the field name starting at bit 0 (i.e. the word was read at the field name's
+     * start offset). Bytes at and beyond the closing quote may be present and are masked off
+     * internally using {@code len}.
+     *
+     * <p>Produces the same hash value as {@link #hashName(byte[], int, int)} for the same
+     * byte sequence — both use the same {@code readSmall} encoding. This avoids re-reading
+     * the field name bytes from the buffer.
+     *
+     * @param word the 8-byte little-endian word containing the field name bytes
+     * @param len  length of the field name (must be 0..8)
+     * @return the 32-bit wyhash, guaranteed non-zero
+     */
+    public static int hashWord(long word, int len) {
+        assert len >= 0 && len <= 8 : "hashWord requires len in 0..8, got " + len;
+        long a = readSmallFromWord(word, len);
+        long h = wymix(a ^ WY_SECRET1, WY_SECRET0) ^ WY_SECRET2 ^ len;
+        h = wymix(h, h);
+        int h32 = (int) (h ^ (h >>> 32));
+        return h32 == 0 ? 1 : h32;
+    }
+
+    /**
+     * Extracts the {@link #readSmall}-compatible encoding from an 8-byte LE word.
+     * For len >= 4 this mirrors the overlapping-int-read encoding; for len 1..3
+     * this mirrors the 3-byte encoding; for len 0 returns 0.
+     */
+    static long readSmallFromWord(long word, int len) {
+        if (len >= 4) {
+            long lo = word & 0xFFFFFFFFL;
+            long hi = (word >>> ((len - 4) * 8)) & 0xFFFFFFFFL;
+            return lo | (hi << 32);
+        }
+        if (len > 0) {
+            int a = (int) (word) & 0xFF;
+            int b = (int) (word >>> ((len >>> 1) * 8)) & 0xFF;
+            int c = (int) (word >>> ((len - 1) * 8)) & 0xFF;
+            return (a << 16) | (b << 8) | c;
+        }
+        return 0;
+    }
+
+    /**
+     * Masks an 8-byte little-endian word to zero out bytes at position {@code len} and beyond.
+     * The result can be used directly as a prefix8 value for {@link FrozenFieldNameTable} lookup.
+     *
+     * @param word the 8-byte little-endian word
+     * @param len  number of valid bytes (0..8); if >= 8 the word is returned unmodified
+     * @return the word with bytes at index {@code len}..7 zeroed
+     */
+    public static long maskWord(long word, int len) {
+        if (len >= 8) return word;
+        if (len <= 0) return 0;
+        long mask = (1L << (len * 8)) - 1;
+        return word & mask;
+    }
+
+    /**
      * Scans for the closing quote and computes the wyhash in a single pass. Each 8-byte word
      * is read once, checked for quote/backslash, and the same bytes are fed into
      * {@link #hashName} to avoid re-reading from memory.

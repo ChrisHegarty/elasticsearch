@@ -527,7 +527,7 @@ public final class SimdJsonDirectWalker {
         int pos = start;
         int loopBound = buffer.length - 8;
 
-        while (pos <= loopBound) {
+        if (pos <= loopBound) {
             long word = (long) LONG_LE.get(buffer, pos);
             long xq = word ^ QUOTE_XOR;
             long xb = word ^ BACKSLASH_XOR;
@@ -538,12 +538,31 @@ public final class SimdJsonDirectWalker {
                 if (bh != 0 && (qh == 0 || (Long.numberOfTrailingZeros(bh) <= Long.numberOfTrailingZeros(qh)))) {
                     return resolveEscapedFieldName(buffer, quoteIdx, start);
                 }
-                int len = (pos - start) + (Long.numberOfTrailingZeros(qh) >>> 3);
-                int h = FieldNameHash.hashName(buffer, start, len);
-                String s = nameCache.lookup(buffer, start, len, h);
+                int len = Long.numberOfTrailingZeros(qh) >>> 3;
+                int h = FieldNameHash.hashWord(word, len);
+                long pfx = FieldNameHash.maskWord(word, len);
+                String s = nameCache.lookup(buffer, start, len, h, pfx);
                 return s != null ? s : nameCache.insert(buffer, start, len, h);
             }
-            pos += 8;
+            pos = start + 8;
+            while (pos <= loopBound) {
+                word = (long) LONG_LE.get(buffer, pos);
+                xq = word ^ QUOTE_XOR;
+                xb = word ^ BACKSLASH_XOR;
+                qh = (xq - LO_BITS) & ~xq & HI_BITS;
+                bh = (xb - LO_BITS) & ~xb & HI_BITS;
+
+                if ((qh | bh) != 0) {
+                    if (bh != 0 && (qh == 0 || (Long.numberOfTrailingZeros(bh) <= Long.numberOfTrailingZeros(qh)))) {
+                        return resolveEscapedFieldName(buffer, quoteIdx, start);
+                    }
+                    int len = (pos - start) + (Long.numberOfTrailingZeros(qh) >>> 3);
+                    int h = FieldNameHash.hashName(buffer, start, len);
+                    String s = nameCache.lookup(buffer, start, len, h);
+                    return s != null ? s : nameCache.insert(buffer, start, len, h);
+                }
+                pos += 8;
+            }
         }
         return resolveFieldNameScalar(buffer, quoteIdx, start, pos);
     }

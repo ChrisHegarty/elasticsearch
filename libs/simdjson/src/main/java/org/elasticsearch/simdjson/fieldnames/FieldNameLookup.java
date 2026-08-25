@@ -40,6 +40,22 @@ public interface FieldNameLookup {
     String lookup(byte[] buf, int off, int len, int hash);
 
     /**
+     * Looks up the canonical {@link String} using a pre-computed prefix8 value,
+     * avoiding a re-read of the first 8 bytes of the field name for prefix comparison.
+     * The default implementation ignores the prefix and delegates to {@link #lookup(byte[], int, int, int)}.
+     *
+     * @param buf     the source byte buffer
+     * @param off     start offset of the field name bytes
+     * @param len     length of the field name in bytes
+     * @param hash    precomputed hash from {@link FieldNameHash#hashName} or {@link FieldNameHash#hashWord}
+     * @param prefix8 the first min(len, 8) bytes as a little-endian long, zero-padded
+     * @return the cached String, or {@code null} if not found
+     */
+    default String lookup(byte[] buf, int off, int len, int hash, long prefix8) {
+        return lookup(buf, off, len, hash);
+    }
+
+    /**
      * Inserts a new field name into the cache. Called after a {@link #lookup} miss.
      *
      * @param buf  the source byte buffer

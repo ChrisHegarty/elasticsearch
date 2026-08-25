@@ -176,6 +176,52 @@ public class FieldNameTableTests extends ESTestCase {
         assertNotEquals(0, h);
     }
 
+    // -- hashWord (fused scan+hash from pre-loaded word) --------------------
+
+    public void testHashWordMatchesHashNameForAllLengths0To8() {
+        byte[] name = "abcdefgh".getBytes(StandardCharsets.UTF_8);
+        // Build an 8-byte word as LONG_LE would read it: name bytes in little-endian order
+        long word = 0;
+        for (int i = 0; i < 8; i++) {
+            word |= (long) (name[i] & 0xFF) << (i * 8);
+        }
+        for (int len = 0; len <= 8; len++) {
+            int expected = FieldNameHash.hashName(name, 0, len);
+            int actual = FieldNameHash.hashWord(word, len);
+            assertEquals("hashWord must match hashName for len=" + len, expected, actual);
+        }
+    }
+
+    public void testHashWordWithRandomBytes() {
+        for (int iter = 0; iter < 100; iter++) {
+            byte[] name = new byte[8];
+            for (int i = 0; i < 8; i++) {
+                name[i] = (byte) randomIntBetween(1, 127);
+            }
+            long word = 0;
+            for (int i = 0; i < 8; i++) {
+                word |= (long) (name[i] & 0xFF) << (i * 8);
+            }
+            int len = randomIntBetween(0, 8);
+            int expected = FieldNameHash.hashName(name, 0, len);
+            int actual = FieldNameHash.hashWord(word, len);
+            assertEquals("hashWord must match hashName for random input, len=" + len, expected, actual);
+        }
+    }
+
+    public void testMaskWordProducesCorrectPrefix8() {
+        byte[] name = "abcdefgh".getBytes(StandardCharsets.UTF_8);
+        long word = 0;
+        for (int i = 0; i < 8; i++) {
+            word |= (long) (name[i] & 0xFF) << (i * 8);
+        }
+        for (int len = 0; len <= 8; len++) {
+            long expected = FrozenFieldNameTable.readPrefix8(name, 0, len);
+            long actual = FieldNameHash.maskWord(word, len);
+            assertEquals("maskWord must match readPrefix8 for len=" + len, expected, actual);
+        }
+    }
+
     // -- scanAndHash --------------------------------------------------------
 
     /**

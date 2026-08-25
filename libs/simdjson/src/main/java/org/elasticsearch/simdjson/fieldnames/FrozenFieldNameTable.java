@@ -58,7 +58,14 @@ public final class FrozenFieldNameTable {
     record Frozen(int mask, int[] hashes, int[] lens, long[] prefix8, byte[][] keys, String[] names, int count) {
 
         String lookup(byte[] buf, int off, int len, int h) {
-            long pfx = readPrefix8(buf, off, len);
+            return lookup(buf, off, len, h, readPrefix8(buf, off, len));
+        }
+
+        /**
+         * Looks up a field name using a pre-computed prefix8 value, avoiding a re-read
+         * of the field name bytes for the prefix comparison.
+         */
+        String lookup(byte[] buf, int off, int len, int h, long pfx) {
             for (int i = h & mask;; i = (i + 1) & mask) {
                 int sh = hashes[i];
                 if (sh == 0) return null;
@@ -100,6 +107,19 @@ public final class FrozenFieldNameTable {
         public String lookup(byte[] buf, int off, int len, int hash) {
             if (frozen != null) {
                 return frozen.lookup(buf, off, len, hash);
+            }
+            for (int i = 0; i < learnCount; i++) {
+                if (learnLens[i] == len && Arrays.equals(learnKeys[i], 0, len, buf, off, off + len)) {
+                    return learnNames[i];
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public String lookup(byte[] buf, int off, int len, int hash, long prefix8) {
+            if (frozen != null) {
+                return frozen.lookup(buf, off, len, hash, prefix8);
             }
             for (int i = 0; i < learnCount; i++) {
                 if (learnLens[i] == len && Arrays.equals(learnKeys[i], 0, len, buf, off, off + len)) {
