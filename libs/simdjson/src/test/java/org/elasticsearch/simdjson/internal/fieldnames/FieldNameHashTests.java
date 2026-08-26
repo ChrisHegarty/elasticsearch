@@ -216,10 +216,60 @@ public class FieldNameHashTests extends ESTestCase {
             word |= (long) (name[i] & 0xFF) << (i * 8);
         }
         for (int len = 0; len <= 8; len++) {
-            long expected = FrozenFieldNameTable.readPrefix8(name, 0, len);
+            long expected = FieldNameHash.readPrefix8(name, 0, len);
             long actual = FieldNameHash.maskWord(word, len);
             assertEquals("maskWord must match readPrefix8 for len=" + len, expected, actual);
         }
+    }
+
+    // -- scanFieldName ------------------------------------------------------
+
+    public void testScanFieldNameMatchesHashNameForLongNames() {
+        String[] names = { "ResolutionWidth", "DOMInteractiveTiming", "OpenstatServiceName", "UserAgentMajor" };
+        for (String name : names) {
+            byte[] buf = makeScanBuffer(name);
+            FieldNameHash.FieldNameScan scan = FieldNameHash.scanFieldName(buf, 0);
+            assertNotNull(name, scan);
+            assertEquals(name.length(), scan.len());
+            assertEquals(FieldNameHash.hashName(buf, 0, name.length()), scan.hash());
+        }
+    }
+
+    /**
+     * ClickBench {@code (prefix8, len)} collision groups share the first 8 bytes and length but
+     * must produce distinct wyhashes for safe table lookup.
+     */
+    public void testScanFieldNameDistinctHashForPrefixLenCollisions() {
+        String[][] groups = {
+            { "ResolutionWidth", "ResolutionDepth" },
+            { "UserAgentMajor", "UserAgentMinor" },
+            { "SilverlightVersion1", "SilverlightVersion2", "SilverlightVersion3", "SilverlightVersion4" } };
+
+        for (String[] group : groups) {
+            int len = group[0].length();
+            long sharedPrefix8 = FieldNameHash.readPrefix8(group[0].getBytes(UTF_8), 0, len);
+            for (String name : group) {
+                byte[] buf = makeScanBuffer(name);
+                FieldNameHash.FieldNameScan scan = FieldNameHash.scanFieldName(buf, 0);
+                assertNotNull(name, scan);
+                assertEquals(len, scan.len());
+                assertEquals(sharedPrefix8, scan.prefix8());
+            }
+            for (int i = 0; i < group.length; i++) {
+                byte[] buf = makeScanBuffer(group[i]);
+                int hashI = FieldNameHash.scanFieldName(buf, 0).hash();
+                for (int j = i + 1; j < group.length; j++) {
+                    byte[] bufJ = makeScanBuffer(group[j]);
+                    int hashJ = FieldNameHash.scanFieldName(bufJ, 0).hash();
+                    assertNotEquals(group[i] + " vs " + group[j], hashI, hashJ);
+                }
+            }
+        }
+    }
+
+    public void testScanFieldNameReturnsNullForBackslash() {
+        byte[] buf = makeScanBufferRaw("hel\\lo\"");
+        assertNull(FieldNameHash.scanFieldName(buf, 0));
     }
 
     // -- scanAndHash --------------------------------------------------------
