@@ -284,4 +284,38 @@ public class EscfDocumentHandlerTests extends ESTestCase {
         encodeItemsArrayViaSimdWalk("""
             {"items":[{"tags":["a","b"],"n":1}]}""", inner);
     }
+
+    /**
+     * Layout (ordinal API while serializing an object inside an array — KV path, not schema leaves):
+     * <pre>
+     *   {"items":[{"n":1}]}
+     *   then root scalar: {"n":99} on the same row
+     * </pre>
+     * While {@code kvDepth > 0}, {@link EscfDocumentHandler} must ignore field ordinals and route
+     * inner fields into the KEY_VALUE blob. A subsequent root-level ordinal write must still
+     * populate a top-level {@code n} column without inheriting a stale cache entry from the
+     * array element.
+     */
+    public void testOrdinalIgnoredInsideArrayObjectKv() {
+        EscfBatchBuilder backend = newBackend();
+        EscfRowBuffer row = backend.beginRow();
+        EscfDocumentHandler handler = new EscfDocumentHandler(row, backend, LeafSink.NO_OP, false);
+
+        int ordN = 7;
+
+        handler.startArray("items");
+        handler.arrayElemStartObject();
+        handler.longField(ordN, "n", 1, true, new byte[] { '1' }, 0, 1);
+        handler.arrayElemEndObject();
+        handler.endArray();
+
+        handler.longField(ordN, "n", 99, true, new byte[] { '9', '9' }, 0, 2);
+        row.finishRow();
+
+        assertEquals("the items array should be at column 0", "items", backend.columnPath(0));
+        assertEquals("root n should be at column 1", "n", backend.columnPath(1));
+        assertEquals("items holds the packed [{\"n\":1}] blob", SourceValueType.UNION_ARRAY, row.scratchType(0));
+        assertEquals("root n should of type INT", SourceValueType.INT, row.scratchType(1));
+        assertEquals("the n column should be 99 (not 1) ", 99, row.scratchNumeric(1));
+    }
 }

@@ -42,7 +42,11 @@ public final class EscfRowBuffer {
 
     private int[] parentStack;
     private int parentDepth;
-    private int[] ordinalToColIdx;
+    /**
+     * Column index per frozen field ordinal, keyed by {@code [parentNonLeafIdx][fieldOrdinal]}.
+     * Root fields use {@code ordinalToColIdxByParent[0]}.
+     */
+    private int[][] ordinalToColIdxByParent;
 
     /**
      * Whether {@link #finishRow()} has been called but {@link EscfBatchBuilder#commit} has not.
@@ -236,30 +240,45 @@ public final class EscfRowBuffer {
 
     /**
      * Uses a frozen field ordinal to reuse the leaf column index learned on a prior row, avoiding
-     * {@link SourceSchema#appendLeaf} hash lookups on warm root-level fields.
+     * {@link SourceSchema#appendLeaf} hash lookups on warm fields. Ordinals are keyed by
+     * {@code (parentNonLeafIdx, fieldOrdinal)} because the name table assigns ordinals per
+     * segment name, not per dotted path.
      */
     private int leafByOrdinal(int fieldOrdinal, String name) {
-        if (fieldOrdinal >= 0 && parentDepth == 0) {
-            if (ordinalToColIdx == null) {
-                ordinalToColIdx = new int[Math.max(16, fieldOrdinal + 1)];
-                Arrays.fill(ordinalToColIdx, -1);
-            } else if (fieldOrdinal >= ordinalToColIdx.length) {
-                ordinalToColIdx = Arrays.copyOf(ordinalToColIdx, fieldOrdinal + 1);
-                Arrays.fill(ordinalToColIdx, ordinalToColIdx.length / 2, ordinalToColIdx.length, -1);
-            }
-            int cached = ordinalToColIdx[fieldOrdinal];
-            if (cached >= 0) {
-                ensureScratchCapacity(cached + 1);
-                if (columnsSet.getAndSet(cached)) {
-                    throw new IllegalArgumentException("Duplicate field [" + name + "]");
-                }
-                return cached;
-            }
-            int colIdx = addLeaf(name);
-            ordinalToColIdx[fieldOrdinal] = colIdx;
-            return colIdx;
+        if (fieldOrdinal < 0) {
+            return addLeaf(name);
         }
-        return addLeaf(name);
+        int parentIdx = parentStack[parentDepth];
+        int[] perParent = ordinalRow(parentIdx, fieldOrdinal);
+        int cached = perParent[fieldOrdinal];
+        if (cached >= 0) {
+            ensureScratchCapacity(cached + 1);
+            if (columnsSet.getAndSet(cached)) {
+                throw new IllegalArgumentException("Duplicate field [" + name + "]");
+            }
+            return cached;
+        }
+        int colIdx = addLeaf(name);
+        perParent[fieldOrdinal] = colIdx;
+        return colIdx;
+    }
+
+    private int[] ordinalRow(int parentIdx, int fieldOrdinal) {
+        int[][] table = ordinalToColIdxByParent;
+        if (table == null) {
+            table = ordinalToColIdxByParent = new int[Math.max(16, parentIdx + 1)][];
+        } else if (parentIdx >= table.length) {
+            table = ordinalToColIdxByParent = Arrays.copyOf(table, parentIdx + 1);
+        }
+        int[] perParent = table[parentIdx];
+        if (perParent == null) {
+            perParent = table[parentIdx] = new int[Math.max(16, fieldOrdinal + 1)];
+            Arrays.fill(perParent, -1);
+        } else if (fieldOrdinal >= perParent.length) {
+            perParent = table[parentIdx] = Arrays.copyOf(perParent, fieldOrdinal + 1);
+            Arrays.fill(perParent, perParent.length / 2, perParent.length, -1);
+        }
+        return perParent;
     }
 
     private void ensureScratchCapacity(int size) {

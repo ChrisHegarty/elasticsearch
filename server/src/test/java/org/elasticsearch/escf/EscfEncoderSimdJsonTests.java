@@ -164,6 +164,38 @@ public class EscfEncoderSimdJsonTests extends ESTestCase {
     }
 
     /**
+     * Layout (same segment name, different parents — multi-row warm-up for ordinal cache):
+     * <pre>
+     *   {"r":{"k":1}, "k":2}
+     *   {"r":{"k":3}, "k":4}
+     *   {"r":{"k":5}, "k":6}
+     * </pre>
+     * Extends {@link #testSameNameDifferentParent} with repeated documents so simdjson and
+     * Jackson paths both exercise warm schema + frozen field ordinals under nesting.
+     */
+    public void testNestedSameNameDifferentParentMultiRow() throws IOException {
+        assertSameOutputAllSourceShapes("""
+            {"r":{"k":1},"k":2}""", """
+            {"r":{"k":3},"k":4}""", """
+            {"r":{"k":5},"k":6}""");
+    }
+
+    /**
+     * Layout (three-level nesting — representative of otel_nested benchmark shape):
+     * <pre>
+     *   {"resource":{"attributes":{"key":"trace_id","value":"abc"}},"Body":"msg1"}
+     *   {"resource":{"attributes":{"key":"service","value":"frontend"}},"Body":"msg2"}
+     * </pre>
+     * Nested leaves under {@code resource.attributes} share segment names with other paths in
+     * larger schemas; multi-row encoding validates nested ordinal routing end-to-end.
+     */
+    public void testOtelNestedAttributesMultiRow() throws IOException {
+        assertSameOutputAllSourceShapes("""
+            {"resource":{"attributes":{"key":"trace_id","value":"abc"}},"Body":"msg1"}""", """
+            {"resource":{"attributes":{"key":"service","value":"frontend"}},"Body":"msg2"}""");
+    }
+
+    /**
      * Same leaf name at the same traversal position but under different parent objects — the
      * positional prediction must check both name identity AND parent index, so "x" nested inside
      * "a" and "x" at the root are treated as distinct columns.
@@ -1109,7 +1141,7 @@ public class EscfEncoderSimdJsonTests extends ESTestCase {
         return switch (shape) {
             case ZERO_OFFSET -> new BytesArray(bytes);
             case NON_ZERO_OFFSET -> {
-                byte[] padding = new byte[32];
+                byte[] padding = new byte[randomIntBetween(1, 64)];
                 byte[] combined = Arrays.copyOf(padding, padding.length + bytes.length);
                 System.arraycopy(bytes, 0, combined, padding.length, bytes.length);
                 yield new BytesArray(combined, padding.length, bytes.length);
