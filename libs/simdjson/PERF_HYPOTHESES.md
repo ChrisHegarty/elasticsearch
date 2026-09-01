@@ -486,10 +486,19 @@ count and structure, not name length alone.
 |-----|--------|-----------|
 | **Small-table fast path** | small_sparse, otel | Skip direct-mapped table when `count < 32`; probe-only lookup |
 | **Deferred freeze** | small_sparse heterogeneity | Freeze after first doc that adds zero new field names |
-| Nested ordinals (future) | otel_nested | Extend ordinal cache beyond `parentDepth == 0` |
+| Nested ordinals | otel_nested | `ordinalToColIdxByParent[parentIdx][fieldOrdinal]` lazy `int[][]` cache |
 
 A count-based branch after freeze is essentially free and preserves clickbench gains
 (126 fields still use the direct map).
+
+**Benchmark note — unified vs split ordinal cache layout:** The current implementation
+uses one lazy `int[][]` for all parents, including root (`ordinalToColIdxByParent[0]`).
+An alternative keeps a dedicated `int[] rootOrdinalToColIdx` for flat workloads
+(clickbench) and a separate lazy `int[][]` only for nested parents — one fewer
+indirection on the hottest path. Re-run `SimdJsonParserBenchmark` on
+`clickbench_flat` and `otel_nested` (x64 + ARM) and compare before/after if root
+throughput regresses; split the structures only if the unified layout shows a
+measurable cost on `clickbench_flat`.
 
 ### Benchmark Results — post-H2b (small-table + deferred freeze, JDK 26.0.1)
 
