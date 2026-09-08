@@ -12,6 +12,7 @@ package org.elasticsearch.simdjson.internal.fieldnames;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -31,6 +32,18 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Thread-safety follows a parent/child model: a single root instance is shared
  * across all threads. Each parsing thread obtains a {@link Child} via {@link #makeChild()}.
+ *
+ * <h2>Learning beyond the first document</h2>
+ * A child's hash table is immutable once frozen, so names the first document did not contain
+ * would otherwise miss forever — a real cost when documents are sparse or when one child sees
+ * several mappings. Instead, a frozen child records misses in a small bounded overflow buffer and
+ * offers them to the shared table on {@link Child#release()}.
+ *
+ * <p>Publication swaps a superset table into {@link #shared} by CAS. Existing children are
+ * unaffected because each holds its own immutable {@link Frozen} reference and never re-reads;
+ * only children created afterwards see the richer table. The scheme converges: once the shared
+ * table covers the field names a workload actually uses, nothing is new any more and merging
+ * stops.
  */
 public final class FrozenFieldNameTable {
 
@@ -43,7 +56,21 @@ public final class FrozenFieldNameTable {
     /** Sentinel in {@link Frozen#directOrdinals} marking a colliding direct-map bucket. */
     private static final int DIRECT_COLLISION = -2;
 
+    /**
+     * Ceiling on names in the shared table. Merges that would exceed it are declined, which bounds
+     * both memory and the cost of the rebuild a merge performs. Without a cap, workloads that put
+     * high-cardinality data in field names (for example {@code {"user.9f3a1.count": 1}}) would grow
+     * the table without limit.
+     */
+    static final int MAX_SHARED_NAMES = 4096;
+
     private final AtomicReference<Frozen> shared = new AtomicReference<>();
+
+    private final AtomicLong publications = new AtomicLong();
+    private final AtomicLong tablesBuilt = new AtomicLong();
+    private final AtomicLong entriesWritten = new AtomicLong();
+    private final AtomicLong casRetries = new AtomicLong();
+    private final AtomicLong declinedAtCap = new AtomicLong();
 
     public FrozenFieldNameTable() {}
 
@@ -52,12 +79,240 @@ public final class FrozenFieldNameTable {
         return new Child(this, f);
     }
 
-    void mergeChild(Frozen childFrozen) {
-        shared.compareAndSet(null, childFrozen);
+    /**
+     * Publishes a newly frozen child's table. The first publisher donates its table wholesale,
+     * which costs nothing; later publishers have to merge their names into whatever is already
+     * shared.
+     */
+    void mergeChild(Frozen childFrozen, String[] names, byte[][] keys, int[] lens, int count) {
+        if (shared.compareAndSet(null, childFrozen)) {
+            publications.incrementAndGet();
+            return;
+        }
+        mergeNames(names, keys, lens, 0, count);
+    }
+
+    /**
+     * Merges {@code names[from..to)} into the shared table, retrying until it wins the CAS or finds
+     * it has nothing to add. Names already present keep their existing {@link String} instance, so
+     * publication never changes the identity of a name callers may already hold.
+     */
+    void mergeNames(String[] names, byte[][] keys, int[] lens, int from, int to) {
+        if (to <= from) {
+            return;
+        }
+        for (;;) {
+            Frozen current = shared.get();
+            Frozen merged;
+            if (current == null) {
+                merged = build(names, keys, lens, from, to);
+                recordBuild(merged.count());
+            } else {
+                merged = union(current, names, keys, lens, from, to);
+            }
+            if (merged == current) {
+                // Every candidate is already shared, or the merge would exceed MAX_SHARED_NAMES.
+                return;
+            }
+            if (shared.compareAndSet(current, merged)) {
+                publications.incrementAndGet();
+                return;
+            }
+            casRetries.incrementAndGet();
+        }
     }
 
     Frozen getShared() {
         return shared.get();
+    }
+
+    /** Number of names in the shared table, or {@code 0} if nothing has been published. Primarily for testing. */
+    public int sharedNameCount() {
+        Frozen f = shared.get();
+        return f == null ? 0 : f.count();
+    }
+
+    private void recordBuild(int entries) {
+        tablesBuilt.incrementAndGet();
+        entriesWritten.addAndGet(entries);
+    }
+
+    /** Snapshot of shared-table merging activity. Not atomic across fields; for reporting only. */
+    public MergeStats mergeStats() {
+        return new MergeStats(
+            publications.get(),
+            tablesBuilt.get(),
+            entriesWritten.get(),
+            casRetries.get(),
+            declinedAtCap.get(),
+            sharedNameCount()
+        );
+    }
+
+    /**
+     * Counts describing how much work shared-table merging has cost, so the convergence burst can
+     * be measured deterministically rather than inferred from timings. Covers merging only: a
+     * child freezing its own first-document table is not counted.
+     *
+     * @param publications  successful swaps of the shared table, including the first child's
+     *                      wholesale hand-off
+     * @param tablesBuilt   tables constructed while merging, including any thrown away after
+     *                      losing a CAS
+     * @param entriesWritten entries written across those constructions; the proxy for merge cost,
+     *                      since each rebuild rewrites the whole table
+     * @param casRetries    lost CAS races, indicating contention between concurrent publishers
+     * @param declinedAtCap merges dropped because they would exceed {@link #MAX_SHARED_NAMES}
+     * @param sharedNames   names currently in the shared table
+     */
+    public record MergeStats(
+        long publications,
+        long tablesBuilt,
+        long entriesWritten,
+        long casRetries,
+        long declinedAtCap,
+        int sharedNames
+    ) {}
+
+    /**
+     * Builds a frozen table from the {@code [from, to)} slice of parallel name/key/length arrays.
+     *
+     * <p>Assigns dense ordinals over the slice and builds the direct map, so a table produced by a
+     * merge is as fast to read as one produced by a child's own freeze. Building them only in
+     * {@link Child#freeze()} would mean the first publication silently downgraded every later
+     * reader to the probe path.
+     */
+    private static Frozen build(String[] names, byte[][] keys, int[] lens, int from, int to) {
+        int count = to - from;
+        int tableSize = Integer.highestOneBit(Math.max(16, count * 2 - 1)) << 1;
+        int mask = tableSize - 1;
+
+        int[] hashes = new int[tableSize];
+        int[] tableLens = new int[tableSize];
+        long[] prefix8 = new long[tableSize];
+        byte[][] tableKeys = new byte[tableSize][];
+        String[] tableNames = new String[tableSize];
+        int[] slotOrdinals = new int[tableSize];
+        boolean[] prefixLenUnique = new boolean[tableSize];
+
+        String[] namesByOrdinal = new String[count];
+        int[] ordinalHashes = new int[count];
+        int[] ordinalLens = new int[count];
+        long[] ordinalPrefix8 = new long[count];
+
+        HashMap<Long, Integer> prefixLenCounts = new HashMap<>();
+        for (int i = from; i < to; i++) {
+            long pfx = FieldNameHash.readPrefix8(keys[i], 0, lens[i]);
+            prefixLenCounts.merge(prefixLenKey(pfx, lens[i]), 1, Integer::sum);
+        }
+
+        int[] directOrdinals = null;
+        if (count >= DIRECT_MAP_MIN_FIELDS) {
+            int directSize = Integer.highestOneBit(Math.max(16, count * 2 - 1)) << 1;
+            directOrdinals = new int[directSize];
+            Arrays.fill(directOrdinals, -1);
+        }
+
+        for (int i = from; i < to; i++) {
+            int ordinal = i - from;
+            int h = FieldNameHash.hashName(keys[i], 0, lens[i]);
+            long pfx = FieldNameHash.readPrefix8(keys[i], 0, lens[i]);
+            int slot = h & mask;
+            while (hashes[slot] != 0) {
+                slot = (slot + 1) & mask;
+            }
+            hashes[slot] = h;
+            tableLens[slot] = lens[i];
+            prefix8[slot] = pfx;
+            tableKeys[slot] = keys[i];
+            tableNames[slot] = names[i];
+            slotOrdinals[slot] = ordinal;
+            prefixLenUnique[slot] = prefixLenCounts.get(prefixLenKey(pfx, lens[i])) == 1;
+
+            namesByOrdinal[ordinal] = names[i];
+            ordinalHashes[ordinal] = h;
+            ordinalLens[ordinal] = lens[i];
+            ordinalPrefix8[ordinal] = pfx;
+
+            if (directOrdinals != null) {
+                int directIdx = directIndex(pfx, lens[i], directOrdinals.length);
+                if (directOrdinals[directIdx] == -1) {
+                    directOrdinals[directIdx] = ordinal;
+                } else {
+                    directOrdinals[directIdx] = DIRECT_COLLISION;
+                }
+            }
+        }
+
+        return new Frozen(
+            mask,
+            hashes,
+            tableLens,
+            prefix8,
+            tableKeys,
+            tableNames,
+            count,
+            namesByOrdinal,
+            ordinalHashes,
+            ordinalLens,
+            ordinalPrefix8,
+            slotOrdinals,
+            directOrdinals,
+            prefixLenUnique
+        );
+    }
+
+    /**
+     * Returns a table holding {@code current} plus whichever of {@code names[from..to)} it lacks,
+     * or {@code current} itself when there is nothing to add or the result would be too large.
+     *
+     * <p>The table is exact-sized and open-addressed with no spare capacity, so growing it means
+     * rebuilding it. That is affordable only because merges stop once the shared table covers the
+     * workload's names.
+     */
+    private Frozen union(Frozen current, String[] names, byte[][] keys, int[] lens, int from, int to) {
+        boolean[] isNew = new boolean[to - from];
+        int newCount = 0;
+        for (int i = from; i < to; i++) {
+            int len = lens[i];
+            int h = FieldNameHash.hashName(keys[i], 0, len);
+            if (current.lookup(keys[i], 0, len, h) == null) {
+                isNew[i - from] = true;
+                newCount++;
+            }
+        }
+        if (newCount == 0) {
+            return current;
+        }
+        if (current.count() + newCount > MAX_SHARED_NAMES) {
+            declinedAtCap.incrementAndGet();
+            return current;
+        }
+
+        String[] mergedNames = new String[current.count() + newCount];
+        byte[][] mergedKeys = new byte[mergedNames.length][];
+        int[] mergedLens = new int[mergedNames.length];
+        int n = 0;
+
+        int[] currentHashes = current.hashes();
+        for (int slot = 0; slot < currentHashes.length; slot++) {
+            if (currentHashes[slot] != 0) {
+                mergedNames[n] = current.names()[slot];
+                mergedKeys[n] = current.keys()[slot];
+                mergedLens[n] = current.lens()[slot];
+                n++;
+            }
+        }
+        for (int i = from; i < to; i++) {
+            if (isNew[i - from]) {
+                mergedNames[n] = names[i];
+                mergedKeys[n] = keys[i];
+                mergedLens[n] = lens[i];
+                n++;
+            }
+        }
+
+        recordBuild(n);
+        return build(mergedNames, mergedKeys, mergedLens, 0, n);
     }
 
     /**
@@ -121,6 +376,22 @@ public final class FrozenFieldNameTable {
      * {@link FrozenFieldNameTable#makeChild()}.
      */
     public static final class Child implements FieldNameLookup {
+
+        /**
+         * Cap on post-freeze misses recorded per child, chosen from measurement rather than taste.
+         * Every frozen-table miss scans this buffer linearly, and the scan is not free relative to
+         * what it saves: {@code FieldNameCacheBenchmark} puts it at roughly 0.25ns per entry
+         * against about 19.5ns and 64 bytes to allocate a name, so the buffer stops paying for
+         * itself somewhere near 56 entries. At 32 an average hit costs about 10ns and a name the
+         * buffer does not hold costs about 7ns more to reject.
+         *
+         * <p>The cost of keeping it small is only how long convergence takes, since a child learns
+         * at most this many new names per batch. {@code FieldNameConvergenceReport} shows a
+         * 300-name sparse mapping converging in single-digit batches either way, which is not worth
+         * a slower miss path.
+         */
+        static final int MAX_OVERFLOW = 32;
+
         private final FrozenFieldNameTable parent;
         private Frozen frozen;
 
@@ -130,6 +401,15 @@ public final class FrozenFieldNameTable {
         private int learnCount;
         private boolean dirty;
         private boolean documentLearnedNew;
+
+        private String[] overflowNames;
+        private byte[][] overflowKeys;
+        private int[] overflowLens;
+        private int[] overflowHashes;
+        private int overflowCount;
+
+        /** How much of the overflow buffer {@link #release()} has already offered to the parent. */
+        private int overflowPublished;
 
         Child(FrozenFieldNameTable parent, Frozen frozen) {
             this.parent = parent;
@@ -157,11 +437,33 @@ public final class FrozenFieldNameTable {
         @Override
         public ResolvedFieldName lookupField(byte[] buf, int off, int len, int hash, long prefix8) {
             if (frozen != null) {
-                return frozen.lookupField(buf, off, len, hash, prefix8);
+                ResolvedFieldName hit = frozen.lookupField(buf, off, len, hash, prefix8);
+                if (hit != null) {
+                    return hit;
+                }
+                // An overflow name is canonical but has no dense ordinal, so callers fall back to
+                // their name-keyed path rather than the ordinal cache.
+                String overflow = lookupOverflow(buf, off, len, hash);
+                return overflow == null ? null : new ResolvedFieldName(overflow, -1);
             }
             for (int i = 0; i < learnCount; i++) {
                 if (learnLens[i] == len && Arrays.equals(learnKeys[i], 0, len, buf, off, off + len)) {
                     return new ResolvedFieldName(learnNames[i], -1);
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Scans the overflow buffer, so a name the frozen table lacks is still canonicalized once
+         * per child rather than reallocated for every document that contains it.
+         */
+        private String lookupOverflow(byte[] buf, int off, int len, int hash) {
+            for (int i = 0; i < overflowCount; i++) {
+                if (overflowHashes[i] == hash && overflowLens[i] == len) {
+                    if (Arrays.equals(overflowKeys[i], 0, len, buf, off, off + len)) {
+                        return overflowNames[i];
+                    }
                 }
             }
             return null;
@@ -188,6 +490,7 @@ public final class FrozenFieldNameTable {
         public ResolvedFieldName insertField(byte[] buf, int off, int len, int hash) {
             String s = new String(buf, off, len, StandardCharsets.UTF_8);
             if (frozen != null) {
+                recordOverflow(s, buf, off, len, hash);
                 return new ResolvedFieldName(s, -1);
             }
             documentLearnedNew = true;
@@ -206,86 +509,40 @@ public final class FrozenFieldNameTable {
             return new ResolvedFieldName(s, -1);
         }
 
+        /**
+         * Records a name the frozen table did not hold, for {@link #release()} to offer to the
+         * shared table. Callers reach this only after {@link #lookup} missed both the frozen table
+         * and the overflow buffer, so entries are inherently distinct.
+         *
+         * <p>Once the buffer is full further names are still returned to the caller, just neither
+         * canonicalized nor published.
+         */
+        private void recordOverflow(String name, byte[] buf, int off, int len, int hash) {
+            if (overflowCount == MAX_OVERFLOW) {
+                return;
+            }
+            if (overflowNames == null) {
+                overflowNames = new String[MAX_OVERFLOW];
+                overflowKeys = new byte[MAX_OVERFLOW][];
+                overflowLens = new int[MAX_OVERFLOW];
+                overflowHashes = new int[MAX_OVERFLOW];
+            }
+            overflowNames[overflowCount] = name;
+            // Copied because buf may be the walker's reusable string buffer.
+            overflowKeys[overflowCount] = Arrays.copyOfRange(buf, off, off + len);
+            overflowLens[overflowCount] = len;
+            overflowHashes[overflowCount] = hash;
+            overflowCount++;
+        }
+
         @Override
         public void freeze() {
             if (frozen != null || learnCount == 0) {
                 return;
             }
 
-            int tableSize = Integer.highestOneBit(Math.max(16, learnCount * 2 - 1)) << 1;
-            int mask = tableSize - 1;
-
-            int[] hashes = new int[tableSize];
-            int[] lens = new int[tableSize];
-            long[] prefix8 = new long[tableSize];
-            byte[][] keys = new byte[tableSize][];
-            String[] names = new String[tableSize];
-            int[] slotOrdinals = new int[tableSize];
-            boolean[] prefixLenUnique = new boolean[tableSize];
-            String[] namesByOrdinal = Arrays.copyOf(learnNames, learnCount);
-            int[] ordinalHashes = new int[learnCount];
-            int[] ordinalLens = new int[learnCount];
-            long[] ordinalPrefix8 = new long[learnCount];
-
-            HashMap<Long, Integer> prefixLenCounts = new HashMap<>();
-            for (int i = 0; i < learnCount; i++) {
-                long pfx = FieldNameHash.readPrefix8(learnKeys[i], 0, learnLens[i]);
-                long key = prefixLenKey(pfx, learnLens[i]);
-                prefixLenCounts.merge(key, 1, Integer::sum);
-            }
-
-            int[] directOrdinals = null;
-            if (learnCount >= DIRECT_MAP_MIN_FIELDS) {
-                int directSize = Integer.highestOneBit(Math.max(16, learnCount * 2 - 1)) << 1;
-                directOrdinals = new int[directSize];
-                Arrays.fill(directOrdinals, -1);
-            }
-
-            for (int i = 0; i < learnCount; i++) {
-                int h = FieldNameHash.hashName(learnKeys[i], 0, learnLens[i]);
-                long pfx = FieldNameHash.readPrefix8(learnKeys[i], 0, learnLens[i]);
-                int slot = h & mask;
-                while (hashes[slot] != 0) {
-                    slot = (slot + 1) & mask;
-                }
-                hashes[slot] = h;
-                lens[slot] = learnLens[i];
-                prefix8[slot] = pfx;
-                keys[slot] = learnKeys[i];
-                names[slot] = learnNames[i];
-                slotOrdinals[slot] = i;
-                ordinalHashes[i] = h;
-                ordinalLens[i] = learnLens[i];
-                ordinalPrefix8[i] = pfx;
-                prefixLenUnique[slot] = prefixLenCounts.get(prefixLenKey(pfx, learnLens[i])) == 1;
-
-                if (directOrdinals != null) {
-                    int directIdx = directIndex(pfx, learnLens[i], directOrdinals.length);
-                    if (directOrdinals[directIdx] == -1) {
-                        directOrdinals[directIdx] = i;
-                    } else {
-                        directOrdinals[directIdx] = DIRECT_COLLISION;
-                    }
-                }
-            }
-
-            frozen = new Frozen(
-                mask,
-                hashes,
-                lens,
-                prefix8,
-                keys,
-                names,
-                learnCount,
-                namesByOrdinal,
-                ordinalHashes,
-                ordinalLens,
-                ordinalPrefix8,
-                slotOrdinals,
-                directOrdinals,
-                prefixLenUnique
-            );
-            parent.mergeChild(frozen);
+            frozen = build(learnNames, learnKeys, learnLens, 0, learnCount);
+            parent.mergeChild(frozen, learnNames, learnKeys, learnLens, learnCount);
 
             learnNames = null;
             learnKeys = null;
@@ -305,6 +562,11 @@ public final class FrozenFieldNameTable {
                     learnKeys = null;
                     learnLens = null;
                 }
+            } else if (overflowCount > overflowPublished) {
+                parent.mergeNames(overflowNames, overflowKeys, overflowLens, overflowPublished, overflowCount);
+                overflowPublished = overflowCount;
+                // The buffer stays live: this child keeps canonicalizing these names from it, since
+                // its own frozen table is immutable and will never contain them.
             }
         }
 
@@ -316,6 +578,11 @@ public final class FrozenFieldNameTable {
         /** Returns the direct-map array when frozen, or {@code null} for small schemas. Primarily for testing. */
         int[] frozenDirectOrdinals() {
             return frozen == null ? null : frozen.directOrdinals();
+        }
+
+        /** Number of post-freeze misses this child has recorded. Primarily for testing. */
+        public int overflowCount() {
+            return overflowCount;
         }
     }
 
