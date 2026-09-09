@@ -198,6 +198,7 @@ public final class FrozenFieldNameTable {
         int[] ordinalHashes = new int[count];
         int[] ordinalLens = new int[count];
         long[] ordinalPrefix8 = new long[count];
+        ResolvedFieldName[] resolvedByOrdinal = new ResolvedFieldName[count];
 
         HashMap<Long, Integer> prefixLenCounts = new HashMap<>();
         for (int i = from; i < to; i++) {
@@ -232,6 +233,7 @@ public final class FrozenFieldNameTable {
             ordinalHashes[ordinal] = h;
             ordinalLens[ordinal] = lens[i];
             ordinalPrefix8[ordinal] = pfx;
+            resolvedByOrdinal[ordinal] = new ResolvedFieldName(names[i], ordinal);
 
             if (directOrdinals != null) {
                 int directIdx = directIndex(pfx, lens[i], directOrdinals.length);
@@ -257,7 +259,8 @@ public final class FrozenFieldNameTable {
             ordinalPrefix8,
             slotOrdinals,
             directOrdinals,
-            prefixLenUnique
+            prefixLenUnique,
+            resolvedByOrdinal
         );
     }
 
@@ -332,7 +335,8 @@ public final class FrozenFieldNameTable {
         long[] ordinalPrefix8,
         int[] slotOrdinals,
         int[] directOrdinals,
-        boolean[] prefixLenUnique
+        boolean[] prefixLenUnique,
+        ResolvedFieldName[] resolvedByOrdinal
     ) {
 
         String lookup(byte[] buf, int off, int len, int h) {
@@ -369,13 +373,19 @@ public final class FrozenFieldNameTable {
             }
         }
 
-        /** Same probe as {@link #lookup}, but also returns the dense ordinal for column indexing. */
+        /**
+         * Same probe as {@link #lookup}, but also returns the dense ordinal for column indexing.
+         * Returns the shared, precomputed {@link ResolvedFieldName} for the ordinal rather than
+         * allocating one per call: this is the method the production parse path actually calls
+         * once per field per document (it always needs the ordinal), so an allocation here would
+         * defeat the point of avoiding it in {@link #lookup}.
+         */
         ResolvedFieldName lookupField(byte[] buf, int off, int len, int h, long pfx) {
             if (directOrdinals != null) {
                 int directIdx = directIndex(pfx, len, directOrdinals.length);
                 int ordinal = directOrdinals[directIdx];
                 if (ordinal >= 0 && ordinalHashes[ordinal] == h && ordinalLens[ordinal] == len && ordinalPrefix8[ordinal] == pfx) {
-                    return new ResolvedFieldName(namesByOrdinal[ordinal], ordinal);
+                    return resolvedByOrdinal[ordinal];
                 }
             }
 
@@ -386,7 +396,7 @@ public final class FrozenFieldNameTable {
                 }
                 if (sh == h && lens[i] == len && prefix8[i] == pfx) {
                     if (len <= 8 || prefixLenUnique[i] || Arrays.equals(keys[i], 0, len, buf, off, off + len)) {
-                        return new ResolvedFieldName(names[i], slotOrdinals[i]);
+                        return resolvedByOrdinal[slotOrdinals[i]];
                     }
                 }
             }
@@ -428,6 +438,8 @@ public final class FrozenFieldNameTable {
         private byte[][] overflowKeys;
         private int[] overflowLens;
         private int[] overflowHashes;
+        /** Lazily-built, one per overflow entry, so repeat overflow hits reuse it instead of allocating. */
+        private ResolvedFieldName[] overflowResolved;
         private int overflowCount;
 
         /** How much of the overflow buffer {@link #release()} has already offered to the parent. */
@@ -480,8 +492,7 @@ public final class FrozenFieldNameTable {
                 }
                 // An overflow name is canonical but has no dense ordinal, so callers fall back to
                 // their name-keyed path rather than the ordinal cache.
-                String overflow = lookupOverflow(buf, off, len, hash);
-                return overflow == null ? null : new ResolvedFieldName(overflow, -1);
+                return lookupOverflowField(buf, off, len, hash);
             }
             for (int i = 0; i < learnCount; i++) {
                 if (learnLens[i] == len && Arrays.equals(learnKeys[i], 0, len, buf, off, off + len)) {
@@ -500,6 +511,22 @@ public final class FrozenFieldNameTable {
                 if (overflowHashes[i] == hash && overflowLens[i] == len) {
                     if (Arrays.equals(overflowKeys[i], 0, len, buf, off, off + len)) {
                         return overflowNames[i];
+                    }
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Same scan as {@link #lookupOverflow}, but returns the cached {@link ResolvedFieldName}
+         * for the slot instead of allocating one, since overflow names are looked up once per
+         * field per document just like frozen-table hits.
+         */
+        private ResolvedFieldName lookupOverflowField(byte[] buf, int off, int len, int hash) {
+            for (int i = 0; i < overflowCount; i++) {
+                if (overflowHashes[i] == hash && overflowLens[i] == len) {
+                    if (Arrays.equals(overflowKeys[i], 0, len, buf, off, off + len)) {
+                        return overflowResolved[i];
                     }
                 }
             }
@@ -573,8 +600,10 @@ public final class FrozenFieldNameTable {
                 overflowKeys = new byte[MAX_OVERFLOW][];
                 overflowLens = new int[MAX_OVERFLOW];
                 overflowHashes = new int[MAX_OVERFLOW];
+                overflowResolved = new ResolvedFieldName[MAX_OVERFLOW];
             }
             overflowNames[overflowCount] = name;
+            overflowResolved[overflowCount] = new ResolvedFieldName(name, -1);
             // Copied because buf may be the walker's reusable string buffer.
             overflowKeys[overflowCount] = Arrays.copyOfRange(buf, off, off + len);
             overflowLens[overflowCount] = len;
