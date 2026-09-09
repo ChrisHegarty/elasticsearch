@@ -340,14 +340,36 @@ public final class FrozenFieldNameTable {
         }
 
         /**
-         * Looks up a field name using a pre-computed prefix8 value, avoiding a re-read
-         * of the field name bytes for the prefix comparison.
+         * Looks up a field name using a pre-computed prefix8 value, avoiding a re-read of the
+         * field name bytes for the prefix comparison. Returns the name directly with no
+         * allocation; callers that also need the ordinal must use {@link #lookupField} instead of
+         * unwrapping its result, since a hit here is the hottest path in the whole cache (once per
+         * field per document) and paying for a {@link ResolvedFieldName} on every call was measured
+         * as a double-digit percent regression in {@code FieldNameCacheBenchmark#frozenHit}.
          */
         String lookup(byte[] buf, int off, int len, int h, long pfx) {
-            ResolvedFieldName resolved = lookupField(buf, off, len, h, pfx);
-            return resolved == null ? null : resolved.name();
+            if (directOrdinals != null) {
+                int directIdx = directIndex(pfx, len, directOrdinals.length);
+                int ordinal = directOrdinals[directIdx];
+                if (ordinal >= 0 && ordinalHashes[ordinal] == h && ordinalLens[ordinal] == len && ordinalPrefix8[ordinal] == pfx) {
+                    return namesByOrdinal[ordinal];
+                }
+            }
+
+            for (int i = h & mask;; i = (i + 1) & mask) {
+                int sh = hashes[i];
+                if (sh == 0) {
+                    return null;
+                }
+                if (sh == h && lens[i] == len && prefix8[i] == pfx) {
+                    if (len <= 8 || prefixLenUnique[i] || Arrays.equals(keys[i], 0, len, buf, off, off + len)) {
+                        return names[i];
+                    }
+                }
+            }
         }
 
+        /** Same probe as {@link #lookup}, but also returns the dense ordinal for column indexing. */
         ResolvedFieldName lookupField(byte[] buf, int off, int len, int h, long pfx) {
             if (directOrdinals != null) {
                 int directIdx = directIndex(pfx, len, directOrdinals.length);
@@ -424,14 +446,29 @@ public final class FrozenFieldNameTable {
 
         @Override
         public String lookup(byte[] buf, int off, int len, int hash) {
-            ResolvedFieldName resolved = lookupField(buf, off, len, hash, FieldNameHash.readPrefix8(buf, off, len));
-            return resolved == null ? null : resolved.name();
+            return lookup(buf, off, len, hash, FieldNameHash.readPrefix8(buf, off, len));
         }
 
+        /**
+         * Resolves a name with no allocation on a hit, since this is called once per field per
+         * document. Use {@link #lookupField} instead when the ordinal is needed too; do not
+         * unwrap its result here, as that would allocate a {@link ResolvedFieldName} on every hit.
+         */
         @Override
         public String lookup(byte[] buf, int off, int len, int hash, long prefix8) {
-            ResolvedFieldName resolved = lookupField(buf, off, len, hash, prefix8);
-            return resolved == null ? null : resolved.name();
+            if (frozen != null) {
+                String hit = frozen.lookup(buf, off, len, hash, prefix8);
+                if (hit != null) {
+                    return hit;
+                }
+                return lookupOverflow(buf, off, len, hash);
+            }
+            for (int i = 0; i < learnCount; i++) {
+                if (learnLens[i] == len && Arrays.equals(learnKeys[i], 0, len, buf, off, off + len)) {
+                    return learnNames[i];
+                }
+            }
+            return null;
         }
 
         @Override
@@ -471,7 +508,7 @@ public final class FrozenFieldNameTable {
 
         @Override
         public String insert(byte[] buf, int off, int len, int hash) {
-            return insertField(buf, off, len, hash).name();
+            return insertName(buf, off, len, hash);
         }
 
         @Override
@@ -488,10 +525,20 @@ public final class FrozenFieldNameTable {
 
         @Override
         public ResolvedFieldName insertField(byte[] buf, int off, int len, int hash) {
+            return new ResolvedFieldName(insertName(buf, off, len, hash), -1);
+        }
+
+        /**
+         * Canonicalizes a name the frozen table (or, pre-freeze, the learn buffer) does not hold.
+         * Shared by {@link #insert} and {@link #insertField} so a miss allocates the canonical
+         * {@link String} exactly once regardless of which caller resolved it; a miss is inherently
+         * allocating already, so wrapping the result only matters to {@link #insertField} callers.
+         */
+        private String insertName(byte[] buf, int off, int len, int hash) {
             String s = new String(buf, off, len, StandardCharsets.UTF_8);
             if (frozen != null) {
                 recordOverflow(s, buf, off, len, hash);
-                return new ResolvedFieldName(s, -1);
+                return s;
             }
             documentLearnedNew = true;
             if (learnCount >= learnNames.length) {
@@ -506,7 +553,7 @@ public final class FrozenFieldNameTable {
             learnLens[learnCount] = len;
             learnCount++;
             dirty = true;
-            return new ResolvedFieldName(s, -1);
+            return s;
         }
 
         /**
