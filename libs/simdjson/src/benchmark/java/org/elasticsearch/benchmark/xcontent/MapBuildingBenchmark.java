@@ -72,11 +72,20 @@ public class MapBuildingBenchmark {
 
     private byte[][] docs;
     private byte[][] coldStartDocs;
+    /** H10: fixed corpora (independent of {@code @Param shape}) - see the H10 section below. */
+    private byte[][] clickbenchDocs;
+    private byte[][] otelDocs;
+    private byte[][] largeBodyDocs;
     private SimdJsonParserPool simdPool;
     private MapDocumentHandler handler;
     private PresizedMapDocumentHandler presizedHandler;
     private InterningMapDocumentHandler interningHandler;
     private PooledMapDocumentHandler pooledHandler;
+    private LazyMapDocumentHandler lazyHandler;
+
+    private static final String[] CLICKBENCH_FEW_FIELDS = { "WatchID", "Title" };
+    private static final String[] OTEL_FEW_FIELDS = { "severity_text", "trace_id" };
+    private static final String[] LARGE_BODY_FEW_FIELDS = { "id", "level" };
 
     @Setup
     public void setUp() throws IOException {
@@ -93,6 +102,15 @@ public class MapBuildingBenchmark {
         for (int i = 0; i < COLD_START_BATCH; i++) {
             coldStartDocs[i] = generateDoc(random, shape, i).getBytes(UTF_8);
         }
+        // H10's fixed corpora - see the H10 section below for why these don't vary with `shape`.
+        clickbenchDocs = new byte[DOC_COUNT][];
+        otelDocs = new byte[DOC_COUNT][];
+        largeBodyDocs = new byte[DOC_COUNT][];
+        for (int i = 0; i < DOC_COUNT; i++) {
+            clickbenchDocs[i] = generateClickBenchFlat(random).getBytes(UTF_8);
+            otelDocs[i] = generateOtelNested(random).getBytes(UTF_8);
+            largeBodyDocs[i] = generateLargeBody(random).getBytes(UTF_8);
+        }
         // Independent pool/table rather than the shared default, so each fork measures a cold
         // field-name cache the same way every invocation does (no cross-invocation warmth to
         // account for) - matching how SimdJsonParserBenchmark isolates EscfEncoder state.
@@ -101,6 +119,7 @@ public class MapBuildingBenchmark {
         presizedHandler = new PresizedMapDocumentHandler();
         interningHandler = new InterningMapDocumentHandler();
         pooledHandler = new PooledMapDocumentHandler();
+        lazyHandler = new LazyMapDocumentHandler();
         selfCheck();
         System.out.printf(Locale.ROOT, "[setup] shape=%s docCount=%d%n", shape, DOC_COUNT);
     }
@@ -130,7 +149,32 @@ public class MapBuildingBenchmark {
             pooledHandler.reset();
             docParser.parseDocument(doc, doc.length, pooledHandler);
             assertEqualTrees(jackson, pooledHandler.result(), doc, "PooledMapDocumentHandler");
+
+            lazyHandler.reset();
+            docParser.parseDocument(doc, doc.length, lazyHandler);
+            assertEqualTrees(jackson, lazyHandler.result(), doc, "LazyMapDocumentHandler");
         }
+        for (byte[] doc : clickbenchDocs) {
+            checkLazyAgainstJackson(docParser, doc, "clickbenchDocs");
+        }
+        for (byte[] doc : otelDocs) {
+            checkLazyAgainstJackson(docParser, doc, "otelDocs");
+        }
+        for (byte[] doc : largeBodyDocs) {
+            checkLazyAgainstJackson(docParser, doc, "largeBodyDocs");
+        }
+    }
+
+    /** H10's fixed corpora aren't covered by the loop above whenever {@code shape} is something
+     *  other than clickbench_flat/otel_nested, so check them unconditionally here too. */
+    private void checkLazyAgainstJackson(JsonDocumentParser docParser, byte[] doc, String corpusName) throws IOException {
+        Map<String, Object> jackson;
+        try (XContentParser parser = JsonXContent.jsonXContent.createParser(XContentParserConfiguration.EMPTY, doc, 0, doc.length)) {
+            jackson = parser.map();
+        }
+        lazyHandler.reset();
+        docParser.parseDocument(doc, doc.length, lazyHandler);
+        assertEqualTrees(jackson, lazyHandler.result(), doc, "LazyMapDocumentHandler(" + corpusName + ")");
     }
 
     private void assertMatches(
@@ -347,6 +391,232 @@ public class MapBuildingBenchmark {
     }
 
     // ------------------------------------------------------------------
+    // H10: lazy value materialization (see LazyValueMap/LazyMapDocumentHandler) - only decode a
+    // String/BigInteger leaf the first time it's actually read via Map#get, instead of eagerly
+    // for every field during the walk. Motivated by callers (ingest processors, scripts) that
+    // read only a handful of known fields out of a much larger document.
+    //
+    // Uses its own fixed corpora rather than the @Param-ed `docs`, because the "few known
+    // fields" access pattern needs field names that are stable across every generated document
+    // of a shape - unlike small_sparse, whose field names vary by doc. Like stage1FfiCrossingProbe
+    // (H9), these benchmarks don't depend on `shape` but still run once per shape permutation;
+    // the six numbers on each side are the same regardless of which shape row they land on.
+    //
+    // clickbench_flat (all leaves, ~30 string fields out of ~100) is Tier-1 laziness's best case.
+    // otel_nested (3 of its 6 top-level fields are nested objects, always built eagerly - see
+    // LazyMapDocumentHandler) is close to its worst case: deferring only the 3 top-level leaf
+    // strings can't touch the dominant nested-container-building cost.
+    //
+    // Three access patterns per corpus x handler:
+    //   NoAccess   - build, then only call size() - never reads a value. Laziness's ceiling.
+    //   FewFields  - build, then read the 2 fields in {CLICKBENCH,OTEL}_FEW_FIELDS. The pattern
+    //                the user asked about: "only a small subset of values is ever read".
+    //   AllFields  - build, then recursively read every value. Laziness's floor: eager should
+    //                win here (or lazy should lose by roughly the sentinel-object + instanceof
+    //                overhead), since nothing is actually skipped.
+    // ------------------------------------------------------------------
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public int clickbenchEagerNoAccess() {
+        return buildOnly(handler, clickbenchDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public int clickbenchLazyNoAccess() {
+        return buildOnlyLazy(lazyHandler, clickbenchDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long clickbenchEagerFewFields() {
+        return buildAndTouchFew(handler, clickbenchDocs, CLICKBENCH_FEW_FIELDS);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long clickbenchLazyFewFields() {
+        return buildAndTouchFewLazy(lazyHandler, clickbenchDocs, CLICKBENCH_FEW_FIELDS);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long clickbenchEagerAllFields() {
+        return buildAndTouchAll(handler, clickbenchDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long clickbenchLazyAllFields() {
+        return buildAndTouchAllLazy(lazyHandler, clickbenchDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public int otelEagerNoAccess() {
+        return buildOnly(handler, otelDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public int otelLazyNoAccess() {
+        return buildOnlyLazy(lazyHandler, otelDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long otelEagerFewFields() {
+        return buildAndTouchFew(handler, otelDocs, OTEL_FEW_FIELDS);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long otelLazyFewFields() {
+        return buildAndTouchFewLazy(lazyHandler, otelDocs, OTEL_FEW_FIELDS);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long otelEagerAllFields() {
+        return buildAndTouchAll(handler, otelDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long otelLazyAllFields() {
+        return buildAndTouchAllLazy(lazyHandler, otelDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public int largeBodyEagerNoAccess() {
+        return buildOnly(handler, largeBodyDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public int largeBodyLazyNoAccess() {
+        return buildOnlyLazy(lazyHandler, largeBodyDocs);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long largeBodyEagerFewFields() {
+        return buildAndTouchFew(handler, largeBodyDocs, LARGE_BODY_FEW_FIELDS);
+    }
+
+    @Benchmark
+    @OperationsPerInvocation(DOC_COUNT)
+    public long largeBodyLazyFewFields() {
+        return buildAndTouchFewLazy(lazyHandler, largeBodyDocs, LARGE_BODY_FEW_FIELDS);
+    }
+
+    private int buildOnly(MapDocumentHandler h, byte[][] corpus) {
+        JsonDocumentParser docParser = simdPool.forCurrentThread();
+        int fieldCount = 0;
+        for (byte[] doc : corpus) {
+            h.reset();
+            docParser.parseDocument(doc, doc.length, h);
+            fieldCount += h.result().size();
+        }
+        docParser.publishFieldNames();
+        return fieldCount;
+    }
+
+    private int buildOnlyLazy(LazyMapDocumentHandler h, byte[][] corpus) {
+        JsonDocumentParser docParser = simdPool.forCurrentThread();
+        int fieldCount = 0;
+        for (byte[] doc : corpus) {
+            h.reset();
+            docParser.parseDocument(doc, doc.length, h);
+            fieldCount += h.result().size();
+        }
+        docParser.publishFieldNames();
+        return fieldCount;
+    }
+
+    private long buildAndTouchFew(MapDocumentHandler h, byte[][] corpus, String[] fields) {
+        JsonDocumentParser docParser = simdPool.forCurrentThread();
+        long acc = 0;
+        for (byte[] doc : corpus) {
+            h.reset();
+            docParser.parseDocument(doc, doc.length, h);
+            acc += touchFew(h.result(), fields);
+        }
+        docParser.publishFieldNames();
+        return acc;
+    }
+
+    private long buildAndTouchFewLazy(LazyMapDocumentHandler h, byte[][] corpus, String[] fields) {
+        JsonDocumentParser docParser = simdPool.forCurrentThread();
+        long acc = 0;
+        for (byte[] doc : corpus) {
+            h.reset();
+            docParser.parseDocument(doc, doc.length, h);
+            acc += touchFew(h.result(), fields);
+        }
+        docParser.publishFieldNames();
+        return acc;
+    }
+
+    private long buildAndTouchAll(MapDocumentHandler h, byte[][] corpus) {
+        JsonDocumentParser docParser = simdPool.forCurrentThread();
+        long acc = 0;
+        for (byte[] doc : corpus) {
+            h.reset();
+            docParser.parseDocument(doc, doc.length, h);
+            acc += touchAll(h.result());
+        }
+        docParser.publishFieldNames();
+        return acc;
+    }
+
+    private long buildAndTouchAllLazy(LazyMapDocumentHandler h, byte[][] corpus) {
+        JsonDocumentParser docParser = simdPool.forCurrentThread();
+        long acc = 0;
+        for (byte[] doc : corpus) {
+            h.reset();
+            docParser.parseDocument(doc, doc.length, h);
+            acc += touchAll(h.result());
+        }
+        docParser.publishFieldNames();
+        return acc;
+    }
+
+    private static long touchFew(Map<String, Object> map, String[] fields) {
+        long acc = 0;
+        for (String field : fields) {
+            Object v = map.get(field);
+            if (v instanceof String s) {
+                acc += s.length();
+            } else if (v instanceof Number n) {
+                acc += n.longValue();
+            }
+        }
+        return acc;
+    }
+
+    /** Recursively reads every leaf value, forcing full materialization of any lazy map. */
+    private static long touchAll(Object value) {
+        long acc = 0;
+        if (value instanceof Map<?, ?> m) {
+            for (Object v : m.values()) {
+                acc += touchAll(v);
+            }
+        } else if (value instanceof java.util.List<?> l) {
+            for (Object v : l) {
+                acc += touchAll(v);
+            }
+        } else if (value instanceof String s) {
+            acc += s.length();
+        } else if (value instanceof Number n) {
+            acc += n.longValue();
+        }
+        return acc;
+    }
+
+    // ------------------------------------------------------------------
     // Document generators (same shapes as SimdJsonParserBenchmark, plus wide_flat (H5) and
     // array_heavy (H7), added for this evaluation)
     // ------------------------------------------------------------------
@@ -411,6 +681,36 @@ public class MapBuildingBenchmark {
             scores,
             nested
         );
+    }
+
+    /**
+     * H10 supplementary shape: a log-entry-like document with two small, always-read fields
+     * ("id", "level") plus two large (~2KB) string fields ("body", "stacktrace") that are
+     * realistic to skip entirely (e.g. an ingest pipeline that only routes on level/id). Unlike
+     * clickbench_flat/otel_nested, whose string fields are all short fixed words (~5-8 chars -
+     * too cheap to decode for skipping to matter), this isolates whether laziness pays off once
+     * the skipped decode work is actually substantial.
+     */
+    private static String generateLargeBody(Random random) {
+        return String.format(
+            Locale.ROOT,
+            "{\"id\":%d,\"level\":\"%s\",\"body\":\"%s\",\"stacktrace\":\"%s\"}",
+            random.nextLong(),
+            randomSeverity(random),
+            randomLargeText(random, 2000),
+            randomLargeText(random, 2000)
+        );
+    }
+
+    private static String randomLargeText(Random random, int approxChars) {
+        StringBuilder sb = new StringBuilder(approxChars + 16);
+        while (sb.length() < approxChars) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(WORDS[random.nextInt(WORDS.length)]);
+        }
+        return sb.toString();
     }
 
     private static String generateClickBenchFlat(Random random) {
