@@ -107,6 +107,7 @@ either side of the comparison can be pushed further.
 | H7 | Array-heavy shape (untested by the original 3): does the `arrayElem*` path hold the same ~25-40% edge, or does array accumulation change the picture? | Array path performance |
 | H8 | Value boxing cost in isolation: how much of the remaining (non-tokenizer) time is `Integer`/`Long`/`Double` boxing vs `HashMap.put` overhead vs `String` decoding? (async-profiler allocation/CPU profiling on both paths side by side.) | Attributing the "identical" container cost |
 | H9 | Could a native-driven stage 2 (parsing further inside libsimdjson, closer to its own DOM/On-Demand API, instead of the current Java-side fused walker) be faster? | Whether staying in native code longer beats crossing back into Java per token |
+| H10 | Added after Step 3, prompted by a follow-up question: if only a small subset of a document's fields is ever read, does deferring `String`/`BigInteger` decoding until first `Map#get(key)` access (instead of eagerly during the walk) beat eager materialization? | Whether the container/boxing cost is avoidable when it's *not needed at all*, as opposed to H1-H3's attempts to make the (always fully-needed) eager cost itself cheaper |
 
 Each will be benchmarked independently (isolate one change at a time against
 the Step 1 baseline) and profiled with async-profiler (CPU + allocation) on
@@ -306,6 +307,121 @@ parsing) vs. simdjson's SIMD structural scan + fused walker — exactly the
 segment the H1/H2/H3 hypotheses (which all target the *second, shared* half)
 correctly predicted they couldn't move much.
 
+### H10 — lazy value materialization: a real, but conditional, win
+
+Prompted by a follow-up question: many real callers (ingest processors,
+scripts) read only a handful of known fields out of a much larger document.
+Could a `Map<String, Object>` defer decoding a field's value until the first
+time it's actually read via `get(key)`, instead of eagerly decoding every
+field during the walk?
+
+**Feasibility, given the existing `JsonDocumentHandler` API: partial.**
+Every scalar leaf method (`stringField`, `longField`, `bigIntegerField`,
+`doubleField`, `booleanField`) hands the handler the raw source byte range
+even when a value is already parsed (see the interface Javadoc), so a leaf
+value's decode/box step *can* be deferred cheaply — just stash
+`(buf, off, len)` and decode on first `get()`. But `startObject`/`startArray`
+carry no byte range at all, so a nested object/array's *walk* can't be
+skipped or deferred independently of the top-level walk — the SAX walker
+always delivers every descendant event for a nested subtree, whether or not
+the handler ends up doing anything with them. So laziness here can only
+defer *materialization* (decode a `String`, parse a `BigInteger`), not the
+walk itself. Skipping whole unread subtrees would need either a walker
+change (byte ranges on `startObject`/`startArray`) or a "record events as a
+flat tape, replay on demand" representation instead of eagerly recursing
+into a real container — out of scope for this spike.
+
+**Implementation:** [`LazyValueMap`](libs/simdjson/src/benchmark/java/org/elasticsearch/benchmark/xcontent/LazyValueMap.java)
+(`AbstractMap<String, Object>` wrapping a plain `HashMap`) +
+[`LazyMapDocumentHandler`](libs/simdjson/src/benchmark/java/org/elasticsearch/benchmark/xcontent/LazyMapDocumentHandler.java).
+Every object level (root and nested) is exposed as a `LazyValueMap`.
+`stringField`/`bigIntegerField` store an unmaterialized `LazyString`/
+`LazyBigInteger` holder (raw bytes, no allocation of the real value);
+`get(key)` decodes on first access and caches the result back into the
+backing map. `size()`/`containsKey()`/`keySet()` don't force
+materialization; `entrySet()` (and anything `AbstractMap` builds from it —
+`equals`, `toString`, `values()`) does, since those need every value
+regardless. Numbers/booleans/nulls stay eager (H1-H3 already showed boxing
+them is too cheap to bother deferring); arrays stay eager too (same
+byte-range limitation as nested objects).
+
+**Benchmark design:** three fixed corpora, each read via up to three access
+patterns, `MapDocumentHandler` (eager) vs `LazyMapDocumentHandler` (lazy):
+- `NoAccess` — build, call only `size()`. Laziness's ceiling (nothing read).
+- `FewFields` — build, read 2 known fields. The pattern actually asked about.
+- `AllFields` — build, recursively read every value. Laziness's floor
+  (nothing is actually skipped).
+
+Corpora: `clickbench_flat` (~100 fields, ~30 short/empty string constants —
+worst case for "expensive to decode"), `otel_nested` (nested, 3 of 6
+top-level fields are objects — worst case for the "walk can't be skipped"
+limitation), and a new `largeBodyDocs` (`id`/`level`/2×~2 KB text fields —
+the realistic "skip a large log body/stacktrace" case that neither existing
+shape covers, since both use a small fixed word list for every string
+field). `AllFields` wasn't run for `largeBody` — the mechanism is already
+unambiguous from the other two corpora.
+
+| corpus | pattern | host1 eager → lazy | Δ | host2 eager → lazy | Δ |
+|---|---|---|---|---|---|
+| clickbench_flat | NoAccess | 6489 → 6184 ns | **−4.7%** | 5349 → 5207 ns | **−2.7%** |
+| clickbench_flat | FewFields | 6476 → 6439 ns | −0.6% | 5329 → 5298 ns | −0.6% |
+| clickbench_flat | AllFields | 6804 → 8020 ns | **+17.9%** | 5887 → 7319 ns | **+24.3%** |
+| otel_nested | NoAccess | 1856 → 1735 ns | **−6.5%** | 1594 → 1465 ns | **−8.1%** |
+| otel_nested | FewFields | 1873 → 1776 ns | −5.2% | 1615 → 1563 ns | −3.2% |
+| otel_nested | AllFields | 2132 → 2609 ns | **+22.4%** | 1879 → 2403 ns | **+27.9%** |
+| largeBody (2×~2KB fields) | NoAccess | 7231 → 6717 ns | **−7.1%** | 5406 → 5056 ns | **−6.5%** |
+| largeBody (2×~2KB fields) | FewFields | 7244 → 6764 ns | **−6.6%** | 5450 → 5123 ns | **−6.0%** |
+
+(host1 = 4-core aarch64, host2 = 8-core x86_64; avgt ns/op, 3 warmup + 5
+measurement × 10s, both machines otherwise idle. Same correctness self-check
+as every other handler — `LazyMapDocumentHandler`'s output `.equals()`
+Jackson's for every doc in every corpus, including nested `LazyValueMap`s
+compared recursively via `AbstractMap`'s default `equals()` — passed before
+any number above was trusted.)
+
+**Accepted, conditionally — the first hypothesis in this evaluation with a
+genuine, positive, reproducible effect, but it cuts both ways:**
+
+- **`NoAccess` wins on every shape, including `clickbench_flat`'s trivially
+  cheap short/empty strings.** This was initially surprising — the
+  hypothesis going in was that laziness only pays off for *expensive*
+  decodes — but it holds even for a 0-8 character string, because a
+  `LazyString` holder is a 3-field record referencing the *existing*
+  document byte array (no copy), while eagerly decoding is
+  `new String(buf, off, len, UTF_8)` (UTF-8 validate + copy + allocate) even
+  when `len` is tiny. Deferring is cheaper than doing, independent of size,
+  whenever the result is never asked for.
+- **`FewFields` (2 of ~6-100 fields) is a small win on `clickbench_flat`/
+  `otel_nested` (their skipped strings are cheap to begin with) and a real
+  ~6-7% win on `largeBody` (skipped strings are ~2 KB) — consistent across
+  both architectures.** This is the pattern the original question was about
+  (ingest processors/scripts reading a handful of known fields), and it's a
+  genuine, if modest, win.
+- **`AllFields` is a clear, consistent loss (+18-28%).** Once every value
+  ends up read, laziness has paid for *two* allocations per string field
+  (the `LazyString` holder, then the real `String` on first `get`) plus the
+  `AbstractMap`/`get()`/`instanceof` indirection, against eager's *one*
+  allocation. This is the mirror image of H1-H3: bookkeeping that pays off
+  when it avoids real work becomes pure overhead when it doesn't.
+- **The break-even point wasn't pinned down precisely** (only "2 fields" and
+  "every field" access patterns were tested), but the direction is clear:
+  laziness is a bet that most fields *won't* be read, and it pays off
+  smoothly as that bet gets more true (fewer fields read, and/or the unread
+  fields are individually more expensive to decode) and loses smoothly as it
+  gets less true.
+- Unlike H1-H9, this hypothesis's outcome depends on the **caller's access
+  pattern**, not just the document shape — a property any production
+  decision here would need to reflect. It's a plausible win for a call site
+  known to touch a small, fixed subset of fields (an ingest processor or
+  script with an explicit field list), and a regression for one that ends up
+  touching most/all fields (e.g. `XContentHelper.convertToMap` used to
+  reconstruct `_source` for return/re-indexing).
+- Not profiled separately with async-profiler — the `NoAccess`/`FewFields`/
+  `AllFields` comparison already isolates the mechanism (allocation count
+  and type per field) more precisely than a flamegraph would, and H8's
+  profiling already established that `HashMap.put`/`String` decode/boxing
+  is the dominant "second half" cost this hypothesis is trying to move.
+
 ## Conclusion
 
 - The baseline ~25–45% win (real hardware, both architectures, 5 shapes
@@ -328,9 +444,24 @@ correctly predicted they couldn't move much.
   freshly-constructed parser pool is meaningfully slower *and* a native-memory
   risk until it's warm — so a production integration should reuse pools
   across requests/bulks, not create one per bulk.
+- **H10** (lazy value materialization) is the one hypothesis that found real
+  headroom — but, tellingly, only by doing exactly what the original
+  conclusion below predicted would be required: **changing what gets
+  built** (a `LazyValueMap` that defers `String`/`BigInteger` decoding,
+  not a plain `HashMap`). It's a genuine ~3–8% win when the caller only
+  reads a handful of fields (bigger for large skipped values), and a clear
+  ~18–28% *regression* when the caller reads everything — so it's
+  conditional on the access pattern, not a strict improvement, and would
+  need to be opt-in per call site rather than a drop-in replacement for
+  `MapDocumentHandler`.
 - **Bottom line:** the simdjson-backed `Map` builder is a solid, consistent,
-  but bounded win (~1.4–1.7x) for this use case. None of the 8 improvement
-  hypotheses tried found meaningful additional headroom — the ceiling is the
-  shared container/boxing cost, not the tokenizer, and that ceiling looks
-  hard to move without changing what gets built (e.g. a non-`Map` target
-  representation), which is a different, larger project than this spike.
+  bounded win (~1.4–1.7x) for this use case, driven entirely by its faster
+  tokenizer. Of the improvement hypotheses aimed at the shared
+  container/boxing half of the cost, H1-H3 (all targeting allocation
+  avoidance without changing the target shape) found nothing; only H10
+  (which does change the target shape, and only helps for sparse-access
+  callers) found a real, if conditional, win. The ceiling for a drop-in,
+  access-pattern-agnostic `Map` builder is the shared container/boxing
+  cost, not the tokenizer, and that ceiling is hard to move without either
+  changing what gets built (H10's direction) or accepting a narrower,
+  access-pattern-specific contract.

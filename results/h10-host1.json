@@ -1,0 +1,996 @@
+[
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.clickbenchEagerAllFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 6804.069806488804,
+            "scoreError" : 86.40188811633811,
+            "scoreConfidence" : [
+                6717.6679183724655,
+                6890.471694605142
+            ],
+            "scorePercentiles" : {
+                "0.0" : 6766.431302435724,
+                "50.0" : 6815.481053814714,
+                "90.0" : 6819.162744550409,
+                "95.0" : 6819.162744550409,
+                "99.0" : 6819.162744550409,
+                "99.9" : 6819.162744550409,
+                "99.99" : 6819.162744550409,
+                "99.999" : 6819.162744550409,
+                "99.9999" : 6819.162744550409,
+                "100.0" : 6819.162744550409
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    6800.222836956522,
+                    6815.481053814714,
+                    6819.162744550409,
+                    6819.051094686649,
+                    6766.431302435724
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.clickbenchEagerFewFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 6475.9637917640675,
+            "scoreError" : 18.84302115007835,
+            "scoreConfidence" : [
+                6457.120770613989,
+                6494.806812914146
+            ],
+            "scorePercentiles" : {
+                "0.0" : 6467.387145348837,
+                "50.0" : 6477.626795336788,
+                "90.0" : 6479.669566062176,
+                "95.0" : 6479.669566062176,
+                "99.0" : 6479.669566062176,
+                "99.9" : 6479.669566062176,
+                "99.99" : 6479.669566062176,
+                "99.999" : 6479.669566062176,
+                "99.9999" : 6479.669566062176,
+                "100.0" : 6479.669566062176
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    6477.028335492228,
+                    6478.1071165803105,
+                    6479.669566062176,
+                    6477.626795336788,
+                    6467.387145348837
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.clickbenchEagerNoAccess",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 6489.05656719897,
+            "scoreError" : 62.94731487497729,
+            "scoreConfidence" : [
+                6426.109252323992,
+                6552.003882073947
+            ],
+            "scorePercentiles" : {
+                "0.0" : 6477.059589378238,
+                "50.0" : 6483.177851036269,
+                "90.0" : 6517.835472005208,
+                "95.0" : 6517.835472005208,
+                "99.0" : 6517.835472005208,
+                "99.9" : 6517.835472005208,
+                "99.99" : 6517.835472005208,
+                "99.999" : 6517.835472005208,
+                "99.9999" : 6517.835472005208,
+                "100.0" : 6517.835472005208
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    6477.059589378238,
+                    6482.427258419689,
+                    6484.782665155441,
+                    6483.177851036269,
+                    6517.835472005208
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.clickbenchLazyAllFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 8020.376054647437,
+            "scoreError" : 13.922483298275933,
+            "scoreConfidence" : [
+                8006.4535713491605,
+                8034.298537945713
+            ],
+            "scorePercentiles" : {
+                "0.0" : 8016.464729166667,
+                "50.0" : 8020.436908653846,
+                "90.0" : 8025.33486298077,
+                "95.0" : 8025.33486298077,
+                "99.0" : 8025.33486298077,
+                "99.9" : 8025.33486298077,
+                "99.99" : 8025.33486298077,
+                "99.999" : 8025.33486298077,
+                "99.9999" : 8025.33486298077,
+                "100.0" : 8025.33486298077
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    8022.249314102564,
+                    8025.33486298077,
+                    8016.464729166667,
+                    8020.436908653846,
+                    8017.394458333333
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.clickbenchLazyFewFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 6439.002129457326,
+            "scoreError" : 25.501730799292872,
+            "scoreConfidence" : [
+                6413.500398658033,
+                6464.503860256619
+            ],
+            "scorePercentiles" : {
+                "0.0" : 6432.776590616966,
+                "50.0" : 6438.731937580437,
+                "90.0" : 6449.357326675257,
+                "95.0" : 6449.357326675257,
+                "99.0" : 6449.357326675257,
+                "99.9" : 6449.357326675257,
+                "99.99" : 6449.357326675257,
+                "99.999" : 6449.357326675257,
+                "99.9999" : 6449.357326675257,
+                "100.0" : 6449.357326675257
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    6432.776590616966,
+                    6433.760794344473,
+                    6440.383998069498,
+                    6438.731937580437,
+                    6449.357326675257
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.clickbenchLazyNoAccess",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 6183.945068695258,
+            "scoreError" : 23.01534346300682,
+            "scoreConfidence" : [
+                6160.929725232251,
+                6206.960412158264
+            ],
+            "scorePercentiles" : {
+                "0.0" : 6176.155794444445,
+                "50.0" : 6184.00775092707,
+                "90.0" : 6191.391037747525,
+                "95.0" : 6191.391037747525,
+                "99.0" : 6191.391037747525,
+                "99.9" : 6191.391037747525,
+                "99.99" : 6191.391037747525,
+                "99.999" : 6191.391037747525,
+                "99.9999" : 6191.391037747525,
+                "100.0" : 6191.391037747525
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    6184.00775092707,
+                    6191.391037747525,
+                    6187.741889369592,
+                    6180.428870987655,
+                    6176.155794444445
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.largeBodyEagerFewFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 7243.954865827803,
+            "scoreError" : 23.665113882580336,
+            "scoreConfidence" : [
+                7220.289751945223,
+                7267.619979710383
+            ],
+            "scorePercentiles" : {
+                "0.0" : 7235.787345375723,
+                "50.0" : 7246.111670043415,
+                "90.0" : 7250.160063043479,
+                "95.0" : 7250.160063043479,
+                "99.0" : 7250.160063043479,
+                "99.9" : 7250.160063043479,
+                "99.99" : 7250.160063043479,
+                "99.999" : 7250.160063043479,
+                "99.9999" : 7250.160063043479,
+                "100.0" : 7250.160063043479
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    7235.787345375723,
+                    7250.160063043479,
+                    7246.111670043415,
+                    7239.3190332850945,
+                    7248.396217391304
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.largeBodyEagerNoAccess",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 7230.999550722544,
+            "scoreError" : 16.071488456192917,
+            "scoreConfidence" : [
+                7214.928062266351,
+                7247.071039178737
+            ],
+            "scorePercentiles" : {
+                "0.0" : 7225.649200867052,
+                "50.0" : 7231.991214595376,
+                "90.0" : 7235.071934971098,
+                "95.0" : 7235.071934971098,
+                "99.0" : 7235.071934971098,
+                "99.9" : 7235.071934971098,
+                "99.99" : 7235.071934971098,
+                "99.999" : 7235.071934971098,
+                "99.9999" : 7235.071934971098,
+                "100.0" : 7235.071934971098
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    7227.718914739884,
+                    7225.649200867052,
+                    7234.566488439306,
+                    7235.071934971098,
+                    7231.991214595376
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.largeBodyLazyFewFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 6763.572899586548,
+            "scoreError" : 10.54528379748551,
+            "scoreConfidence" : [
+                6753.027615789063,
+                6774.118183384034
+            ],
+            "scorePercentiles" : {
+                "0.0" : 6760.303027702703,
+                "50.0" : 6764.1669871621625,
+                "90.0" : 6766.860970230041,
+                "95.0" : 6766.860970230041,
+                "99.0" : 6766.860970230041,
+                "99.9" : 6766.860970230041,
+                "99.99" : 6766.860970230041,
+                "99.999" : 6766.860970230041,
+                "99.9999" : 6766.860970230041,
+                "100.0" : 6766.860970230041
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    6761.27234527027,
+                    6766.860970230041,
+                    6760.303027702703,
+                    6765.261167567568,
+                    6764.1669871621625
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.largeBodyLazyNoAccess",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 6716.786402643789,
+            "scoreError" : 19.546849955142395,
+            "scoreConfidence" : [
+                6697.239552688647,
+                6736.333252598932
+            ],
+            "scorePercentiles" : {
+                "0.0" : 6711.5924738255035,
+                "50.0" : 6717.617871812081,
+                "90.0" : 6724.366848118279,
+                "95.0" : 6724.366848118279,
+                "99.0" : 6724.366848118279,
+                "99.9" : 6724.366848118279,
+                "99.99" : 6724.366848118279,
+                "99.999" : 6724.366848118279,
+                "99.9999" : 6724.366848118279,
+                "100.0" : 6724.366848118279
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    6717.617871812081,
+                    6717.703706040268,
+                    6711.5924738255035,
+                    6712.6511134228185,
+                    6724.366848118279
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.otelEagerAllFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 2131.7015274659057,
+            "scoreError" : 1.711888683478277,
+            "scoreConfidence" : [
+                2129.9896387824274,
+                2133.413416149384
+            ],
+            "scorePercentiles" : {
+                "0.0" : 2131.2527707711974,
+                "50.0" : 2131.7326344842286,
+                "90.0" : 2132.3909458422177,
+                "95.0" : 2132.3909458422177,
+                "99.0" : 2132.3909458422177,
+                "99.9" : 2132.3909458422177,
+                "99.99" : 2132.3909458422177,
+                "99.999" : 2132.3909458422177,
+                "99.9999" : 2132.3909458422177,
+                "100.0" : 2132.3909458422177
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    2131.7605792838876,
+                    2131.2527707711974,
+                    2132.3909458422177,
+                    2131.7326344842286,
+                    2131.3707069479965
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.otelEagerFewFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 1872.5366881264938,
+            "scoreError" : 2.1966513794493006,
+            "scoreConfidence" : [
+                1870.3400367470445,
+                1874.7333395059431
+            ],
+            "scorePercentiles" : {
+                "0.0" : 1871.6518967065867,
+                "50.0" : 1872.721492883895,
+                "90.0" : 1873.1328331460675,
+                "95.0" : 1873.1328331460675,
+                "99.0" : 1873.1328331460675,
+                "99.9" : 1873.1328331460675,
+                "99.99" : 1873.1328331460675,
+                "99.999" : 1873.1328331460675,
+                "99.9999" : 1873.1328331460675,
+                "100.0" : 1873.1328331460675
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    1872.3396864470235,
+                    1871.6518967065867,
+                    1873.1328331460675,
+                    1872.8375314488956,
+                    1872.721492883895
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.otelEagerNoAccess",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 1855.541262749177,
+            "scoreError" : 3.5335074056887383,
+            "scoreConfidence" : [
+                1852.007755343488,
+                1859.0747701548657
+            ],
+            "scorePercentiles" : {
+                "0.0" : 1854.070109010011,
+                "50.0" : 1855.8232393320964,
+                "90.0" : 1856.5572631774314,
+                "95.0" : 1856.5572631774314,
+                "99.0" : 1856.5572631774314,
+                "99.9" : 1856.5572631774314,
+                "99.99" : 1856.5572631774314,
+                "99.999" : 1856.5572631774314,
+                "99.9999" : 1856.5572631774314,
+                "100.0" : 1856.5572631774314
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    1854.070109010011,
+                    1855.8243217068646,
+                    1855.4313805194806,
+                    1855.8232393320964,
+                    1856.5572631774314
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.otelLazyAllFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 2609.440751780302,
+            "scoreError" : 2.2516672239264994,
+            "scoreConfidence" : [
+                2607.1890845563753,
+                2611.6924190042287
+            ],
+            "scorePercentiles" : {
+                "0.0" : 2608.855741262389,
+                "50.0" : 2609.330062597809,
+                "90.0" : 2610.2732784446766,
+                "95.0" : 2610.2732784446766,
+                "99.0" : 2610.2732784446766,
+                "99.9" : 2610.2732784446766,
+                "99.99" : 2610.2732784446766,
+                "99.999" : 2610.2732784446766,
+                "99.9999" : 2610.2732784446766,
+                "100.0" : 2610.2732784446766
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    2608.855741262389,
+                    2610.2732784446766,
+                    2609.330062597809,
+                    2608.9781408450704,
+                    2609.7665357515657
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.otelLazyFewFields",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 1775.8367243917164,
+            "scoreError" : 2.1529578393939808,
+            "scoreConfidence" : [
+                1773.6837665523224,
+                1777.9896822311105
+            ],
+            "scorePercentiles" : {
+                "0.0" : 1775.3545979765709,
+                "50.0" : 1775.7546695667613,
+                "90.0" : 1776.717465008881,
+                "95.0" : 1776.717465008881,
+                "99.0" : 1776.717465008881,
+                "99.9" : 1776.717465008881,
+                "99.99" : 1776.717465008881,
+                "99.999" : 1776.717465008881,
+                "99.9999" : 1776.717465008881,
+                "100.0" : 1776.717465008881
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    1776.717465008881,
+                    1775.3545979765709,
+                    1775.9829577414773,
+                    1775.7546695667613,
+                    1775.3739316648916
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    },
+    {
+        "jmhVersion" : "1.37",
+        "benchmark" : "org.elasticsearch.benchmark.xcontent.MapBuildingBenchmark.otelLazyNoAccess",
+        "mode" : "avgt",
+        "threads" : 1,
+        "forks" : 1,
+        "jvm" : "/home/ubuntu/.gradle/jdks/oracle_corporation-26-aarch64-linux.2/bin/java",
+        "jvmArgs" : [
+            "-Des.nativelibs.path=/home/ubuntu/wt-map-eval/libs/native/libraries/build/platform/linux-aarch64",
+            "--add-modules=jdk.incubator.vector",
+            "--enable-native-access=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8",
+            "-Duser.country",
+            "-Duser.language=en",
+            "-Duser.variant",
+            "--add-modules=jdk.incubator.vector"
+        ],
+        "jdkVersion" : "26.0.1",
+        "vmName" : "OpenJDK 64-Bit Server VM",
+        "vmVersion" : "26.0.1+8-34",
+        "warmupIterations" : 3,
+        "warmupTime" : "10 s",
+        "warmupBatchSize" : 1,
+        "measurementIterations" : 5,
+        "measurementTime" : "10 s",
+        "measurementBatchSize" : 1,
+        "params" : {
+            "shape" : "clickbench_flat"
+        },
+        "primaryMetric" : {
+            "score" : 1734.694706476423,
+            "scoreError" : 1.6100603464707743,
+            "scoreConfidence" : [
+                1733.0846461299523,
+                1736.304766822894
+            ],
+            "scorePercentiles" : {
+                "0.0" : 1734.2923543689321,
+                "50.0" : 1734.585523239681,
+                "90.0" : 1735.2989059680776,
+                "95.0" : 1735.2989059680776,
+                "99.0" : 1735.2989059680776,
+                "99.9" : 1735.2989059680776,
+                "99.99" : 1735.2989059680776,
+                "99.999" : 1735.2989059680776,
+                "99.9999" : 1735.2989059680776,
+                "100.0" : 1735.2989059680776
+            },
+            "scoreUnit" : "ns/op",
+            "rawData" : [
+                [
+                    1735.2989059680776,
+                    1734.36894276795,
+                    1734.585523239681,
+                    1734.2923543689321,
+                    1734.927806037474
+                ]
+            ]
+        },
+        "secondaryMetrics" : {
+        }
+    }
+]
+
+
