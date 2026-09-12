@@ -20,6 +20,7 @@ import org.elasticsearch.xcontent.json.JsonXContent;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OperationsPerInvocation;
@@ -317,12 +318,32 @@ public class MapBuildingBenchmark {
 
     private static final byte[] MINIMAL_DOC = "{}".getBytes(UTF_8);
 
+    private SimdJsonParser ffiProbeParser;
+
+    /**
+     * Long-lived, matching how {@link SimdJsonParserPool} actually amortizes parser
+     * construction (one per thread, reused). A fresh {@link SimdJsonParser} per call was tried
+     * first and reliably OOM-killed the JVM within a few seconds at JMH's call rate - even
+     * with try-with-resources releasing it every call, native-context churn at millions of
+     * calls/sec outpaces cleanup. That in itself is informative: constructing a
+     * {@code SimdJsonParser} is too heavyweight to do per-document, which is exactly why
+     * {@code SimdJsonParserPool} exists in production and why H9's "native stage 2" idea would
+     * also need a pooled/reused native context, not one created per call.
+     */
+    @Setup(Level.Trial)
+    public void setUpFfiProbe() {
+        ffiProbeParser = new SimdJsonParser(1024);
+    }
+
     @Benchmark
     public void stage1FfiCrossingProbe(Blackhole bh) {
-        try (SimdJsonParser probe = new SimdJsonParser(1024)) {
-            probe.stage1(MINIMAL_DOC, MINIMAL_DOC.length);
-            bh.consume(probe);
-        }
+        ffiProbeParser.stage1(MINIMAL_DOC, MINIMAL_DOC.length);
+        bh.consume(ffiProbeParser);
+    }
+
+    @org.openjdk.jmh.annotations.TearDown(Level.Trial)
+    public void tearDownFfiProbe() {
+        ffiProbeParser.close();
     }
 
     // ------------------------------------------------------------------
