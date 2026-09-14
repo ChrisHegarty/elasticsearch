@@ -827,16 +827,39 @@ This closes the regression almost everywhere and, in most cells, beats the
 *unmodified* baseline even for numbers the fast path doesn't apply to
 (5 and 10 digits) — expected, since those paths now do one load where they
 used to do the same one load anyway, so there was never a reason for them
-to be slower, only equal. One cell (5-digit array shape) still shows a
-small −2% to −5% gap on both hosts; unlike the 1-2 digit win or the 10-digit
-recovery, this one didn't move with the fix, so it's probably a smaller,
-separate effect (e.g. code-size/inlining shift from the new `finishNumber`/
-`finishArrayNumber` helper extraction) rather than the same mechanism -
-worth a follow-up look if this path matters for a given workload, but not
-blocking given the size of the win everywhere else. Worth checking the real
-digit-length distribution of Elasticsearch's own numeric fields (not just
-ClickBench) before treating this as a universal win rather than a
-workload-shaped one.
+to be slower, only equal. One cell (5-digit array shape) still showed a
+small −2% to −5% gap on both hosts, unmoved by the revised fix above -
+tracked down with `-XX:+PrintInlining` (see the transcript for the full
+methodology) to a structural asymmetry that predates this change entirely:
+`handleNumber`'s floating-point parsing was already split into its own
+`handleFloatingPoint` method, but `handleArrayNumber`'s never was - it
+inlined the entire fraction/exponent-digit loop and `DoubleParser` call
+directly. Once I extracted that same tail (scalar digit loop → dispatch to
+double/bigint-overflow/plain-long) out of `handleArrayNumberGeneral` into
+`finishArrayNumber`, that method came out at 466 bytes - nearly double
+`finishNumber`'s 261 - and `-XX:+PrintInlining` showed it consistently
+failing the JIT's inlining budget ("hot method too big") *regardless of
+digit count*, not just at 5 digits. Splitting `handleArrayFloatingPoint`
+back out (mirroring `handleFloatingPoint`) shrank it to 163 bytes, which
+inlines cleanly. Re-measured full A/B, same methodology as above - every
+cell is now a real improvement, including array shapes at every digit
+count (not just 1-2), since the inlining fix was not really specific to
+5 digits at all:
+
+| digits | host1 (x86_64) field Δ | host1 array Δ | host2 (aarch64) field Δ | host2 array Δ |
+|---|---|---|---|---|
+| 1 | **+15.6%** | **+49.0%** | **+15.4%** | **+34.4%** |
+| 2 | **+20.0%** | **+53.2%** | **+18.9%** | **+37.5%** |
+| 5 | **+9.1%** | **+16.6%** | **+8.9%** | **+19.9%** |
+| 10 | **+25.7%** | **+49.6%** | **+19.4%** | **+37.9%** |
+
+The lesson generalizes past this one fix: a hot method that inlines fine
+in isolation can silently stop inlining once a caller-side refactor grows
+it past the JIT's budget, and the effect can look shape/parameter-specific
+(only 5-digit array regressed) when the actual cause (a method that was
+always too big, for every input) is not - the parameter dependence here
+was really about which code path happened to reach the oversized method,
+not something intrinsic to 5-digit numbers.
 
 **Other candidates surfaced by the same ClickBench analysis, not yet
 investigated:** `StringParser`'s unescape path for the "short pure-ASCII
