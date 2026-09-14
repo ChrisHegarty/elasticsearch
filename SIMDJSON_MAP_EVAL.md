@@ -592,6 +592,76 @@ scope for one call site) or to hand-inline `computeDouble` into its callers
 measurement in the real `SimdJsonDirectWalker` path, not just this isolated
 benchmark).
 
+#### Fix applied: split `computeDouble` so the fast path can actually inline
+
+Since raising `FreqInlineSize` process-wide isn't viable, but the *cause* is
+purely "the callee is bigger than the inline budget", the fix is to shrink
+the callee that's actually on the hot path. `computeDouble` was one 435-byte
+method containing both the ~5-line fast path (§1 above) and the entire
+Eisel-Lemire slow path (the bulk of the bytes, only reached for
+`|exp10| >= 23` or a >53-bit significand — never for realistic JSON
+floats). Split into three methods in
+[`DoubleParser.java`](libs/simdjson/src/main/java/org/elasticsearch/simdjson/internal/parsers/DoubleParser.java):
+
+- `computeDouble` — tiny dispatcher, unchanged condition, now just calls one
+  of the two below.
+- `computeDoubleFastPath` — the ~5-line fast path only, now small enough to
+  fit under the JIT's inline budget on its own. Also unified the two
+  separate array accesses (`POWERS_OF_TEN[-exp10]` in the divide branch,
+  `POWERS_OF_TEN[exp10]` in the multiply branch) into a single
+  `POWERS_OF_TEN[(int) abs(exp10)]` load shared by both branches — same
+  result (`abs(exp10)` is exactly `-exp10` when `exp10 < 0` and exactly
+  `exp10` otherwise), but one array access/bounds-check site instead of two.
+- `computeDoubleEiselLemire` — the slow path, byte-for-byte unchanged, still
+  a real (non-inlined) call, which is fine since it's cold.
+
+Deliberately **not** done, and why:
+- **No reciprocal-multiply for the divide branch.** The fast path's
+  correctness relies on the division being *exact* — significand and power
+  of ten are both exactly representable as `double`s, so IEEE-754 division
+  gives a correctly-rounded result by construction (see the
+  exploringbinary.com link in the code). Precomputing `1/POWERS_OF_TEN[i]`
+  and multiplying would add a second, independent rounding step and could
+  silently produce a wrong result for some inputs — a correctness
+  regression for a speed guess, rejected outright.
+- **No `Unsafe`/`VarHandle` unchecked array access** to dodge the bounds
+  check on the 23-entry `POWERS_OF_TEN` table. The bounds check itself is
+  cheap (predictable, taken millions of times, never mispredicted in this
+  benchmark); the disassembly showed the *call boundary* (entry barrier,
+  safepoint poll, un-hoistable table address) as the dominant cost, not the
+  bounds check — fixing inlining addresses that directly with a type-safe,
+  idiomatic change. Reaching for unsafe array access here would trade
+  memory safety for a saving that the data doesn't support.
+
+**Verified:**
+- `./gradlew :libs:simdjson:test` — full suite, including
+  `DoubleParserTests` (which specifically exercises the Eisel-Lemire path)
+  and the native-backed correctness tests — passes unchanged.
+- `NumberBatchParsingBenchmark` (same JMH config as H11: 2 forks, 3+5
+  iterations × 3s, local run):
+
+| shape | Java, before | Java, after | native (unchanged) |
+|---|---|---|---|
+| ints | 5.63 ± 0.11 ns/op | 5.53 ± 0.32 ns/op (noise) | 7.79 ± 0.42 ns/op |
+| doubles | 14.85 ± 0.60 ns/op | **12.51 ± 0.57 ns/op (−16%)** | 8.42 ± 0.23 ns/op |
+| mixed | 15.53 ± 0.48 ns/op | **10.87 ± 0.40 ns/op (−30%)** | 10.67 ± 0.13 ns/op |
+
+`ints` is unaffected as expected (never calls `DoubleParser`). `doubles`
+improved by 16%, closing over a third of the gap to native (was +75% native
+faster, now +48%) — entirely from a code-structure change, no JVM flags
+needed. `mixed` improved by *more* than `doubles` alone (30%, dropping to
+within 2% of native) — plausibly because before this change, every other
+number in the loop bounced from the fully-inlined integer path into a real
+call into a 435-byte method, which is worse for branch prediction/icache
+locality than bouncing between two paths that both inline into the same
+caller; not verified further since it wasn't the object of this
+investigation, but consistent with the rest of the evidence.
+
+This is a real, low-risk, already-verified improvement to ship independent
+of H11's native-batching question — it doesn't require any native code,
+FFI, or new dependency, just reduces `computeDouble`'s bytecode footprint
+below the JIT's own inlining threshold.
+
 ## Conclusion
 
 - The baseline ~25–45% win (real hardware, both architectures, 5 shapes
