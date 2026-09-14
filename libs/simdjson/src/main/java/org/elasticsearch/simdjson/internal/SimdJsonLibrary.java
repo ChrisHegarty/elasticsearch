@@ -88,4 +88,26 @@ public interface SimdJsonLibrary {
      */
     @Function("simdjson_stage1_error_message")
     String errorMessage(int errorCode);
+
+    /**
+     * H11 spike (see {@code SIMDJSON_MAP_EVAL.md}): batch-parses JSON numbers at the given
+     * offsets in {@code buf}, one native call for the whole batch. Fast-path only (mirrors
+     * {@code DoubleParser}'s own fast/slow split) - a number outside the fast path's range
+     * reports {@code outTypes[i] = 2} (NEEDS_FALLBACK) and the caller re-parses that one number
+     * in Java. {@code outTypes[i]}: 0 = INT64 ({@code outBits[i]} is the raw value), 1 = DOUBLE
+     * ({@code outBits[i]} is the raw IEEE-754 bits), 2 = NEEDS_FALLBACK.
+     *
+     * <p>Benchmark-only: no JDK 21 fallback adapter, since the harness runs on JDK 26+.
+     */
+    @Function("simdjson_parse_numbers_batch")
+    @Critical(fallbackAdapter = Critical.UnsupportedFallback.class)
+    int parseNumbersBatch(
+        @VectorSegment(countParam = "len", elementBits = 8) MemorySegment buf,
+        int len,
+        @VectorSegment(countParam = "count", elementBits = 32) MemorySegment numberOffsets,
+        int count,
+        @VectorSegment(countParam = "count", elementBits = 8) MemorySegment outTypes,
+        @VectorSegment(countParam = "count", elementBits = 64) MemorySegment outBits,
+        @VectorSegment(countParam = "count", elementBits = 32) MemorySegment outLens
+    );
 }
