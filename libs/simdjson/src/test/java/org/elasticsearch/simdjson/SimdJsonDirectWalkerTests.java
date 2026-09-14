@@ -198,6 +198,151 @@ public class SimdJsonDirectWalkerTests extends SimdJsonTestCase {
         assertEquals(List.of("long(n=-42,fitsInt=true)"), events);
     }
 
+    // ---- 1-2 digit integer fast path and its boundary with the general path ----
+
+    // Single digit, including the 0/1 boolean-flag shape that dominates many real payloads.
+    public void testSingleDigitField() {
+        assertEquals(List.of("long(n=0,fitsInt=true)"), walkJson("{\"n\":0}"));
+        assertEquals(List.of("long(n=9,fitsInt=true)"), walkJson("{\"n\":9}"));
+    }
+
+    public void testNegativeSingleDigitField() {
+        assertEquals(List.of("long(n=-5,fitsInt=true)"), walkJson("{\"n\":-5}"));
+    }
+
+    // "-0" as an integer has no sign: Java's long negation of 0 is 0.
+    public void testNegativeZeroIntegerField() {
+        assertEquals(List.of("long(n=0,fitsInt=true)"), walkJson("{\"n\":-0}"));
+    }
+
+    public void testTwoDigitField() {
+        assertEquals(List.of("long(n=10,fitsInt=true)"), walkJson("{\"n\":10}"));
+        assertEquals(List.of("long(n=99,fitsInt=true)"), walkJson("{\"n\":99}"));
+    }
+
+    public void testNegativeTwoDigitField() {
+        assertEquals(List.of("long(n=-99,fitsInt=true)"), walkJson("{\"n\":-99}"));
+    }
+
+    // Exactly at the fast path/general path boundary: 3 digits must fall through correctly.
+    public void testThreeDigitField() {
+        assertEquals(List.of("long(n=100,fitsInt=true)"), walkJson("{\"n\":100}"));
+    }
+
+    // A 1-2 digit prefix immediately followed by '.'/'e'/'E' must still be classified as a
+    // double, not short-circuited by the integer fast path.
+    public void testSingleDigitBeforeDecimalPoint() {
+        List<String> events = walkJson("{\"n\":1.5}");
+        assertEquals(1, events.size());
+        assertTrue(events.get(0).startsWith("double(n=1.5,"));
+    }
+
+    public void testSingleDigitBeforeExponent() {
+        List<String> events = walkJson("{\"n\":1e2}");
+        assertEquals(1, events.size());
+        assertTrue(events.get(0).startsWith("double(n=100.0,"));
+    }
+
+    public void testTwoDigitBeforeDecimalPoint() {
+        List<String> events = walkJson("{\"n\":12.5}");
+        assertEquals(1, events.size());
+        assertTrue(events.get(0).startsWith("double(n=12.5,"));
+    }
+
+    // Same boundary cases, but as array elements (handleArrayNumber's own fast path).
+    public void testSmallDigitArrayElements() {
+        List<String> events = walkJson("{\"a\":[0,9,10,99,100,-5,-99]}");
+        assertEquals(
+            List.of(
+                "startArray(a)",
+                "arrayElemLong(0,fitsInt=true)",
+                "arrayElemLong(9,fitsInt=true)",
+                "arrayElemLong(10,fitsInt=true)",
+                "arrayElemLong(99,fitsInt=true)",
+                "arrayElemLong(100,fitsInt=true)",
+                "arrayElemLong(-5,fitsInt=true)",
+                "arrayElemLong(-99,fitsInt=true)",
+                "endArray()"
+            ),
+            events
+        );
+    }
+
+    public void testSingleAndTwoDigitDoubleArrayElements() {
+        List<String> events = walkJson("{\"a\":[1.5,12.5]}");
+        assertEquals(4, events.size());
+        assertTrue(events.get(1).startsWith("arrayElemDouble(1.5,"));
+        assertTrue(events.get(2).startsWith("arrayElemDouble(12.5,"));
+    }
+
+    // ---- Same fast path/general path boundary, but far enough from the end of the buffer
+    // that handleNumber/handleArrayNumber take their up-front 8-byte-load branch instead of
+    // the near-buffer-end fallback exercised by the short documents above. Both branches must
+    // agree on every value. ----
+
+    private static final String LONG_TAIL = ",\"padding\":\"01234567890123456789\"}";
+
+    public void testSingleDigitFieldFarFromBufferEnd() {
+        assertEquals(List.of("long(n=0,fitsInt=true)", "string(padding=01234567890123456789)"), walkJson("{\"n\":0" + LONG_TAIL));
+        assertEquals(List.of("long(n=9,fitsInt=true)", "string(padding=01234567890123456789)"), walkJson("{\"n\":9" + LONG_TAIL));
+    }
+
+    public void testNegativeSingleDigitFieldFarFromBufferEnd() {
+        assertEquals(List.of("long(n=-5,fitsInt=true)", "string(padding=01234567890123456789)"), walkJson("{\"n\":-5" + LONG_TAIL));
+    }
+
+    public void testTwoDigitFieldFarFromBufferEnd() {
+        assertEquals(List.of("long(n=10,fitsInt=true)", "string(padding=01234567890123456789)"), walkJson("{\"n\":10" + LONG_TAIL));
+        assertEquals(List.of("long(n=99,fitsInt=true)", "string(padding=01234567890123456789)"), walkJson("{\"n\":99" + LONG_TAIL));
+    }
+
+    // Exactly at the fast path/general path boundary: 3 digits must fall through to the
+    // general path's preloaded-word variant correctly.
+    public void testThreeDigitFieldFarFromBufferEnd() {
+        assertEquals(List.of("long(n=100,fitsInt=true)", "string(padding=01234567890123456789)"), walkJson("{\"n\":100" + LONG_TAIL));
+    }
+
+    // 8+ digits: exercises the general path's SWAR loop reusing the preloaded first word/mask
+    // for its first iteration, then continuing to load further 8-byte chunks itself.
+    public void testManyDigitFieldFarFromBufferEnd() {
+        assertEquals(
+            List.of("long(n=1234567890,fitsInt=true)", "string(padding=01234567890123456789)"),
+            walkJson("{\"n\":1234567890" + LONG_TAIL)
+        );
+        assertEquals(
+            List.of("long(n=9876543210,fitsInt=false)", "string(padding=01234567890123456789)"),
+            walkJson("{\"n\":9876543210" + LONG_TAIL)
+        );
+    }
+
+    // A 1-2 digit prefix immediately followed by '.'/'e'/'E', far from the buffer end, must
+    // still be classified as a double.
+    public void testDigitBeforeDecimalPointFarFromBufferEnd() {
+        List<String> events = walkJson("{\"n\":1.5" + LONG_TAIL);
+        assertEquals(2, events.size());
+        assertTrue(events.get(0).startsWith("double(n=1.5,"));
+    }
+
+    public void testSmallDigitArrayElementsFarFromBufferEnd() {
+        List<String> events = walkJson("{\"a\":[0,9,10,99,100,1234567890,-5,-99]" + LONG_TAIL);
+        assertEquals(
+            List.of(
+                "startArray(a)",
+                "arrayElemLong(0,fitsInt=true)",
+                "arrayElemLong(9,fitsInt=true)",
+                "arrayElemLong(10,fitsInt=true)",
+                "arrayElemLong(99,fitsInt=true)",
+                "arrayElemLong(100,fitsInt=true)",
+                "arrayElemLong(1234567890,fitsInt=true)",
+                "arrayElemLong(-5,fitsInt=true)",
+                "arrayElemLong(-99,fitsInt=true)",
+                "endArray()",
+                "string(padding=01234567890123456789)"
+            ),
+            events
+        );
+    }
+
     public void testNegativeDouble() {
         List<String> events = walkJson("{\"n\":-3.14}");
         assertEquals(1, events.size());

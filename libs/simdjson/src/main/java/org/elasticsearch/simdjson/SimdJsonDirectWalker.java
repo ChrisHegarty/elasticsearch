@@ -367,6 +367,57 @@ public final class SimdJsonDirectWalker {
         boolean negative = buffer[idx] == '-';
         int pos = negative ? idx + 1 : idx;
 
+        if (pos > buffer.length - 8) {
+            // Tail of the buffer: too close to the end for the unconditional 8-byte load below
+            // to stay in bounds (see "No trailing padding required" on SimdJsonParser). Rare in
+            // practice - only the last few bytes of a batch - handleNumberGeneral's own scalar
+            // tail handles it correctly, just without the fast path's head start.
+            handleNumberGeneral(buffer, idx, pos, negative, fieldName, handler);
+            return;
+        }
+
+        // Load the next 8 bytes once, up front. This one load covers both:
+        // - the 1-2 digit fast path below - by far the most common shape for flags,
+        // booleans-as-0/1, and small enum/status codes (e.g. analytics-style documents with
+        // many such fields per document) - with c1/c2 extracted from register shifts of the
+        // word already loaded here, instead of separate byte reads; and
+        // - the general path's SWAR loop, whose first iteration would otherwise reload and
+        // re-check this exact word. Passing (t, mask) through means numbers of any other
+        // length cost exactly what they did before this fast path existed: one load, one
+        // mask check, then either the SWAR loop or the scalar tail.
+        long word = (long) LONG_LE.get(buffer, pos);
+        long t = word - 0x3030303030303030L;
+        long mask = t & 0xF0F0F0F0F0F0F0F0L;
+
+        if ((mask & 0xFFL) == 0) { // byte 0 (c0) is a digit, as it must be for a valid number
+            if ((mask & 0xFF00L) != 0) { // byte 1 (c1) is not a digit
+                byte c1 = (byte) (word >>> 8);
+                if (isNumberContinuation(c1) == false) {
+                    long val = t & 0xFFL;
+                    handler.longField(fieldName, negative ? -val : val, true, buffer, idx, pos + 1 - idx);
+                    return;
+                }
+            } else if ((mask & 0xFF0000L) != 0) { // c1 is a digit, byte 2 (c2) is not
+                byte c2 = (byte) (word >>> 16);
+                if (isNumberContinuation(c2) == false) {
+                    long val = (t & 0xFFL) * 10L + ((t >>> 8) & 0xFFL);
+                    handler.longField(fieldName, negative ? -val : val, true, buffer, idx, pos + 2 - idx);
+                    return;
+                }
+            }
+        }
+
+        handleNumberGeneral(buffer, idx, pos, negative, fieldName, handler, t, mask);
+    }
+
+    private static boolean isNumberContinuation(byte b) {
+        return b == '.' || b == 'e' || b == 'E';
+    }
+
+    /** Safe fallback used only when {@code pos} is too close to the end of {@code buffer} for
+     *  an unconditional 8-byte load; identical to the general path below except that its first
+     *  SWAR iteration loads {@code pos}'s word itself, guarded by the loop bound. */
+    private void handleNumberGeneral(byte[] buffer, int idx, int pos, boolean negative, String fieldName, JsonDocumentHandler handler) {
         long digits = 0;
         int digitStart = pos;
         int loopBound = buffer.length - 8;
@@ -381,6 +432,54 @@ public final class SimdJsonDirectWalker {
             digits = digits * 100_000_000L + parse8Digits(t);
             pos += 8;
         }
+        finishNumber(buffer, idx, pos, negative, fieldName, handler, digits, digitStart);
+    }
+
+    /** General path entered from {@link #handleNumber}, which has already loaded and digit-mask
+     *  checked the 8-byte word at {@code pos} (its 1-2 digit fast path didn't apply): reuses
+     *  that word/mask as this SWAR loop's first iteration instead of reloading and re-checking
+     *  the same bytes. */
+    private void handleNumberGeneral(
+        byte[] buffer,
+        int idx,
+        int pos,
+        boolean negative,
+        String fieldName,
+        JsonDocumentHandler handler,
+        long firstT,
+        long firstMask
+    ) {
+        long digits = 0;
+        int digitStart = pos;
+
+        if (firstMask == 0) {
+            digits = parse8Digits(firstT);
+            pos += 8;
+            int loopBound = buffer.length - 8;
+            while (pos <= loopBound) {
+                long word = (long) LONG_LE.get(buffer, pos);
+                long t = word - 0x3030303030303030L;
+                if ((t & 0xF0F0F0F0F0F0F0F0L) != 0) {
+                    break;
+                }
+                digits = digits * 100_000_000L + parse8Digits(t);
+                pos += 8;
+            }
+        }
+        finishNumber(buffer, idx, pos, negative, fieldName, handler, digits, digitStart);
+    }
+
+    private void finishNumber(
+        byte[] buffer,
+        int idx,
+        int pos,
+        boolean negative,
+        String fieldName,
+        JsonDocumentHandler handler,
+        long digitsIn,
+        int digitStart
+    ) {
+        long digits = digitsIn;
         // Scalar tail for remaining digits
         byte ch = buffer[pos];
         while (ch >= '0' && ch <= '9') {
@@ -394,16 +493,37 @@ public final class SimdJsonDirectWalker {
         }
 
         int digitCount = pos - digitStart;
+        if (digitCount == 0 || digitCount >= 19) {
+            // Cold: either malformed input (no digits at all) or a 19+ digit integer, needing
+            // the BigInteger fallback or an overflow-back-into-long check. Kept out of this
+            // method so it stays small enough to inline into the hot call chain above.
+            finishNumberSlow(buffer, idx, pos, negative, fieldName, handler, digits, digitCount);
+            return;
+        }
+
+        long val = negative ? -digits : digits;
+        boolean fitsInt = val >= Integer.MIN_VALUE && val <= Integer.MAX_VALUE;
+        handler.longField(fieldName, val, fitsInt, buffer, idx, pos - idx);
+    }
+
+    private void finishNumberSlow(
+        byte[] buffer,
+        int idx,
+        int pos,
+        boolean negative,
+        String fieldName,
+        JsonDocumentHandler handler,
+        long digits,
+        int digitCount
+    ) {
         if (digitCount == 0) {
             throw new JsonParsingException("Invalid number at " + idx);
         }
         int len = pos - idx;
-        if (digitCount >= 19) {
-            if (digitCount > 19 || (negative ? digits == Long.MIN_VALUE ? false : digits < 0 : digits < 0)) {
-                BigInteger bigVal = new BigInteger(new String(buffer, idx, len, java.nio.charset.StandardCharsets.US_ASCII));
-                handler.bigIntegerField(fieldName, bigVal, buffer, idx, len);
-                return;
-            }
+        if (digitCount > 19 || (negative ? digits == Long.MIN_VALUE ? false : digits < 0 : digits < 0)) {
+            BigInteger bigVal = new BigInteger(new String(buffer, idx, len, java.nio.charset.StandardCharsets.US_ASCII));
+            handler.bigIntegerField(fieldName, bigVal, buffer, idx, len);
+            return;
         }
 
         long val = negative ? -digits : digits;
@@ -490,6 +610,42 @@ public final class SimdJsonDirectWalker {
         boolean negative = buffer[idx] == '-';
         int pos = negative ? idx + 1 : idx;
 
+        if (pos > buffer.length - 8) {
+            // See the identical guard in handleNumber above.
+            handleArrayNumberGeneral(buffer, idx, pos, negative, handler);
+            return;
+        }
+
+        // Same 1-2 digit fast path as handleNumber above, sharing its single up-front 8-byte
+        // load; see the comment there.
+        long word = (long) LONG_LE.get(buffer, pos);
+        long t = word - 0x3030303030303030L;
+        long mask = t & 0xF0F0F0F0F0F0F0F0L;
+
+        if ((mask & 0xFFL) == 0) { // byte 0 (c0) is a digit, as it must be for a valid number
+            if ((mask & 0xFF00L) != 0) { // byte 1 (c1) is not a digit
+                byte c1 = (byte) (word >>> 8);
+                if (isNumberContinuation(c1) == false) {
+                    long val = t & 0xFFL;
+                    handler.arrayElemLong(negative ? -val : val, true);
+                    return;
+                }
+            } else if ((mask & 0xFF0000L) != 0) { // c1 is a digit, byte 2 (c2) is not
+                byte c2 = (byte) (word >>> 16);
+                if (isNumberContinuation(c2) == false) {
+                    long val = (t & 0xFFL) * 10L + ((t >>> 8) & 0xFFL);
+                    handler.arrayElemLong(negative ? -val : val, true);
+                    return;
+                }
+            }
+        }
+
+        handleArrayNumberGeneral(buffer, idx, pos, negative, handler, t, mask);
+    }
+
+    /** Safe fallback used only when {@code pos} is too close to the end of {@code buffer}; see
+     *  {@link #handleNumberGeneral(byte[], int, int, boolean, String, JsonDocumentHandler)}. */
+    private void handleArrayNumberGeneral(byte[] buffer, int idx, int pos, boolean negative, JsonDocumentHandler handler) {
         long digits = 0;
         int digitStart = pos;
         int loopBound = buffer.length - 8;
@@ -502,6 +658,57 @@ public final class SimdJsonDirectWalker {
             digits = digits * 100_000_000L + parse8Digits(t);
             pos += 8;
         }
+        finishArrayNumber(buffer, idx, pos, negative, handler, digits, digitStart);
+    }
+
+    /** General path entered from {@link #handleArrayNumber}, reusing its preloaded word/mask;
+     *  see {@link #handleNumberGeneral(byte[], int, int, boolean, String, JsonDocumentHandler, long, long)}. */
+    private void handleArrayNumberGeneral(
+        byte[] buffer,
+        int idx,
+        int pos,
+        boolean negative,
+        JsonDocumentHandler handler,
+        long firstT,
+        long firstMask
+    ) {
+        long digits = 0;
+        int digitStart = pos;
+
+        if (firstMask == 0) {
+            digits = parse8Digits(firstT);
+            pos += 8;
+            int loopBound = buffer.length - 8;
+            while (pos <= loopBound) {
+                long word = (long) LONG_LE.get(buffer, pos);
+                long t = word - 0x3030303030303030L;
+                if ((t & 0xF0F0F0F0F0F0F0F0L) != 0) {
+                    break;
+                }
+                digits = digits * 100_000_000L + parse8Digits(t);
+                pos += 8;
+            }
+        }
+        finishArrayNumber(buffer, idx, pos, negative, handler, digits, digitStart);
+    }
+
+    // Kept deliberately small so it can inline into handleArrayNumber/handleArrayNumberGeneral's
+    // hot call chain: unlike handleNumber's path (which already delegated its floating-point and
+    // bigint/overflow handling to separate handleFloatingPoint/finishNumberSlow calls), this
+    // method used to inline all of that directly, making it nearly double handleNumber's
+    // equivalent's size and pushing it past the JIT's inlining budget every time - see the
+    // NumberFieldParsingBenchmark "5-digit array" result in SIMDJSON_MAP_EVAL.md (H12) for the
+    // measured effect of that.
+    private void finishArrayNumber(
+        byte[] buffer,
+        int idx,
+        int pos,
+        boolean negative,
+        JsonDocumentHandler handler,
+        long digitsIn,
+        int digitStart
+    ) {
+        long digits = digitsIn;
         byte ch = buffer[pos];
         while (ch >= '0' && ch <= '9') {
             digits = digits * 10 + (ch - '0');
@@ -509,54 +716,88 @@ public final class SimdJsonDirectWalker {
         }
 
         if (ch == '.' || ch == 'e' || ch == 'E') {
-            long exponent = 0;
-            int digitCountEnd = pos;
-
-            if (buffer[pos] == '.') {
-                pos++;
-                int fracStart = pos;
-                ch = buffer[pos];
-                while (ch >= '0' && ch <= '9') {
-                    digits = digits * 10 + (ch - '0');
-                    ch = buffer[++pos];
-                }
-                exponent = fracStart - pos;
-                digitCountEnd = pos;
-            }
-
-            if (buffer[pos] == 'e' || buffer[pos] == 'E') {
-                pos++;
-                boolean expNeg = false;
-                if (buffer[pos] == '-') {
-                    expNeg = true;
-                    pos++;
-                } else if (buffer[pos] == '+') {
-                    pos++;
-                }
-                long exp = 0;
-                ch = buffer[pos];
-                while (ch >= '0' && ch <= '9') {
-                    exp = exp * 10 + (ch - '0');
-                    ch = buffer[++pos];
-                }
-                exponent += expNeg ? -exp : exp;
-            }
-
-            int digitCount = digitCountEnd - digitStart;
-            double val = doubleParser.parse(buffer, idx, negative, digitStart, digitCount, digits, exponent);
-            float fval = (float) val;
-            handler.arrayElemDouble(val, (double) fval == val);
-        } else {
-            int digitCount = pos - digitStart;
-            if (digitCount >= 19 && (digitCount > 19 || (negative ? digits == Long.MIN_VALUE ? false : digits < 0 : digits < 0))) {
-                int len = pos - idx;
-                BigInteger bigVal = new BigInteger(new String(buffer, idx, len, java.nio.charset.StandardCharsets.US_ASCII));
-                handler.arrayElemBigInteger(bigVal, buffer, idx, len);
-            } else {
-                long val = negative ? -digits : digits;
-                handler.arrayElemLong(val, val >= Integer.MIN_VALUE && val <= Integer.MAX_VALUE);
-            }
+            handleArrayFloatingPoint(buffer, idx, negative, digits, pos, digitStart, handler);
+            return;
         }
+
+        int digitCount = pos - digitStart;
+        if (digitCount >= 19) {
+            finishArrayNumberSlow(buffer, idx, pos, negative, handler, digits, digitCount);
+            return;
+        }
+
+        long val = negative ? -digits : digits;
+        handler.arrayElemLong(val, val >= Integer.MIN_VALUE && val <= Integer.MAX_VALUE);
+    }
+
+    private void handleArrayFloatingPoint(
+        byte[] buffer,
+        int idx,
+        boolean negative,
+        long intDigits,
+        int pos,
+        int digitStart,
+        JsonDocumentHandler handler
+    ) {
+        long digits = intDigits;
+        long exponent = 0;
+        int digitCountEnd = pos;
+
+        if (buffer[pos] == '.') {
+            pos++;
+            int fracStart = pos;
+            byte ch = buffer[pos];
+            while (ch >= '0' && ch <= '9') {
+                digits = digits * 10 + (ch - '0');
+                ch = buffer[++pos];
+            }
+            exponent = fracStart - pos;
+            digitCountEnd = pos;
+        }
+
+        if (buffer[pos] == 'e' || buffer[pos] == 'E') {
+            pos++;
+            boolean expNeg = false;
+            if (buffer[pos] == '-') {
+                expNeg = true;
+                pos++;
+            } else if (buffer[pos] == '+') {
+                pos++;
+            }
+            long exp = 0;
+            byte ch = buffer[pos];
+            while (ch >= '0' && ch <= '9') {
+                exp = exp * 10 + (ch - '0');
+                ch = buffer[++pos];
+            }
+            exponent += expNeg ? -exp : exp;
+        }
+
+        int digitCount = digitCountEnd - digitStart;
+        double val = doubleParser.parse(buffer, idx, negative, digitStart, digitCount, digits, exponent);
+        float fval = (float) val;
+        handler.arrayElemDouble(val, (double) fval == val);
+    }
+
+    // Cold: only 19+ digit integers reach here (BigInteger fallback, or overflow back into a
+    // valid long range).
+    private void finishArrayNumberSlow(
+        byte[] buffer,
+        int idx,
+        int pos,
+        boolean negative,
+        JsonDocumentHandler handler,
+        long digits,
+        int digitCount
+    ) {
+        if (digitCount > 19 || (negative ? digits == Long.MIN_VALUE ? false : digits < 0 : digits < 0)) {
+            int len = pos - idx;
+            BigInteger bigVal = new BigInteger(new String(buffer, idx, len, java.nio.charset.StandardCharsets.US_ASCII));
+            handler.arrayElemBigInteger(bigVal, buffer, idx, len);
+            return;
+        }
+        long val = negative ? -digits : digits;
+        handler.arrayElemLong(val, val >= Integer.MIN_VALUE && val <= Integer.MAX_VALUE);
     }
 
     // ------------------------------------------------------------------
