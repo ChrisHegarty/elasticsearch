@@ -781,7 +781,10 @@ code path from string unescaping, double parsing, and field-name
 resolution (documents are all-integer, one digit width at a time), A/B
 on both AWS hosts (3 forks, 3+5 iterations × 2s), for both the object-field
 path (`handleNumber`) and the array-element path (`handleArrayNumber`,
-which skips field-name resolution and so shows the change more directly):
+which skips field-name resolution and so shows the change more directly).
+
+First version (separate byte reads for the 1-2 digit pre-check, ahead of
+the unchanged general path):
 
 | digits | host1 (x86_64) field Δ | host1 array Δ | host2 (aarch64) field Δ | host2 array Δ |
 |---|---|---|---|---|
@@ -790,27 +793,50 @@ which skips field-name resolution and so shows the change more directly):
 | 5 | −3.0% | −0.4% | −1.7% | −6.7% |
 | 10 | −0.4% | −1.7% | −2.2% | −6.3% |
 
+That version paid a small, consistent tax at 5+ digits (roughly 2-7%,
+worse on aarch64): the extra byte reads and `isDigit`/`isNumberContinuation`
+checks that have to fail before falling through to the general path were
+pure overhead once the number was long enough that the SWAR loop would
+have done useful work anyway.
+
+**Revised fix:** load the next 8 bytes once, up front, in `handleNumber`/
+`handleArrayNumber` themselves (guarded by the same "no trailing padding"
+buffer-length check `SimdJsonParser` documents; falls back to the original
+byte-at-a-time approach only within the last 8 bytes of the buffer). That
+one load now covers *both* the 1-2 digit fast path (`c1`/`c2` extracted via
+register shifts of the already-loaded word, not separate array reads) and,
+when neither applies, the general path's SWAR loop, whose first iteration
+reuses that same word/mask instead of reloading and re-checking it. Numbers
+of any other length now cost what they did before this fast path existed
+at all: one load, one mask check, then either the SWAR loop or the scalar
+tail — no added-and-discarded work regardless of digit count:
+
+| digits | host1 (x86_64) field Δ | host1 array Δ | host2 (aarch64) field Δ | host2 array Δ |
+|---|---|---|---|---|
+| 1 | **+18.4%** | **+47.5%** | **+16.0%** | **+33.4%** |
+| 2 | **+21.2%** | **+53.0%** | **+19.3%** | **+36.3%** |
+| 5 | **+10.4%** | −2.2% | **+9.0%** | −4.9% |
+| 10 | **+25.7%** | **+15.6%** | **+19.3%** | **+1.0%** |
+
 (Δ = `before/after`, before = benchmark added to unmodified `main`
 ([`chegar/swar-small-int-before`](https://github.com/ChrisHegarty/elasticsearch/tree/chegar/swar-small-int-before)),
-after = the fix
+after = the revised fix
 ([`chegar/swar-small-int-fastpath`](https://github.com/ChrisHegarty/elasticsearch/tree/chegar/swar-small-int-fastpath)).)
 
-Same qualitative pattern as H11/DoubleParser's mix-ratio result, for a
-different reason: the win at 1-2 digits is substantial and consistent on
-both architectures — most pronounced on the array path (+46-70%), where
-there's no field-name-hashing cost diluting the measurement — but there's a
-small, consistent **cost** at 5+ digits (roughly 2-7%, worse on aarch64):
-the two extra byte reads and `isDigit`/`isNumberContinuation` checks that
-have to fail before falling through to the unchanged general path are pure
-overhead once the number is long enough that the SWAR loop would have done
-useful work anyway. Unlike H11 (where the split was strictly a same-or-better
-change at every ratio), this one is a genuine trade-off: a bet that, for
-workloads shaped like ClickBench (~77% 1-2 digits, ~14% more at 3-4 digits
-which aren't covered by either the win or this specific loss measurement,
-~9% at 5+ digits), the 1-2 digit win vastly outweighs the small tax paid by
-longer numbers. Worth checking the real digit-length distribution of
-Elasticsearch's own numeric fields (not just ClickBench) before treating
-this as a universal win rather than a workload-shaped one.
+This closes the regression almost everywhere and, in most cells, beats the
+*unmodified* baseline even for numbers the fast path doesn't apply to
+(5 and 10 digits) — expected, since those paths now do one load where they
+used to do the same one load anyway, so there was never a reason for them
+to be slower, only equal. One cell (5-digit array shape) still shows a
+small −2% to −5% gap on both hosts; unlike the 1-2 digit win or the 10-digit
+recovery, this one didn't move with the fix, so it's probably a smaller,
+separate effect (e.g. code-size/inlining shift from the new `finishNumber`/
+`finishArrayNumber` helper extraction) rather than the same mechanism -
+worth a follow-up look if this path matters for a given workload, but not
+blocking given the size of the win everywhere else. Worth checking the real
+digit-length distribution of Elasticsearch's own numeric fields (not just
+ClickBench) before treating this as a universal win rather than a
+workload-shaped one.
 
 **Other candidates surfaced by the same ClickBench analysis, not yet
 investigated:** `StringParser`'s unescape path for the "short pure-ASCII
