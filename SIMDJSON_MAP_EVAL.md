@@ -538,6 +538,60 @@ further, not just numbers-vs-strings:**
   measurement of the full document-shaped cost, not just the isolated
   per-number cost above.
 
+#### Why is Java's double fast path ~43% slower, given it's "the same algorithm"?
+
+Dug into this with `-XX:+PrintInlining`/`-XX:+PrintCompilation` and JIT
+disassembly (`-XX:+PrintAssembly` + [hsdis](https://chriswhocodes.com/hsdis/),
+sha256-verified, loaded from a scratch dir — not installed into any shared
+JDK). Two distinct, additive causes, both concrete and fixable in principle,
+neither an algorithm gap:
+
+**1. `DoubleParser.computeDouble` (435 bytes of bytecode) doesn't inline.**
+`-XX:+PrintInlining` shows it consistently as `failed to inline: hot method
+too big` into `DoubleParser.parse` → `JavaNumberParser.parseFloatingPoint`,
+even at C2/tier 4 — it exceeds HotSpot's default hot-method inline budget
+(`-XX:FreqInlineSize`, 325 bytes on this JDK/platform). Every double parsed
+pays a real call+return (frame setup, register spills across the call
+boundary) that a single small native function — always inlined at `-O3`, or
+at worst a cheap intra-TU sibling call — doesn't. Confirmed causally: raising
+the budget (`-XX:FreqInlineSize=500`, letting it inline) drops `javaParse`
+(doubles) from 14.85 ns/op to **13.12 ns/op** — recovers about a third of the
+gap to native, by itself, with no other change.
+
+**2. The (non-inlined) `computeDouble` body pays several fixed JIT-method
+costs the native fast path structurally cannot.** Comparing the disassembly
+of the fast-path branch (`abs(exp10) < 23 && significand fits in 53 bits` —
+the branch this benchmark's data always takes) side by side:
+
+| | Java (`DoubleParser.computeDouble`, C2) | Native (`simdjson_parse_numbers_batch`, clang -O3) |
+|---|---|---|
+| nmethod entry barrier | `ldr`+`cmp`+`b.ne` on every call (GC/class-redefinition safety) | none — not a managed runtime |
+| `POWERS_OF_TEN`/`POW10` table address | 3 instructions (`mov`+`movk`+`movk`) materializing a full 48-bit absolute heap address, **on every call** | `adrp`+`add` computed **once before the whole 5000-number loop**, reused via one register for every number |
+| bounds check on the table load | explicit `cmp`+`b.cs`→uncommon-trap, even though the same value's range was just checked moments earlier (JIT couldn't prove the freshly-negated register was the same value, so range-check elimination didn't fire) | none — pointer arithmetic (`sub x17, x14, x7, lsl #3` for the negative-exponent case) needs no separate bounds check at all |
+| return path | safepoint poll (`ldr`+`cmp`+`b.hi`→safepoint blob) before `ret` | plain `ret`, no polling |
+
+None of these are the arithmetic itself (`fmul`/`fdiv`/`fneg`/`fcsel` are
+identical either way, and identically cheap) — they're the fixed tax of
+being a safely-managed, GC-relocatable, safepoint-able JIT method call,
+which a native leaf function simply doesn't owe. The table-address point is
+also *structural*, not incidental: because the native routine is one
+function looping over the whole batch, the compiler hoists the
+loop-invariant table address out of the loop entirely (paid once for 5000
+numbers); Java's `computeDouble` is a fresh call every time with no
+cross-call state, so it re-materializes that address on every single
+invocation. A batched call isn't just amortizing FFI-crossing cost (H9's
+point) — for this specific piece, it's also amortizing work an unrolled/
+inlined-into-a-loop native routine gets to hoist that a per-value JIT method
+call structurally cannot.
+
+**Not itself a reason to change anything in `DoubleParser`** — this was a
+diagnostic dig to answer *why*, not a proposal to raise `FreqInlineSize`
+process-wide (a global JIT tuning flag, with its own tradeoffs, is out of
+scope for one call site) or to hand-inline `computeDouble` into its callers
+(README-worthy but separate work, and would need its own before/after
+measurement in the real `SimdJsonDirectWalker` path, not just this isolated
+benchmark).
+
 ## Conclusion
 
 - The baseline ~25–45% win (real hardware, both architectures, 5 shapes
