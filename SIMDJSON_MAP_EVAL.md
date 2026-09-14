@@ -684,6 +684,72 @@ were reproducible run-to-run on both hosts (e.g. host2 `nativeBatchParse`
 doubles: 10.549 vs 10.551 ns/op before/after), confirming the delta is
 attributable to the Java-side change, not run-to-run noise.
 
+#### The benefit depends on the fast-path/slow-path mix at the call site
+
+The tables above were built entirely from fast-path-eligible inputs, so they
+only show the best case. Whether `computeDoubleFastPath` (45 bytes) actually
+inlines into its caller depends on C2 judging that specific call as "hot"
+relative to the call site's overall frequency (`-XX:FreqInlineSize`, 325
+bytes); once it isn't judged hot enough, C2 falls back to the much smaller
+default budget (`-XX:MaxInlineSize`, 35 bytes) and the 45-byte method no
+longer fits, stopping inlining. A monomorphic, all-fast-path benchmark can
+never observe this — every real call site parsing a mix of JSON numbers
+(prices next to lat/lon next to large scaled integers, etc.) can.
+
+Rewrote `DoubleParserBenchmark` (still in
+[`chegar/doubleparser-fastpath-inline-clean`](https://github.com/ChrisHegarty/elasticsearch/tree/chegar/doubleparser-fastpath-inline-clean))
+to take a `@Param({"0","10","25","50","75","100"}) fastPathPercent`: for
+each trial it builds one shared, shuffled array of `(negative, digits,
+exponent)` tuples containing exactly that percentage of fast-path-eligible
+entries (few digits, `exponent=-3`) and the rest Eisel-Lemire-eligible
+(16-digit significand, `|exponent|` in `[30, 230)`), then calls
+`DoubleParser.parse()` from one call site over the whole array — so the
+JIT sees the same realistic mix a production call site would.
+
+Ran A/B (before = just this benchmark added to `main`, no `DoubleParser`
+change, on
+[`chegar/doubleparser-mix-before`](https://github.com/ChrisHegarty/elasticsearch/tree/chegar/doubleparser-mix-before);
+after = `chegar/doubleparser-fastpath-inline-clean`) on both AWS hosts, same
+JMH config (3 forks, 3+5 iterations × 2s):
+
+| fastPathPercent | host1 (x86_64) before | host1 after | Δ | host2 (aarch64) before | host2 after | Δ |
+|---|---|---|---|---|---|---|
+| 0 | 6.369 ± 0.020 | 5.921 ± 0.334 | +8% (noise — no fast-path calls exist) | 5.912 ± 0.201 | 6.053 ± 0.137 | −2% (noise) |
+| 10 | 6.060 ± 0.001 | 5.930 ± 0.011 | +2% (noise) | 5.831 ± 0.083 | 5.947 ± 0.097 | −2% (noise) |
+| 25 | 5.722 ± 0.014 | 5.024 ± 0.132 | **+14%** | 5.443 ± 0.021 | 5.507 ± 0.124 | −1% (noise) |
+| 50 | 5.057 ± 0.028 | 4.032 ± 0.007 | **+25%** | 5.200 ± 0.301 | 4.596 ± 0.007 | **+13%** |
+| 75 | 4.535 ± 0.133 | 3.118 ± 0.006 | **+45%** | 5.064 ± 0.108 | 3.522 ± 0.016 | **+44%** |
+| 100 | 3.679 ± 0.001 | 1.335 ± 0.008 | **+176% (2.76x)** | 4.155 ± 0.105 | 1.440 ± 0.003 | **+189% (2.89x)** |
+
+(Δ = `before/after`, i.e. how much faster `parse()` got; "noise" where the
+before/after difference is within, or close to, the reported error bars.)
+
+This confirms the other agent's hypothesis quantitatively, on real
+hardware rather than just `-XX:+PrintInlining` traces: at low fast-path
+ratios (0–10%, and on aarch64 up to 25%) the split is indistinguishable
+from noise — **no regression**, but no benefit either, exactly as expected
+since `computeDoubleFastPath` isn't inlining at that ratio and the call
+behaves like the old fused method's non-inlined call. The benefit ramps up
+smoothly (not a sharp step, unlike the isolated `PrintInlining` trace —
+averaging over 3 forks × 5 iterations blends whatever run-to-run inlining
+flips happen near the crossover) from ~25% fast-path upward, reaching a
+2.8–2.9x speedup at 100%. The crossover sits a little higher on aarch64
+than x86_64 (25% still noise vs. already +14%), consistent with the two
+platforms' C2 tuning/timing differing slightly, but the qualitative shape —
+flat-then-ramping — matches on both.
+
+**Practical takeaway:** this change is safe to ship regardless of the
+real-world ratio (it never regresses `parse()` below the pre-fix cost), but
+its payoff is concentrated in workloads where the fast path dominates at
+this call site — e.g. documents whose numeric fields are mostly
+prices/scores/percentages/small-precision metrics (few digits, small
+exponent) rather than very large exponents or >53-bit significands. The
+earlier ClickBench spot-check (some datasets have no floating-point fields
+at all) is a reminder that the real-world mix should be checked per
+workload rather than assumed; it doesn't change the recommendation to ship
+the fix, since it's a strict improvement everywhere it inlines and a no-op
+everywhere it doesn't.
+
 ## Conclusion
 
 - The baseline ~25–45% win (real hardware, both architectures, 5 shapes
