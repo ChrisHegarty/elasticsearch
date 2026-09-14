@@ -662,6 +662,28 @@ of H11's native-batching question — it doesn't require any native code,
 FFI, or new dependency, just reduces `computeDouble`'s bytecode footprint
 below the JIT's own inlining threshold.
 
+**Confirmed on both AWS hosts** (not just this Mac), on a dedicated branch
+([`chegar/doubleparser-fast-path-inline`](https://github.com/ChrisHegarty/elasticsearch/tree/chegar/doubleparser-fast-path-inline),
+based on `main`, carrying just the native batch-parsing benchmark infra plus
+this fix), same JMH config (3 forks, 5+8 iterations × 3s), before vs. after
+in-place on identical hardware:
+
+| host | shape | before | after | Δ |
+|---|---|---|---|---|
+| host1 (x86_64, AMD EPYC 9R14) | ints | 6.391 ns/op | 6.400 ns/op | unaffected, as expected |
+| host1 | doubles | 19.697 ns/op | 14.991 ns/op | **−24%** |
+| host1 | mixed | 13.100 ns/op | 11.516 ns/op | **−12%** (now *faster* than native's 13.785) |
+| host2 (aarch64, Neoverse-V2) | ints | 6.473 ns/op | 6.485 ns/op | unaffected, as expected |
+| host2 | doubles | 15.740 ns/op | 14.332 ns/op | **−9%** |
+| host2 | mixed | 13.772 ns/op | 11.719 ns/op | **−15%** |
+
+The win is real and consistent on both architectures, though its size
+varies by CPU — biggest on the x86 host, where it also flips `mixed` from
+roughly break-even against native to a clear Java win. Native's own numbers
+were reproducible run-to-run on both hosts (e.g. host2 `nativeBatchParse`
+doubles: 10.549 vs 10.551 ns/op before/after), confirming the delta is
+attributable to the Java-side change, not run-to-run noise.
+
 ## Conclusion
 
 - The baseline ~25–45% win (real hardware, both architectures, 5 shapes
