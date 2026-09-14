@@ -750,6 +750,78 @@ workload rather than assumed; it doesn't change the recommendation to ship
 the fix, since it's a strict improvement everywhere it inlines and a no-op
 everywhere it doesn't.
 
+### H12 — SWAR integer fast path: same inlining/mix lesson, a different shape
+
+Asked "of the numerics in a real dataset, what share actually reach
+`DoubleParser`'s fast path?" ClickBench's `hits` dataset answered that
+directly: a 1000-doc sample (`~/.rally/benchmarks/data/clickbench/`) has
+**zero** floating-point JSON values — all 67,000 numeric values across the
+sample are plain integers, and ~77% of those are 1-2 digits (booleans as
+0/1, small enum/status codes). So for this shape, H11/DoubleParser's win
+doesn't apply at all; the numeric-parsing cost is entirely in
+`SimdJsonDirectWalker.handleNumber`/`handleArrayNumber`'s SWAR integer
+scanner (an unaligned 8-byte load + subtract + mask, then a scalar tail
+loop). For 1-2 digit numbers, that SWAR load is always discarded (never all
+8 bytes are digits), and the scalar tail then re-reads the same 1-2 bytes
+one at a time.
+
+**Fix:** added a small dispatch at the top of both methods that recognizes
+a 1-2 digit integer directly from the next byte or two (already known-valid
+JSON, so "next byte isn't a digit and isn't `.`/`e`/`E`" means the number
+ends there) and emits it without touching the SWAR load or scalar loop at
+all, falling through to the unchanged general path (3+ digits, floats,
+bigints) otherwise. Verified against the full `simdjson` test suite plus
+new boundary tests (0/9, 10/99, negative variants, `-0`, 3-digit
+fallthrough, and the same shapes immediately followed by `.`/`e`/`E` to
+confirm they still classify as doubles) and 20 extra random seeds of the
+Jackson-comparison fuzz suite.
+
+**Benchmarked** with a new `NumberFieldParsingBenchmark`, isolating this
+code path from string unescaping, double parsing, and field-name
+resolution (documents are all-integer, one digit width at a time), A/B
+on both AWS hosts (3 forks, 3+5 iterations × 2s), for both the object-field
+path (`handleNumber`) and the array-element path (`handleArrayNumber`,
+which skips field-name resolution and so shows the change more directly):
+
+| digits | host1 (x86_64) field Δ | host1 array Δ | host2 (aarch64) field Δ | host2 array Δ |
+|---|---|---|---|---|
+| 1 | **+15.0%** | **+69.6%** | **+18.3%** | **+45.7%** |
+| 2 | **+19.8%** | **+67.3%** | **+23.3%** | **+52.5%** |
+| 5 | −3.0% | −0.4% | −1.7% | −6.7% |
+| 10 | −0.4% | −1.7% | −2.2% | −6.3% |
+
+(Δ = `before/after`, before = benchmark added to unmodified `main`
+([`chegar/swar-small-int-before`](https://github.com/ChrisHegarty/elasticsearch/tree/chegar/swar-small-int-before)),
+after = the fix
+([`chegar/swar-small-int-fastpath`](https://github.com/ChrisHegarty/elasticsearch/tree/chegar/swar-small-int-fastpath)).)
+
+Same qualitative pattern as H11/DoubleParser's mix-ratio result, for a
+different reason: the win at 1-2 digits is substantial and consistent on
+both architectures — most pronounced on the array path (+46-70%), where
+there's no field-name-hashing cost diluting the measurement — but there's a
+small, consistent **cost** at 5+ digits (roughly 2-7%, worse on aarch64):
+the two extra byte reads and `isDigit`/`isNumberContinuation` checks that
+have to fail before falling through to the unchanged general path are pure
+overhead once the number is long enough that the SWAR loop would have done
+useful work anyway. Unlike H11 (where the split was strictly a same-or-better
+change at every ratio), this one is a genuine trade-off: a bet that, for
+workloads shaped like ClickBench (~77% 1-2 digits, ~14% more at 3-4 digits
+which aren't covered by either the win or this specific loss measurement,
+~9% at 5+ digits), the 1-2 digit win vastly outweighs the small tax paid by
+longer numbers. Worth checking the real digit-length distribution of
+Elasticsearch's own numeric fields (not just ClickBench) before treating
+this as a universal win rather than a workload-shaped one.
+
+**Other candidates surfaced by the same ClickBench analysis, not yet
+investigated:** `StringParser`'s unescape path for the "short pure-ASCII
+digits, zero escapes" shape (numeric IDs stored as JSON strings - e.g.
+`WatchID`, `UserID` - are ~19% of all string values in this dataset, and
+their bytes plus other real text strings outweigh numeric-literal bytes
+2.5:1 in this sample); and the `BigInteger` fallback for `digitCount >= 19`
+integers, which ClickBench never exercises (its raw-JSON-number integers
+top out at 10 digits) but which is a qualitatively different, unprofiled,
+more expensive path that other workloads with large numeric IDs may hit.
+
 ## Conclusion
 
 - The baseline ~25–45% win (real hardware, both architectures, 5 shapes
