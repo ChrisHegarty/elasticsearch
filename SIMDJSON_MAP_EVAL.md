@@ -108,6 +108,7 @@ either side of the comparison can be pushed further.
 | H8 | Value boxing cost in isolation: how much of the remaining (non-tokenizer) time is `Integer`/`Long`/`Double` boxing vs `HashMap.put` overhead vs `String` decoding? (async-profiler allocation/CPU profiling on both paths side by side.) | Attributing the "identical" container cost |
 | H9 | Could a native-driven stage 2 (parsing further inside libsimdjson, closer to its own DOM/On-Demand API, instead of the current Java-side fused walker) be faster? | Whether staying in native code longer beats crossing back into Java per token |
 | H10 | Added after Step 3, prompted by a follow-up question: if only a small subset of a document's fields is ever read, does deferring `String`/`BigInteger` decoding until first `Map#get(key)` access (instead of eagerly during the walk) beat eager materialization? | Whether the container/boxing cost is avoidable when it's *not needed at all*, as opposed to H1-H3's attempts to make the (always fully-needed) eager cost itself cheaper |
+| H11 | Added after H10, prompted by a follow-up question: H9 rejected a native stage 2 wholesale via a proxy (FFI-crossing cost). Revisited with a real (if narrow) native prototype: should numerics be treated differently from strings — and from each other — when considering what to fold into native code, one call per *batch* of numbers rather than per document/token? | Whether native arithmetic beats the already-ported-to-Java fast-path algorithms for numbers specifically, decomposed by number kind (int vs. float) |
 
 Each will be benchmarked independently (isolate one change at a time against
 the Step 1 baseline) and profiled with async-profiler (CPU + allocation) on
@@ -422,6 +423,121 @@ genuine, positive, reproducible effect, but it cuts both ways:**
   profiling already established that `HashMap.put`/`String` decode/boxing
   is the dominant "second half" cost this hypothesis is trying to move.
 
+### H11 — folding stage1+stage2 DOM-style, and numerics vs. strings on a tape
+
+Follow-up question: the native/Java split still runs stage 1 (native) and
+stage 2 (Java) separately. Could the two be folded together, DOM-style —
+and should numerics be treated differently from strings for the purpose of
+building a tape?
+
+**Folding strings/structure into a native DOM tape: rejected on
+architectural grounds, no prototype needed.** The vendored `simdjson.h`
+already has the DOM API we don't use: `dom_parser_implementation::parse()`
+(fused stage1+stage2) produces a `dom::document` with a `tape` (`uint64_t[]`)
+and a `string_buf` (`uint8_t[]`). Its `tape_type`/`tape_ref` encoding
+(`internal/tape_type.h`, `tape_ref::get_string_view()`) shows *every* string —
+escaped or not — is unconditionally copied+unescaped into `string_buf`, with
+the tape word holding an offset into it. Compare that with what
+`SimdJsonDirectWalker` already does: for the escape-free case (the common
+one), the handler gets `(buffer, off, len)` pointing directly at the
+*original* document bytes — zero copies before the final `new String(...)`,
+which is the theoretical floor for producing a `java.lang.String` at all (it
+must own its backing array; no API lets it alias off-heap/`MemorySegment`
+memory). Routing through the native tape instead would mean: one
+unconditional native copy into `string_buf`, *plus* a second copy out of
+off-heap memory into a heap `byte[]` for `new String(...)` to consume (no
+API constructs a `String` directly from a `MemorySegment`). That's strictly
+more copies than today for the common case — a regression, not a win — so
+this alone rules out DOM-style folding for strings/objects/arrays without
+needing to build anything to measure it. (This isn't an FFI-crossing
+argument, unlike H9 — folding stage 2 in would still be one native call per
+document, same granularity as stage 1 today. The problem is the tape's data
+layout, not crossing count.)
+
+**Numerics are a genuinely different case, and *worth* measuring.** The
+tape's numeric encoding packs the parsed value inline — `tape[i]` is a type
+tag only, `tape[i+1]` is the raw `int64`/`double` bits, `memcpy`'d directly
+(`tape_ref::next_tape_value`) — free to read, no format tax either way. But
+`DoubleParser` and the SWAR integer-digit-widening loop in
+`SimdJsonDirectWalker.handleNumber`/`parse8Digits` are already faithful Java
+ports of simdjson's own algorithms (Eisel-Lemire, the same 8-digits-at-once
+trick), so there's no *algorithmic* gap for native to close — only a
+JIT-vs-AOT codegen question on scalar bit-twiddling arithmetic, which needed
+measuring, not assuming.
+
+**Prototype:** [`simdjson_parse_numbers_batch`](libs/simdjson/native/src/es_simdjson.cpp)
+— a new native function, added alongside (not replacing) the existing
+stage-1-only entry points, that parses many numbers in **one call for the
+whole batch** (matching the per-document, not per-token, discipline H9
+established as essential — see the FFI-crossing-cost numbers there).
+Deliberately fast-path-only (≤19 significant digits, decimal exponent in
+[-22, 22] — mirrors `DoubleParser`'s own fast/slow split); anything outside
+that reports `NEEDS_FALLBACK` and the caller re-parses that one number in
+Java, so correctness never depends on the fast path's coverage. Exposed to
+Java via [`NumberBatchParser`](libs/simdjson/src/main/java/org/elasticsearch/simdjson/NumberBatchParser.java)
+(a new `@Critical` FFM binding on `SimdJsonLibrary`), correctness-checked
+against `Long`/`Double.parseDouble` and against a verbatim copy of the real
+`SimdJsonDirectWalker` number-parsing path
+([`JavaNumberParser`](libs/simdjson/src/benchmark/java/org/elasticsearch/benchmark/xcontent/JavaNumberParser.java))
+before any benchmark number was trusted. Built locally via
+`SIMDJSON_NATIVE_BUILD=host` (`make local-install` — no docker
+cross-toolchain needed for a same-machine spike; see the `nativeLibraryBuild`
+block in `libs/simdjson/build.gradle`), so — unlike H9 — this one *was*
+prototyped, not just estimated.
+
+**Benchmark:** [`NumberBatchParsingBenchmark`](libs/simdjson/src/benchmark/java/org/elasticsearch/benchmark/xcontent/NumberBatchParsingBenchmark.java)
+parses 5000 numbers per invocation, one number at a time in Java
+(`JavaNumberParser`, the real production algorithm) vs. one native call for
+all 5000, across three shapes: `ints` (random 0–999,999,999), `doubles`
+(random few-decimal values, e.g. prices/percentages/metrics — realistic
+JSON float shapes, all within the native fast path by construction), and
+`mixed` (50/50). No strings, no structure, no `Map` building — isolates just
+the parsing arithmetic.
+
+| shape | Java (real path) | native (batched) | Δ |
+|---|---|---|---|
+| ints | 5.63 ± 0.11 ns/op | 7.79 ± 0.42 ns/op | **+38% (native slower)** |
+| doubles | 14.85 ± 0.60 ns/op | 8.49 ± 0.09 ns/op | **−43% (native faster)** |
+| mixed | 15.53 ± 0.48 ns/op | 10.95 ± 0.43 ns/op | **−29% (native faster)** |
+
+(macOS, Apple M-series aarch64, JDK 26, 2 forks × 3 warmup + 5 measurement ×
+3s — a laptop, not the dedicated AWS boxes used for H1-H10, since those
+instances were unreachable when this was run; error bars are tight and
+non-overlapping between Java/native for every shape, so the direction is
+trustworthy even if absolute ns/op wouldn't be comparable to the rest of
+this document. Revisit on the AWS hosts before relying on this for a
+production decision.)
+
+**Accepted for doubles, rejected for ints — numerics need splitting
+further, not just numbers-vs-strings:**
+
+- **Integers: Java already wins, cleanly.** The SWAR 8-digits-at-once loop
+  is cheap enough that even a single batched native call's fixed overhead
+  (array pinning, the `@Critical` transition) isn't recovered by anything
+  faster happening on the native side — there's nothing left to win for
+  pure integer parsing.
+- **Doubles: native wins substantially (~43%).** `DoubleParser.parse()`
+  first runs `shouldBeHandledBySlowPath` (a digit scan) before it even
+  reaches the cheap `computeDouble` fast-path branch, and `computeDouble`
+  itself carries the full Eisel-Lemire machinery (128-bit multiply tables)
+  as a fallback path even when the simple multiply-by-power-of-ten branch
+  is taken. The native prototype only implements that simple branch (by
+  design — see the fast-path scope above), so this comparison is really
+  "real dispatch-heavy Java vs. a lean native fast-path-only routine doing
+  the same simple arithmetic" — and the lean routine wins clearly.
+- **This refines the original question's framing**: it's not just
+  "numerics vs. strings" (strings are a clear no per above) — it's
+  "integers vs. floats" *within* numerics. A hybrid design folding only
+  float parsing into a batched native call (leaving integers, strings, and
+  structure exactly as they are today) is the one concretely promising
+  direction this evaluation found for going further into native code.
+- Not integrated into `SimdJsonDirectWalker`/any document-walking pipeline —
+  this isolates the arithmetic only. Wiring a float-only native fast path
+  into the real walker (matched up by position with structural indices, one
+  batched call before or during the walk) would need its own follow-up
+  measurement of the full document-shaped cost, not just the isolated
+  per-number cost above.
+
 ## Conclusion
 
 - The baseline ~25–45% win (real hardware, both architectures, 5 shapes
@@ -454,14 +570,24 @@ genuine, positive, reproducible effect, but it cuts both ways:**
   conditional on the access pattern, not a strict improvement, and would
   need to be opt-in per call site rather than a drop-in replacement for
   `MapDocumentHandler`.
+- **H11 revisited H9's rejection of native stage 2 with an actual prototype**
+  (not just the FFI-crossing proxy) and found the honest answer is
+  "it depends which part of stage 2": folding strings/structure into a
+  native DOM tape is a clear regression (the tape format forces an extra
+  copy the current zero-copy-on-no-escape Java path already avoids), but
+  folding *float* parsing into one batched native call is a real ~43% win
+  over the real Java path, while *integer* parsing is better left in Java
+  (native is ~38% slower there). So "numerics vs. strings" was half right —
+  the more precise split this evaluation found is strings (no), integers
+  (no), floats (yes, conditionally on doing it as a batched call).
 - **Bottom line:** the simdjson-backed `Map` builder is a solid, consistent,
   bounded win (~1.4–1.7x) for this use case, driven entirely by its faster
   tokenizer. Of the improvement hypotheses aimed at the shared
   container/boxing half of the cost, H1-H3 (all targeting allocation
-  avoidance without changing the target shape) found nothing; only H10
-  (which does change the target shape, and only helps for sparse-access
-  callers) found a real, if conditional, win. The ceiling for a drop-in,
+  avoidance without changing the target shape) found nothing; H10 (changing
+  the target shape) and H11 (moving float parsing to native) each found a
+  real, if conditional and narrow, win. The ceiling for a drop-in,
   access-pattern-agnostic `Map` builder is the shared container/boxing
   cost, not the tokenizer, and that ceiling is hard to move without either
-  changing what gets built (H10's direction) or accepting a narrower,
-  access-pattern-specific contract.
+  changing what gets built (H10), narrowing which numbers get parsed where
+  (H11), or accepting a narrower, access-pattern-specific contract.
