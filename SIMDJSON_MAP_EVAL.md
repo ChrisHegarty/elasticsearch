@@ -875,7 +875,7 @@ more expensive path that other workloads with large numeric IDs may hit.
 the full parse→flatten→columnar-stage→commit→buildPartition pipeline, not
 just number parsing) A/B on both AWS hosts, 3 forks this time (a single
 fork was too noisy for this multithreaded benchmark when tried earlier in
-this doc). On host1 (x86_64), `jacksonEncode` - completely untouched by
+this doc). On the x86_64 host, `jacksonEncode` - completely untouched by
 this fix, so it's the noise-floor control - stayed within ±0.9% across all
 three `docCount`s, and `simdJsonEncode` showed a small, real, docCount-scaled
 gain:
@@ -891,16 +891,100 @@ microbenchmark, but expected: number parsing is one part of total
 per-document cost in the full pipeline (`clickbench_flat` also has several
 string fields, plus the encoder's flatten/columnar-stage/commit work this
 fix doesn't touch), so its share of the end-to-end win is diluted
-accordingly. host2 (aarch64) was not usable for this comparison: its own
-`jacksonEncode` control swung from +3.5% to −10.1% to +6.3% across the
-three `docCount`s (same JVM, same unmodified-vs-fixed A/B, same benchmark
-run, and `jacksonEncode` doesn't call into any of this code) - noise on
-that scale swamps the signal being measured, so the corresponding
-`simdJsonEncode` deltas there (−1.2%, +3.6%, −7.3%) aren't attributable to
-the fix. `@Threads(Threads.MAX)` on that host's core count is the likely
-culprit (noisy-neighbor/CPU-steal on a shared multi-tenant instance); worth
-a single-threaded or pinned-core re-run there before trusting any
-multithreaded number on that host.
+accordingly. The aarch64 host's own `jacksonEncode` control swung from
++3.5% to −10.1% to +6.3% across the three `docCount`s in this same run
+(same JVM, same unmodified-vs-fixed A/B, and `jacksonEncode` doesn't call
+into any of this code) - noise on that scale swamps the signal being
+measured, so the corresponding `simdJsonEncode` deltas there weren't
+attributable to the fix. `@Threads(Threads.MAX)` on that host's core count
+was the likely culprit (noisy-neighbor/CPU-steal on a shared multi-tenant
+instance).
+
+**Single-threaded re-run (`-t 1`) on aarch64 surfaced a second, more
+interesting bug.** Forcing one thread tightened the control nicely
+(`jacksonEncode` to within ±1.8%), but `simdJsonEncode` now showed a
+*consistent* regression, worst at the largest `docCount`:
+
+| docCount | jacksonEncode Δ (control) | simdJsonEncode Δ |
+|---|---|---|
+| 100 | +1.8% | −2.0% |
+| 1000 | −0.4% | −4.9% |
+| 10000 | −0.9% | **−10.3%** |
+
+Reproduced it directly: reran `docCount=10000` only, 5 fresh forks each,
+before vs. after. It reproduced (12.38 vs. 11.08 ops/s average) - but the
+*raw per-fork* data showed why:
+
+```
+before forks: 12.363, 12.409, 12.375, 12.323, 12.333   (all tight, ~12.3-12.4)
+after forks:  10.065, 12.306, 10.746, 12.371,  9.975   (bimodal!)
+```
+
+`before` (unmodified) was rock-stable across every fork. `after` (the fix
+as it stood at that point, with `finishNumber`/`finishArrayNumber` split
+out per the previous section) was bimodal - some forks ran at the same
+speed as `before`, others ran ~20% slower - which isn't what generic host
+noise looks like (the `jacksonEncode` control in the same run varied
+smoothly, not bimodally). `-XX:+PrintInlining` on the actual full pipeline
+confirmed it: `finishNumber` sometimes showed `inline (hot)`, but other
+forks showed a failure reason not seen anywhere else in this
+investigation - `failed to inline: already compiled into a big method`.
+That fires when the callee independently reaches its own standalone C2
+compilation *before* its caller does; once that happens, the JIT excludes
+it from being inlined into anyone, permanently for that method's
+lifetime. Which caller/callee compiles first is a timing race that
+depends on the relative invocation-count ramp-up of many competing
+methods in the busy full-pipeline call graph (string unescaping,
+`DoubleParser`, structural indexing, etc.) - a race that the isolated
+microbenchmark above, where `finishNumber` is essentially the *only* hot
+method, never exercises. Consistent with a compilation-order race rather
+than a size problem: a *smaller* `finishNumber` wouldn't have fixed it,
+only not having it as an independently-compilable callee at all would.
+The x86_64 host showed zero sign of this bimodality in any sample taken
+(all forks tight, both before and after), so it looks specific to this
+JIT/host combination, though a generalization to "aarch64 only" would be
+too strong a claim from one host's sample.
+
+**Fix:** removed `finishNumber`/`finishArrayNumber`/the preload overloads
+of `handleNumberGeneral`/`handleArrayNumberGeneral` as separate callees
+entirely, inlining their bodies directly into `handleNumber`/
+`handleArrayNumber` (duplicating the scalar-tail-then-dispatch logic with
+the near-buffer-end fallback overloads, which stay separate since they're
+genuinely rare and not on this race). This fully removed the compilation-order
+race - re-running the same `docCount=10000`, 5-fork reproduction showed no
+bimodality at all:
+
+```
+after (fully inlined) forks: 12.273, 12.246, 12.310, 11.800, 12.266   (tight; one fork ~5% off, not ~20%)
+```
+
+Full single-threaded A/B, all three `docCount`s, both architectures, with
+this final fix:
+
+| docCount | x86_64 jacksonEncode Δ (control) | x86_64 simdJsonEncode Δ | aarch64 jacksonEncode Δ (control) | aarch64 simdJsonEncode Δ |
+|---|---|---|---|---|
+| 100 | −1.3% | **+1.8%** | +1.6% | −0.2% |
+| 1000 | −0.5% | −0.5% | −3.3% | −1.0% |
+| 10000 | −1.6% | **+1.9%** | +1.3% | −0.9% |
+
+On x86_64 the end-to-end win from the single-threaded re-run above holds
+(~1-2%). On aarch64, `simdJsonEncode`'s deltas are now inside the same
+noise band as its own `jacksonEncode` control (both within a few percent
+either way) - i.e. genuinely neutral, no longer a regression, at the full
+end-to-end level once the JIT-inlining bug is fixed. The isolated
+number-parsing win (9-53%, table above) is real on both architectures;
+it's simply diluted by everything else `clickbench_flat` documents cost to
+parse and encode, more so on aarch64 in this sample.
+
+**Takeaway:** this is a second instance of the same underlying lesson as
+the `DoubleParser` mix-ratio finding earlier in this doc, but sharper:
+there, an under-hot call site fell back to a smaller, always-available
+inlining budget - never worse than not splitting at all. Here, a callee on
+a hot path could lose inlining *permanently* for a whole JVM fork's
+lifetime, in a way invisible to any isolated microbenchmark, only visible
+by running the real end-to-end pipeline, single-threaded, with enough
+forks to see fork-to-fork bimodality rather than trusting one run's
+aggregate mean and error bar.
 
 ## Conclusion
 
