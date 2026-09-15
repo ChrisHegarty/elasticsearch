@@ -871,6 +871,37 @@ integers, which ClickBench never exercises (its raw-JSON-number integers
 top out at 10 digits) but which is a qualitatively different, unprofiled,
 more expensive path that other workloads with large numeric IDs may hit.
 
+**End-to-end check:** re-ran `SimdJsonParserBenchmark` (`shape=clickbench_flat`,
+the full parse→flatten→columnar-stage→commit→buildPartition pipeline, not
+just number parsing) A/B on both AWS hosts, 3 forks this time (a single
+fork was too noisy for this multithreaded benchmark when tried earlier in
+this doc). On host1 (x86_64), `jacksonEncode` - completely untouched by
+this fix, so it's the noise-floor control - stayed within ±0.9% across all
+three `docCount`s, and `simdJsonEncode` showed a small, real, docCount-scaled
+gain:
+
+| docCount | jacksonEncode Δ (control) | simdJsonEncode Δ |
+|---|---|---|
+| 100 | −0.2% | −0.0% |
+| 1000 | −0.3% | **+1.4%** |
+| 10000 | −0.9% | **+0.7%** |
+
+Small compared to the 9-53% seen on the isolated number-parsing
+microbenchmark, but expected: number parsing is one part of total
+per-document cost in the full pipeline (`clickbench_flat` also has several
+string fields, plus the encoder's flatten/columnar-stage/commit work this
+fix doesn't touch), so its share of the end-to-end win is diluted
+accordingly. host2 (aarch64) was not usable for this comparison: its own
+`jacksonEncode` control swung from +3.5% to −10.1% to +6.3% across the
+three `docCount`s (same JVM, same unmodified-vs-fixed A/B, same benchmark
+run, and `jacksonEncode` doesn't call into any of this code) - noise on
+that scale swamps the signal being measured, so the corresponding
+`simdJsonEncode` deltas there (−1.2%, +3.6%, −7.3%) aren't attributable to
+the fix. `@Threads(Threads.MAX)` on that host's core count is the likely
+culprit (noisy-neighbor/CPU-steal on a shared multi-tenant instance); worth
+a single-threaded or pinned-core re-run there before trusting any
+multithreaded number on that host.
+
 ## Conclusion
 
 - The baseline ~25–45% win (real hardware, both architectures, 5 shapes
