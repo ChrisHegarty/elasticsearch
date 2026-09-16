@@ -173,15 +173,14 @@ public final class SimdJsonDirectWalker {
                         handler.endArray();
                     }
                     case '"' -> {
-                        int off = valIdx + 1;
-                        int len = scalarStringLength(buffer, off);
-                        boolean hasEscape = containsBackslash(buffer, off, len);
-                        if (hasEscape) {
-                            int parsed = stringParser.parseString(buffer, valIdx, ensureStringBuf(len));
+                        int len = stringParser.scanUnescapedLength(buffer, valIdx);
+                        if (len >= 0) {
+                            dispatchStringField(field, handler, buffer, valIdx + 1, len);
+                        } else {
+                            int rawLen = scalarStringLength(buffer, valIdx + 1);
+                            int parsed = stringParser.parseString(buffer, valIdx, ensureStringBuf(rawLen));
                             byte[] copy = Arrays.copyOf(stringBuf, parsed);
                             dispatchStringField(field, handler, copy, 0, parsed);
-                        } else {
-                            dispatchStringField(field, handler, buffer, off, len);
                         }
                     }
                     case 't' -> {
@@ -224,14 +223,13 @@ public final class SimdJsonDirectWalker {
 
             switch (b) {
                 case '"' -> {
-                    int off = idx + 1;
-                    int len = scalarStringLength(buffer, off);
-                    boolean hasEscape = containsBackslash(buffer, off, len);
-                    if (hasEscape) {
-                        int parsed = stringParser.parseString(buffer, idx, ensureStringBuf(len));
-                        handler.arrayElemString(Arrays.copyOf(stringBuf, parsed), 0, parsed);
+                    int len = stringParser.scanUnescapedLength(buffer, idx);
+                    if (len >= 0) {
+                        handler.arrayElemString(buffer, idx + 1, len);
                     } else {
-                        handler.arrayElemString(buffer, off, len);
+                        int rawLen = scalarStringLength(buffer, idx + 1);
+                        int parsed = stringParser.parseString(buffer, idx, ensureStringBuf(rawLen));
+                        handler.arrayElemString(Arrays.copyOf(stringBuf, parsed), 0, parsed);
                     }
                 }
                 case 't' -> {
@@ -298,14 +296,13 @@ public final class SimdJsonDirectWalker {
 
             switch (valByte) {
                 case '"' -> {
-                    int off = valIdx + 1;
-                    int len = scalarStringLength(buffer, off);
-                    boolean hasEscape = containsBackslash(buffer, off, len);
-                    if (hasEscape) {
-                        int parsed = stringParser.parseString(buffer, valIdx, ensureStringBuf(len));
-                        dispatchStringField(field, handler, Arrays.copyOf(stringBuf, parsed), 0, parsed);
+                    int len = stringParser.scanUnescapedLength(buffer, valIdx);
+                    if (len >= 0) {
+                        dispatchStringField(field, handler, buffer, valIdx + 1, len);
                     } else {
-                        dispatchStringField(field, handler, buffer, off, len);
+                        int rawLen = scalarStringLength(buffer, valIdx + 1);
+                        int parsed = stringParser.parseString(buffer, valIdx, ensureStringBuf(rawLen));
+                        dispatchStringField(field, handler, Arrays.copyOf(stringBuf, parsed), 0, parsed);
                     }
                 }
                 case 't' -> {
@@ -687,6 +684,12 @@ public final class SimdJsonDirectWalker {
     // String helpers
     // ------------------------------------------------------------------
 
+    /**
+     * Scalar fallback that computes the raw byte length of a string value known (via
+     * {@link StringParser#scanUnescapedLength}) to contain at least one backslash escape.
+     * Used only to size the destination buffer before {@link StringParser#parseString}; the
+     * common escape-free case never calls this.
+     */
     private static int scalarStringLength(byte[] buffer, int start) {
         int i = start;
         while (buffer[i] != '"') {
@@ -694,13 +697,6 @@ public final class SimdJsonDirectWalker {
             else i++;
         }
         return i - start;
-    }
-
-    private static boolean containsBackslash(byte[] buffer, int off, int len) {
-        for (int i = off; i < off + len; i++) {
-            if (buffer[i] == '\\') return true;
-        }
-        return false;
     }
 
     private byte[] ensureStringBuf(int minLen) {
