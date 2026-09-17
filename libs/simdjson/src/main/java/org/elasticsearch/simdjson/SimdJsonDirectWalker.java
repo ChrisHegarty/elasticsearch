@@ -67,6 +67,7 @@ public final class SimdJsonDirectWalker {
     private byte[] stringBuf = new byte[4096];
     private int currentDepth;
     private int docCount;
+    private int docStart;
 
     public SimdJsonDirectWalker(FieldNameLookup nameCache) {
         this(nameCache, DEFAULT_MAX_DEPTH);
@@ -93,11 +94,17 @@ public final class SimdJsonDirectWalker {
      * @throws JsonParsingException if the JSON is malformed or nesting exceeds {@code maxDepth}
      */
     public void walkDocument(byte[] buffer, SimdJsonParser parser, JsonDocumentHandler handler) {
-        walkDocument(buffer, parser.bitIndexes(), handler);
+        walkDocument(buffer, parser.currentDocumentOffset(), parser.bitIndexes(), handler);
     }
 
-    /** Package-private: walks using raw {@link BitIndexes}. */
+    /** Package-private: walks using raw {@link BitIndexes}, assuming the document starts at
+     *  buffer offset 0 (used directly by tests, which don't go through {@link SimdJsonParser}). */
     void walkDocument(byte[] buffer, BitIndexes bitIndexes, JsonDocumentHandler handler) {
+        walkDocument(buffer, 0, bitIndexes, handler);
+    }
+
+    private void walkDocument(byte[] buffer, int docStart, BitIndexes bitIndexes, JsonDocumentHandler handler) {
+        this.docStart = docStart;
         if (bitIndexes.isEnd()) {
             throw new JsonParsingException("No structural element found.");
         }
@@ -410,7 +417,7 @@ public final class SimdJsonDirectWalker {
                 byte c2 = (byte) (word >>> 16);
                 if (isNumberContinuation(c2) == false) {
                     if ((t & 0xFFL) == 0) { // c0's digit, reused from t
-                        throwLeadingZero(idx);
+                        throwLeadingZero(buffer, idx);
                     }
                     long val = (t & 0xFFL) * 10L + ((t >>> 8) & 0xFFL);
                     handler.longField(fieldName, negative ? -val : val, true, buffer, idx, pos + 2 - idx);
@@ -448,7 +455,7 @@ public final class SimdJsonDirectWalker {
         }
 
         int digitCount = pos - digitStart;
-        checkNoLeadingZero(idx, firstDigit, digitCount);
+        checkNoLeadingZero(buffer, idx, firstDigit, digitCount);
 
         if (ch == '.' || ch == 'e' || ch == 'E') {
             handleFloatingPoint(buffer, idx, negative, digits, pos, fieldName, handler);
@@ -474,14 +481,41 @@ public final class SimdJsonDirectWalker {
      * {@code [1-9][0-9]*}, e.g. {@code "007"} is invalid). Called after each entry point's
      * integer-digit loop, before the float/{@link BigInteger} dispatch.
      */
-    private static void checkNoLeadingZero(int idx, int firstDigit, int digitCount) {
+    private void checkNoLeadingZero(byte[] buffer, int idx, int firstDigit, int digitCount) {
         if (digitCount > 1 && firstDigit == 0) {
-            throwLeadingZero(idx);
+            throwLeadingZero(buffer, idx);
         }
     }
 
-    private static void throwLeadingZero(int idx) {
-        throw new JsonParsingException("Invalid numeric value at " + idx + ": Leading zeroes not allowed");
+    private void throwLeadingZero(byte[] buffer, int idx) {
+        LineAndColumn loc = computeLineAndColumn(buffer, idx);
+        throw new JsonParsingException(
+            "[" + loc.line() + ":" + loc.column() + "] Invalid numeric value at " + idx + ": Leading zeroes not allowed"
+        );
+    }
+
+    private record LineAndColumn(int line, int column) {}
+
+    /**
+     * Computes a 1-indexed line/column for {@code idx}, like Jackson's {@code JsonLocation}.
+     * Only called from a cold exception path: unlike Jackson's streaming parser, this walker
+     * skips most bytes via structural indices rather than visiting them one by one, so it
+     * can't track line/column incrementally without paying that cost on every document, not
+     * just failing ones. This scans {@code buffer[docStart..idx)} once instead - fine since
+     * the document is about to be rejected anyway. Counts UTF-8 bytes, not code points, so it
+     * only matches Jackson's column exactly for ASCII content before {@code idx} - true here,
+     * since every caller is inside a numeric literal.
+     */
+    private LineAndColumn computeLineAndColumn(byte[] buffer, int idx) {
+        int line = 1;
+        int lastNewline = docStart - 1;
+        for (int i = docStart; i < idx; i++) {
+            if (buffer[i] == '\n') {
+                line++;
+                lastNewline = i;
+            }
+        }
+        return new LineAndColumn(line, idx - lastNewline);
     }
 
     /** Safe fallback used only when {@code pos} is too close to the end of {@code buffer} for
@@ -523,7 +557,7 @@ public final class SimdJsonDirectWalker {
         }
 
         int digitCount = pos - digitStart;
-        checkNoLeadingZero(idx, buffer[digitStart] - '0', digitCount);
+        checkNoLeadingZero(buffer, idx, buffer[digitStart] - '0', digitCount);
 
         if (ch == '.' || ch == 'e' || ch == 'E') {
             handleFloatingPoint(buffer, idx, negative, digits, pos, fieldName, handler);
@@ -675,7 +709,7 @@ public final class SimdJsonDirectWalker {
                 byte c2 = (byte) (word >>> 16);
                 if (isNumberContinuation(c2) == false) {
                     if ((t & 0xFFL) == 0) { // c0's digit, reused from t
-                        throwLeadingZero(idx);
+                        throwLeadingZero(buffer, idx);
                     }
                     long val = (t & 0xFFL) * 10L + ((t >>> 8) & 0xFFL);
                     handler.arrayElemLong(negative ? -val : val, true);
@@ -712,7 +746,7 @@ public final class SimdJsonDirectWalker {
         }
 
         int digitCount = pos - digitStart;
-        checkNoLeadingZero(idx, firstDigit, digitCount);
+        checkNoLeadingZero(buffer, idx, firstDigit, digitCount);
 
         if (ch == '.' || ch == 'e' || ch == 'E') {
             handleArrayFloatingPoint(buffer, idx, negative, digits, pos, digitStart, handler);
@@ -750,7 +784,7 @@ public final class SimdJsonDirectWalker {
         }
 
         int digitCount = pos - digitStart;
-        checkNoLeadingZero(idx, buffer[digitStart] - '0', digitCount);
+        checkNoLeadingZero(buffer, idx, buffer[digitStart] - '0', digitCount);
 
         if (ch == '.' || ch == 'e' || ch == 'E') {
             handleArrayFloatingPoint(buffer, idx, negative, digits, pos, digitStart, handler);
