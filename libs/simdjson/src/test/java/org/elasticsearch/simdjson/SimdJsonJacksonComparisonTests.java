@@ -292,6 +292,27 @@ public class SimdJsonJacksonComparisonTests extends SimdJsonTestCase {
         }
     }
 
+    // Leading zeroes in the integer part (e.g. "007", "00", "-01") are invalid per RFC 8259;
+    // both parsers reject them.
+    public void testLeadingZeroRejectedByBothParsers() {
+        List<String> invalidDocuments = List.of(
+            "{\"n\":00}",
+            "{\"n\":01}",
+            "{\"n\":-00}",
+            "{\"n\":-01}",
+            "{\"n\":007}",
+            "{\"n\":00.5}",
+            "{\"n\":01e5}",
+            "{\"a\":[01]}"
+        );
+        for (String json : invalidDocuments) {
+            XContentParseException jacksonEx = expectThrows(XContentParseException.class, () -> walkWithJackson(json));
+            JsonParsingException simdEx = expectThrows(JsonParsingException.class, () -> walkJson(json));
+            assertTrue("Jackson message: " + jacksonEx.getMessage(), jacksonEx.getMessage().contains("Leading zeroes not allowed"));
+            assertTrue("simdjson message: " + simdEx.getMessage(), simdEx.getMessage().contains("Leading zeroes not allowed"));
+        }
+    }
+
     // Shared with SimdJsonDirectWalkerTests via SimdJsonTestDocuments.
     public void testExactBufferLengthDocumentsMatchJackson() throws IOException {
         for (String json : SimdJsonTestDocuments.exactBufferLengthDocuments()) {

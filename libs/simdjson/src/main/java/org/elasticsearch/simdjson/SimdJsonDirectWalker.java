@@ -409,6 +409,9 @@ public final class SimdJsonDirectWalker {
             } else if ((mask & 0xFF0000L) != 0) { // c1 is a digit, byte 2 (c2) is not
                 byte c2 = (byte) (word >>> 16);
                 if (isNumberContinuation(c2) == false) {
+                    if ((t & 0xFFL) == 0) { // c0's digit, reused from t
+                        throwLeadingZero(idx);
+                    }
                     long val = (t & 0xFFL) * 10L + ((t >>> 8) & 0xFFL);
                     handler.longField(fieldName, negative ? -val : val, true, buffer, idx, pos + 2 - idx);
                     return;
@@ -421,6 +424,7 @@ public final class SimdJsonDirectWalker {
         // JIT make better inlining decisions - see the design note above.
         long digits = 0;
         int digitStart = pos;
+        int firstDigit = (int) (t & 0xFFL); // c0's digit value, already sitting in t
 
         if (mask == 0) {
             digits = parse8Digits(t);
@@ -443,12 +447,14 @@ public final class SimdJsonDirectWalker {
             ch = buffer[++pos];
         }
 
+        int digitCount = pos - digitStart;
+        checkNoLeadingZero(idx, firstDigit, digitCount);
+
         if (ch == '.' || ch == 'e' || ch == 'E') {
             handleFloatingPoint(buffer, idx, negative, digits, pos, fieldName, handler);
             return;
         }
 
-        int digitCount = pos - digitStart;
         if (digitCount == 0 || digitCount >= 19) {
             handleLargeNumber(buffer, idx, pos, negative, fieldName, handler, digits, digitCount);
             return;
@@ -461,6 +467,21 @@ public final class SimdJsonDirectWalker {
 
     private static boolean isNumberContinuation(byte b) {
         return b == '.' || b == 'e' || b == 'E';
+    }
+
+    /**
+     * Rejects a redundant leading zero in the integer part (RFC 8259: {@code "0"} or
+     * {@code [1-9][0-9]*}, e.g. {@code "007"} is invalid). Called after each entry point's
+     * integer-digit loop, before the float/{@link BigInteger} dispatch.
+     */
+    private static void checkNoLeadingZero(int idx, int firstDigit, int digitCount) {
+        if (digitCount > 1 && firstDigit == 0) {
+            throwLeadingZero(idx);
+        }
+    }
+
+    private static void throwLeadingZero(int idx) {
+        throw new JsonParsingException("Invalid numeric value at " + idx + ": Leading zeroes not allowed");
     }
 
     /** Safe fallback used only when {@code pos} is too close to the end of {@code buffer} for
@@ -501,12 +522,14 @@ public final class SimdJsonDirectWalker {
             ch = buffer[++pos];
         }
 
+        int digitCount = pos - digitStart;
+        checkNoLeadingZero(idx, buffer[digitStart] - '0', digitCount);
+
         if (ch == '.' || ch == 'e' || ch == 'E') {
             handleFloatingPoint(buffer, idx, negative, digits, pos, fieldName, handler);
             return;
         }
 
-        int digitCount = pos - digitStart;
         if (digitCount == 0 || digitCount >= 19) {
             handleLargeNumber(buffer, idx, pos, negative, fieldName, handler, digits, digitCount);
             return;
@@ -651,6 +674,9 @@ public final class SimdJsonDirectWalker {
             } else if ((mask & 0xFF0000L) != 0) { // c1 is a digit, byte 2 (c2) is not
                 byte c2 = (byte) (word >>> 16);
                 if (isNumberContinuation(c2) == false) {
+                    if ((t & 0xFFL) == 0) { // c0's digit, reused from t
+                        throwLeadingZero(idx);
+                    }
                     long val = (t & 0xFFL) * 10L + ((t >>> 8) & 0xFFL);
                     handler.arrayElemLong(negative ? -val : val, true);
                     return;
@@ -662,6 +688,7 @@ public final class SimdJsonDirectWalker {
         // better inlining decisions - see the design note on handleNumber's equivalent above.
         long digits = 0;
         int digitStart = pos;
+        int firstDigit = (int) (t & 0xFFL); // c0's digit value, already sitting in t
 
         if (mask == 0) {
             digits = parse8Digits(t);
@@ -684,12 +711,14 @@ public final class SimdJsonDirectWalker {
             ch = buffer[++pos];
         }
 
+        int digitCount = pos - digitStart;
+        checkNoLeadingZero(idx, firstDigit, digitCount);
+
         if (ch == '.' || ch == 'e' || ch == 'E') {
             handleArrayFloatingPoint(buffer, idx, negative, digits, pos, digitStart, handler);
             return;
         }
 
-        int digitCount = pos - digitStart;
         if (digitCount >= 19) {
             handleArrayLargeNumber(buffer, idx, pos, negative, handler, digits, digitCount);
             return;
@@ -720,12 +749,14 @@ public final class SimdJsonDirectWalker {
             ch = buffer[++pos];
         }
 
+        int digitCount = pos - digitStart;
+        checkNoLeadingZero(idx, buffer[digitStart] - '0', digitCount);
+
         if (ch == '.' || ch == 'e' || ch == 'E') {
             handleArrayFloatingPoint(buffer, idx, negative, digits, pos, digitStart, handler);
             return;
         }
 
-        int digitCount = pos - digitStart;
         if (digitCount >= 19) {
             handleArrayLargeNumber(buffer, idx, pos, negative, handler, digits, digitCount);
             return;
