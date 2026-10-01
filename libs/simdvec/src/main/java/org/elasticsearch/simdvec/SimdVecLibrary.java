@@ -19,6 +19,7 @@ import org.elasticsearch.foreign.Platform;
 import org.elasticsearch.foreign.VectorSegment;
 import org.elasticsearch.logging.LogManager;
 import org.elasticsearch.logging.Logger;
+import org.elasticsearch.simdvec.internal.OffHeapSegmentScratch;
 
 import java.lang.foreign.MemorySegment;
 import java.util.Optional;
@@ -592,6 +593,32 @@ public abstract class SimdVecLibrary {
         dotProductF32BulkSparse_raw(addresses, query, length, count, scores);
     }
 
+    /**
+     * Plain (non-{@code @Critical}) binding of the same {@code vec_dotf32_bulk_sparse} symbol as
+     * {@link #dotProductF32BulkSparse}, for callers that can guarantee every argument is already a
+     * native (off-heap) segment. Unlike the {@code @Critical} binding, this one does the normal
+     * safepoint/handshake transition on entry and exit, so it never withholds an unrelated thread's
+     * shared-{@code Arena} close for the duration of the call (see {@link OffHeapSegmentScratch}).
+     */
+    @Function("vec_dotf32_bulk_sparse")
+    protected abstract void dotProductF32BulkSparseOffHeap_raw(
+        @VectorSegment(countParam = "count", elementBits = Long.SIZE, aligned = true) MemorySegment addresses,
+        @VectorSegment(countParam = "length", elementBits = Float.SIZE) MemorySegment query,
+        int length,
+        int count,
+        @VectorSegment(countParam = "count", elementBits = Float.SIZE, aligned = true) MemorySegment scores
+    );
+
+    /**
+     * @param scores must be a native segment (see {@link OffHeapSegmentScratch}); passing a heap
+     *               segment here throws, since this binding has no {@code @Critical} heap-access
+     *               capability.
+     */
+    public void dotProductF32BulkSparseOffHeap(MemorySegment addresses, MemorySegment query, int length, int count, MemorySegment scores) {
+        assert validateBulkSparse(addresses, count);
+        dotProductF32BulkSparseOffHeap_raw(addresses, query, length, count, scores);
+    }
+
     @Function("vec_dotf32_bulk_offsets")
     @Critical(fallbackAdapter = Critical.UnsupportedFallback.class)
     protected abstract void dotProductF32BulkWithOffsets_raw(
@@ -681,6 +708,36 @@ public abstract class SimdVecLibrary {
     public void squareDistanceF32BulkSparse(MemorySegment addresses, MemorySegment query, int length, int count, MemorySegment scores) {
         assert validateBulkSparse(addresses, count);
         squareDistanceF32BulkSparse_raw(addresses, query, length, count, scores);
+    }
+
+    /**
+     * Plain (non-{@code @Critical}) binding of the same {@code vec_sqrf32_bulk_sparse} symbol as
+     * {@link #squareDistanceF32BulkSparse}; see {@link #dotProductF32BulkSparseOffHeap} for why this
+     * exists and what it requires of its arguments.
+     */
+    @Function("vec_sqrf32_bulk_sparse")
+    protected abstract void squareDistanceF32BulkSparseOffHeap_raw(
+        @VectorSegment(countParam = "count", elementBits = Long.SIZE, aligned = true) MemorySegment addresses,
+        @VectorSegment(countParam = "length", elementBits = Float.SIZE) MemorySegment query,
+        int length,
+        int count,
+        @VectorSegment(countParam = "count", elementBits = Float.SIZE, aligned = true) MemorySegment scores
+    );
+
+    /**
+     * @param scores must be a native segment (see {@link OffHeapSegmentScratch}); passing a heap
+     *               segment here throws, since this binding has no {@code @Critical} heap-access
+     *               capability.
+     */
+    public void squareDistanceF32BulkSparseOffHeap(
+        MemorySegment addresses,
+        MemorySegment query,
+        int length,
+        int count,
+        MemorySegment scores
+    ) {
+        assert validateBulkSparse(addresses, count);
+        squareDistanceF32BulkSparseOffHeap_raw(addresses, query, length, count, scores);
     }
 
     // --- BFloat16 ---

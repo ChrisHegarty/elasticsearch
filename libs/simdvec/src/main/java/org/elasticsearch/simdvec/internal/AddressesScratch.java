@@ -9,7 +9,6 @@
 
 package org.elasticsearch.simdvec.internal;
 
-import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.function.IntFunction;
@@ -23,7 +22,7 @@ import java.util.function.IntFunction;
  */
 public final class AddressesScratch implements IntFunction<MemorySegment> {
 
-    private MemorySegment seg;
+    private final OffHeapSegmentScratch scratch = new OffHeapSegmentScratch(ValueLayout.ADDRESS);
 
     /**
      * Returns a {@link MemorySegment} of at least {@code count} native-address slots.
@@ -37,12 +36,6 @@ public final class AddressesScratch implements IntFunction<MemorySegment> {
      */
     @Override
     public MemorySegment apply(int count) {
-        long needed = (long) count * ValueLayout.ADDRESS.byteSize();
-        if (seg == null || seg.byteSize() < needed) {
-            // No need to call close() here, or to keep a reference to the Arena: Arena#ofAuto is
-            // not closeable, and returns MemorySegments whose lifetime is managed automatically by GC.
-            seg = Arena.ofAuto().allocate(needed, ValueLayout.ADDRESS.byteAlignment());
-        }
-        return seg;
+        return scratch.apply(count);
     }
 }
