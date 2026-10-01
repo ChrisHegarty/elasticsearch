@@ -18,6 +18,7 @@ import org.elasticsearch.lucene.store.IndexInputUtils;
 import org.elasticsearch.simdvec.SimdVecLibrary;
 
 import java.io.IOException;
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
@@ -70,7 +71,7 @@ public abstract sealed class Float32VectorScorerSupplier implements RandomVector
                 vectorByteSize,
                 numNodes,
                 addrsScratch,
-                addrs -> maxScore[0] = bulkScoreFromSegment(addrs, query, MemorySegment.ofArray(scores), numNodes)
+                addrs -> maxScore[0] = bulkScoreFromSegment(addrs, query, scores, numNodes)
             );
             if (resolved == false) {
                 maxScore[0] = scorePerVectorFallback(query, scores, numNodes, offsets);
@@ -108,7 +109,43 @@ public abstract sealed class Float32VectorScorerSupplier implements RandomVector
 
     abstract float scoreFromSegments(MemorySegment a, MemorySegment b);
 
-    abstract float bulkScoreFromSegment(MemorySegment addresses, MemorySegment query, MemorySegment scores, int numNodes);
+    /**
+     * Scores {@code numNodes} candidates in bulk, writing normalized results into {@code scores}.
+     *
+     * <p>Implementations choose between a plain (non-{@code @Critical}) and a {@code @Critical}-bound
+     * native call depending on whether {@code query} is itself a native segment. {@code addresses} is
+     * always native (see {@link AddressesScratch}), so {@code query}'s nativeness alone determines
+     * which call is safe: in the overwhelmingly common merge/HNSW-build case ({@code query} resolved
+     * from mmap'd or blob-cache-backed index data), the plain binding is used, with a {@code scores}
+     * segment allocated from an {@link Arena#ofConfined() confined arena} that is created and closed
+     * within this single call. A confined arena's close is a cheap, owner-thread-only state flip --
+     * unlike a shared/auto arena's close, it never performs the handshake that can be stalled by a
+     * concurrent {@code @Critical} call elsewhere (see JDK-8310644) -- so this sidesteps that risk
+     * entirely rather than just avoiding it for the duration of this one native call. Only in the rare
+     * case where {@code query} is itself heap-backed (the {@link IndexInputUtils} "last resort"
+     * heap-copy fallback) is the {@code @Critical} binding -- which can accept {@code scores} wrapped
+     * in place over the heap array -- still required.
+     */
+    abstract float bulkScoreFromSegment(MemorySegment addresses, MemorySegment query, float[] scores, int numNodes);
+
+    /**
+     * Reads {@code numNodes} raw values out of {@code segment}, normalizes each with {@code normalize},
+     * writes the normalized value into {@code scores}, and returns the maximum normalized value.
+     */
+    private static float readScores(MemorySegment segment, float[] scores, int numNodes, FloatUnaryOperator normalize) {
+        float max = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < numNodes; ++i) {
+            float normalized = normalize.apply(segment.getAtIndex(ValueLayout.JAVA_FLOAT, i));
+            scores[i] = normalized;
+            max = Math.max(max, normalized);
+        }
+        return max;
+    }
+
+    @FunctionalInterface
+    private interface FloatUnaryOperator {
+        float apply(float v);
+    }
 
     @Override
     public UpdateableRandomVectorScorer scorer() {
@@ -146,16 +183,17 @@ public abstract sealed class Float32VectorScorerSupplier implements RandomVector
         }
 
         @Override
-        protected float bulkScoreFromSegment(MemorySegment addresses, MemorySegment query, MemorySegment scores, int numNodes) {
-            DISTANCE_FUNCS.squareDistanceF32BulkSparse(addresses, query, dims, numNodes, scores);
-            float max = Float.NEGATIVE_INFINITY;
-            for (int i = 0; i < numNodes; ++i) {
-                float squareDistance = scores.getAtIndex(ValueLayout.JAVA_FLOAT, i);
-                float normalizedScore = VectorUtil.normalizeDistanceToUnitInterval(squareDistance);
-                scores.setAtIndex(ValueLayout.JAVA_FLOAT, i, normalizedScore);
-                max = Math.max(max, normalizedScore);
+        protected float bulkScoreFromSegment(MemorySegment addresses, MemorySegment query, float[] scores, int numNodes) {
+            if (query.isNative()) {
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment segment = arena.allocate((long) numNodes * Float.BYTES, ValueLayout.JAVA_FLOAT.byteAlignment());
+                    DISTANCE_FUNCS.squareDistanceF32BulkSparseOffHeap(addresses, query, dims, numNodes, segment);
+                    return readScores(segment, scores, numNodes, VectorUtil::normalizeDistanceToUnitInterval);
+                }
             }
-            return max;
+            MemorySegment segment = MemorySegment.ofArray(scores);
+            DISTANCE_FUNCS.squareDistanceF32BulkSparse(addresses, query, dims, numNodes, segment);
+            return readScores(segment, scores, numNodes, VectorUtil::normalizeDistanceToUnitInterval);
         }
 
         @Override
@@ -176,16 +214,17 @@ public abstract sealed class Float32VectorScorerSupplier implements RandomVector
         }
 
         @Override
-        protected float bulkScoreFromSegment(MemorySegment addresses, MemorySegment query, MemorySegment scores, int numNodes) {
-            DISTANCE_FUNCS.dotProductF32BulkSparse(addresses, query, dims, numNodes, scores);
-            float max = Float.NEGATIVE_INFINITY;
-            for (int i = 0; i < numNodes; ++i) {
-                float dotProduct = scores.getAtIndex(ValueLayout.JAVA_FLOAT, i);
-                float normalizedScore = VectorUtil.normalizeToUnitInterval(dotProduct);
-                scores.setAtIndex(ValueLayout.JAVA_FLOAT, i, normalizedScore);
-                max = Math.max(max, normalizedScore);
+        protected float bulkScoreFromSegment(MemorySegment addresses, MemorySegment query, float[] scores, int numNodes) {
+            if (query.isNative()) {
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment segment = arena.allocate((long) numNodes * Float.BYTES, ValueLayout.JAVA_FLOAT.byteAlignment());
+                    DISTANCE_FUNCS.dotProductF32BulkSparseOffHeap(addresses, query, dims, numNodes, segment);
+                    return readScores(segment, scores, numNodes, VectorUtil::normalizeToUnitInterval);
+                }
             }
-            return max;
+            MemorySegment segment = MemorySegment.ofArray(scores);
+            DISTANCE_FUNCS.dotProductF32BulkSparse(addresses, query, dims, numNodes, segment);
+            return readScores(segment, scores, numNodes, VectorUtil::normalizeToUnitInterval);
         }
 
         @Override
@@ -206,17 +245,17 @@ public abstract sealed class Float32VectorScorerSupplier implements RandomVector
         }
 
         @Override
-        protected float bulkScoreFromSegment(MemorySegment addresses, MemorySegment query, MemorySegment scores, int numNodes) {
-            DISTANCE_FUNCS.dotProductF32BulkSparse(addresses, query, dims, numNodes, scores);
-
-            float max = Float.NEGATIVE_INFINITY;
-            for (int i = 0; i < numNodes; ++i) {
-                float dotProduct = scores.getAtIndex(ValueLayout.JAVA_FLOAT, i);
-                float scaledScore = VectorUtil.scaleMaxInnerProductScore(dotProduct);
-                scores.setAtIndex(ValueLayout.JAVA_FLOAT, i, scaledScore);
-                max = Math.max(max, scaledScore);
+        protected float bulkScoreFromSegment(MemorySegment addresses, MemorySegment query, float[] scores, int numNodes) {
+            if (query.isNative()) {
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment segment = arena.allocate((long) numNodes * Float.BYTES, ValueLayout.JAVA_FLOAT.byteAlignment());
+                    DISTANCE_FUNCS.dotProductF32BulkSparseOffHeap(addresses, query, dims, numNodes, segment);
+                    return readScores(segment, scores, numNodes, VectorUtil::scaleMaxInnerProductScore);
+                }
             }
-            return max;
+            MemorySegment segment = MemorySegment.ofArray(scores);
+            DISTANCE_FUNCS.dotProductF32BulkSparse(addresses, query, dims, numNodes, segment);
+            return readScores(segment, scores, numNodes, VectorUtil::scaleMaxInnerProductScore);
         }
 
         @Override
