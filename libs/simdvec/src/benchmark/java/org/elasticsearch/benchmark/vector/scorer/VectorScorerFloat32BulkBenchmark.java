@@ -38,7 +38,13 @@ import static org.elasticsearch.simdvec.ScalarOperations.squareDistance;
 
 public class VectorScorerFloat32BulkBenchmark extends VectorScorerBulkBenchmark {
 
-    @Param({ "32", "375", "32500" })
+    // With dims=1024, each vector is 4KB. Target cache/page-cache overflow points:
+    // 32 vectors = 128KB: fits comfortably in L1/L2
+    // 375 vectors = 1.5MB: overflows L1/L2, fits in L3
+    // 32500 vectors = ~127MB: overflows L3
+    // 2000000 vectors = ~7.6GB: approaches/exceeds typical page-cache and RAM budgets, forcing
+    // genuine scattered mmap page-ins rather than cache-resident access (see #setup()).
+    @Param({ "32", "375", "32500", "2000000" })
     public int numVectors;
 
     @Param
@@ -98,29 +104,41 @@ public class VectorScorerFloat32BulkBenchmark extends VectorScorerBulkBenchmark 
     }
 
     static class VectorData extends VectorScorerBulkBenchmark.VectorData {
-        private final float[][] vectorData;
+        private final int dims;
+        private final int numVectors;
+        // Captured rather than consuming `random` directly, so writeVectorData can be called more
+        // than once (e.g. once per implementation under test, see BenchmarkTest) and regenerate the
+        // exact same bytes each time without ever materializing the whole dataset as a float[][] --
+        // the latter doesn't scale once numVectors is large enough to need a many-GB backing file.
+        private final long seed;
         private final float[] queryVector;
 
         VectorData(int dims, int numVectors, int numVectorsToScore, Random random, DataAccessPattern accessMode) {
             super(numVectors, numVectorsToScore, random, accessMode);
-
-            vectorData = new float[numVectors][];
-            for (int v = 0; v < numVectors; v++) {
-                vectorData[v] = VectorTestUtils.randomFloatVector(random, dims);
-            }
-
+            this.dims = dims;
+            this.numVectors = numVectors;
+            this.seed = random.nextLong();
             queryVector = VectorTestUtils.randomFloatVector(random, dims);
         }
 
         @Override
         void writeVectorData(Directory directory) throws IOException {
-            writeFloatVectorData(directory, vectorData);
+            writeFloatVectorData(directory, dims, numVectors, new Random(seed));
         }
     }
 
+    // Each op scores up to this many vectors, in random (shuffled) order, uniformly sampled from
+    // the full numVectors range. For the large-numVectors tier, scoring the *entire* multi-GB
+    // dataset on every single op makes one op take minutes (dominated by real page faults), which
+    // defeats JMH's time-based iteration control. Capping at a value still much larger than the
+    // smaller tiers keeps per-op time tractable while remaining a broad, uniformly scattered sample
+    // across the whole backing file -- not a small subset that would get fully page-cache-resident
+    // after the first iteration.
+    private static final int MAX_VECTORS_TO_SCORE = 100_000;
+
     @Setup
     public void setup() throws IOException {
-        setup(new VectorData(dims, numVectors, Math.min(numVectors, 20_000), ThreadLocalRandom.current(), accessMode));
+        setup(new VectorData(dims, numVectors, Math.min(numVectors, MAX_VECTORS_TO_SCORE), ThreadLocalRandom.current(), accessMode));
     }
 
     void setup(VectorData vectorData) throws IOException {
