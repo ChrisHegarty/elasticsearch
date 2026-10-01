@@ -30,6 +30,7 @@ import org.apache.lucene.util.quantization.LegacyQuantizedByteVectorValues;
 import org.apache.lucene.util.quantization.QuantizedByteVectorValues;
 import org.apache.lucene.util.quantization.ScalarQuantizer;
 import org.elasticsearch.index.codec.vectors.BFloat16;
+import org.elasticsearch.index.codec.vectors.VectorTestUtils;
 import org.elasticsearch.index.codec.vectors.es93.OffHeapBFloat16VectorValues;
 import org.elasticsearch.simdvec.ESVectorizationProvider;
 import org.elasticsearch.simdvec.VectorScorerFactory;
@@ -38,11 +39,9 @@ import org.elasticsearch.simdvec.internal.PanamaFlatVectorScorer;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Collections;
-import java.util.List;
+import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 class BenchmarkUtils {
@@ -67,10 +66,23 @@ class BenchmarkUtils {
         }
     }
 
-    static void writeFloatVectorData(Directory dir, float[][] vectors) throws IOException {
+    /**
+     * Writes {@code numVectors} random float vectors of {@code dims} dimensions, generating and
+     * serializing one at a time rather than materializing the whole dataset as a {@code float[][]}.
+     * This keeps heap usage at O(dims) regardless of {@code numVectors}, which matters once
+     * {@code numVectors} is large enough that the backing file is many GB (see
+     * {@code VectorScorerFloat32BulkBenchmark}'s large-{@code numVectors} tier, intended to exceed
+     * typical page-cache/RAM budgets). Callers that need the exact same bytes written more than once
+     * (e.g. to compare multiple implementations against identical data) should pass a {@code random}
+     * seeded identically each time.
+     */
+    static void writeFloatVectorData(Directory dir, int dims, int numVectors, Random random) throws IOException {
         try (IndexOutput out = dir.createOutput("vector.data", IOContext.DEFAULT)) {
-            ByteBuffer buffer = ByteBuffer.allocate(vectors[0].length * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
-            for (float[] vector : vectors) {
+            ByteBuffer buffer = ByteBuffer.allocate(dims * Float.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+            float[] vector = new float[dims];
+            for (int v = 0; v < numVectors; v++) {
+                VectorTestUtils.randomFloatVector(random, vector);
+                buffer.clear();
                 buffer.asFloatBuffer().put(vector);
                 out.writeBytes(buffer.array(), buffer.capacity());
             }
@@ -204,10 +216,21 @@ class BenchmarkUtils {
         return t instanceof RuntimeException re ? re : new RuntimeException(t);
     }
 
+    /**
+     * Returns {@code numVectorsToScore} distinct ordinals in {@code [0, numVectors)}, in random
+     * order, via an in-place Fisher-Yates shuffle. Avoids boxing through a {@code List<Integer>},
+     * which matters once {@code numVectors} is large enough (many millions) that boxing overhead
+     * would otherwise add tens of MB of setup-time garbage.
+     */
     static int[] generateRandomOrdinals(int numVectors, int numVectorsToScore, Random random) {
-        List<Integer> list = IntStream.range(0, numVectors).boxed().collect(Collectors.toList());
-        Collections.shuffle(list, random);
-        return list.stream().limit(numVectorsToScore).mapToInt(Integer::intValue).toArray();
+        int[] ordinals = IntStream.range(0, numVectors).toArray();
+        for (int i = numVectors - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            int tmp = ordinals[i];
+            ordinals[i] = ordinals[j];
+            ordinals[j] = tmp;
+        }
+        return numVectorsToScore == numVectors ? ordinals : Arrays.copyOf(ordinals, numVectorsToScore);
     }
 
     static int[] generateSequentialOrdinals(int numVectorsToScore) {
