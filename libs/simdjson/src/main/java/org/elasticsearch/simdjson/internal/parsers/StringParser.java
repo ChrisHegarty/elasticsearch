@@ -131,9 +131,9 @@ public final class StringParser {
             ByteVector srcVec = ByteVector.fromArray(BYTE_SPECIES, buffer, src);
             long specialBits = srcVec.eq(BACKSLASH).or(srcVec.eq(QUOTE)).toLong();
 
+            // Store the whole chunk before looking at it: the quote and escape paths then need no System.arraycopy.
+            srcVec.intoArray(stringBuffer, dst);
             if (specialBits == 0) {
-                // Full vector chunk has no quote or escape — bulk-copy literal UTF-8 bytes.
-                srcVec.intoArray(stringBuffer, dst);
                 src += BYTES_PROCESSED;
                 dst += BYTES_PROCESSED;
                 continue;
@@ -141,12 +141,10 @@ public final class StringParser {
 
             int dist = Long.numberOfTrailingZeros(specialBits);
             if (buffer[src + dist] == QUOTE) {
-                System.arraycopy(buffer, src, stringBuffer, dst, dist);
                 return dst + dist;
             }
 
             int backslashDist = dist;
-            System.arraycopy(buffer, src, stringBuffer, dst, backslashDist);
             byte escapeChar = buffer[src + backslashDist + 1];
             if (escapeChar == 'u') {
                 src += backslashDist;

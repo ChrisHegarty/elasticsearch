@@ -461,6 +461,69 @@ public class StringParserTests extends ESTestCase {
         }
     }
 
+    // ---- Destination padding contract ----
+    // parseString stores a whole vector at a time, including on the chunk that holds the closing
+    // quote or an escape, so the destination only needs raw length + DESTINATION_PADDING. These
+    // tests allocate exactly that (unlike parse() above, which sizes the destination to the whole
+    // quoted input) so an overrun surfaces as an ArrayIndexOutOfBoundsException, and they compare
+    // against an independently built expected value.
+
+    // Escapes and the closing quote at every position around the vector boundaries, with the
+    // string both at the very end of the input (scalar tail) and followed by plenty of bytes.
+    public void testExactPaddingEscapeAndQuotePositionSweep() {
+        String[] escapes = { "\\\"", "\\\\", "\\/", "\\n", "\\u00e9", "\\u4E16", "\\uD83D\\uDE00" };
+        String[] decoded = { "\"", "\\", "/", "\n", "é", "世", "😀" };
+        for (int e = 0; e < escapes.length; e++) {
+            for (int prefix = 0; prefix <= 70; prefix++) {
+                for (int suffix = 0; suffix <= 40; suffix += 8) {
+                    String raw = "a".repeat(prefix) + escapes[e] + "b".repeat(suffix);
+                    String expected = "a".repeat(prefix) + decoded[e] + "b".repeat(suffix);
+                    for (int trailing : new int[] { 0, 1, 15, 16, 17, 64 }) {
+                        assertExactPadding(raw, expected, randomIntBetween(0, 40), trailing);
+                    }
+                }
+            }
+        }
+    }
+
+    // Random mixes of plain ASCII, multi-byte UTF-8 and every kind of escape, at random offsets
+    // and with random slack after the closing quote.
+    public void testExactPaddingRandomStrings() {
+        String[] escapes = { "\\\"", "\\\\", "\\/", "\\b", "\\f", "\\n", "\\r", "\\t", "\\u0041", "\\u00e9", "\\u4E16", "\\uD83D\\uDE00" };
+        String[] decoded = { "\"", "\\", "/", "\b", "\f", "\n", "\r", "\t", "A", "é", "世", "😀" };
+        String[] plain = { "a", "z", "0", " ", "é", "世", "😀", "xyz" };
+        for (int iter = 0; iter < 2000; iter++) {
+            StringBuilder raw = new StringBuilder();
+            StringBuilder expected = new StringBuilder();
+            int pieces = randomIntBetween(0, 40);
+            for (int i = 0; i < pieces; i++) {
+                if (randomBoolean()) {
+                    int e = randomInt(escapes.length - 1);
+                    raw.append(escapes[e]);
+                    expected.append(decoded[e]);
+                } else {
+                    String p = randomFrom(plain);
+                    raw.append(p);
+                    expected.append(p);
+                }
+            }
+            assertExactPadding(raw.toString(), expected.toString(), randomIntBetween(0, 40), randomIntBetween(0, 70));
+        }
+    }
+
+    private void assertExactPadding(String rawContent, String expected, int leading, int trailing) {
+        byte[] json = ("\"" + rawContent + "\"").getBytes(UTF_8);
+        byte[] buf = new byte[leading + json.length + trailing];
+        // Non-special filler so a stray read past the closing quote can't terminate the string early.
+        Arrays.fill(buf, (byte) 'x');
+        System.arraycopy(json, 0, buf, leading, json.length);
+        int rawLen = rawContent.getBytes(UTF_8).length;
+        byte[] dst = new byte[rawLen + StringParser.DESTINATION_PADDING];
+        int len = parser.parseString(buf, leading, dst);
+        String description = "raw=[" + rawContent + "] leading=" + leading + " trailing=" + trailing;
+        assertEquals(description, expected, new String(dst, 0, len, UTF_8));
+    }
+
     // A trailing backslash immediately follows the closing quote, as if this field were
     // immediately followed by another field's escaped string value.
     public void testScanUnescapedLengthQuoteBeforeBackslashInSameVectorChunk() {
