@@ -22,11 +22,13 @@ import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.NIOFSDirectory;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.benchmark.internal.BenchmarkLogging;
+import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.core.IOUtils;
 import org.elasticsearch.index.codec.zstd.ZstdCompressionMode;
 import org.elasticsearch.index.store.StoreMetrics;
 import org.elasticsearch.index.store.StoreMetricsIndexInput;
 import org.elasticsearch.index.store.ThreadLocalDirectoryMetricHolder;
+import org.elasticsearch.xpack.searchablesnapshots.store.SearchableSnapshotDirectoryFactory;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -72,7 +74,13 @@ import javax.management.ObjectName;
  *       scratch segment from {@code Arena.ofAuto()}. This is what fully mounted searchable snapshots do in production.</li>
  *   <li>{@code NIO}: a plain NIOFS input. Not a slice-capable input, so it decompresses from a heap copy. Control.</li>
  *   <li>{@code MMAP}: zero-copy. Control.</li>
+ *   <li>{@code SNAP_FULL_COPY}: a fully mounted searchable snapshot (cold tier), so the real {@code CachedBlobContainerIndexInput}.</li>
+ *   <li>{@code SNAP_FROZEN_MMAP}, {@code SNAP_FROZEN_NOMMAP}, {@code SNAP_FROZEN_NOMMAP_MISS}: a partially mounted searchable
+ *       snapshot (frozen tier), so the real {@code FrozenIndexInput}, with an mmap-backed cache that holds the file (zero-copy on a
+ *       hit), a non-mmap cache that holds the file (copy into scratch), and a non-mmap cache much smaller than the file (reads miss
+ *       and are filled by the cache fetch threads through the scratch segment).</li>
  * </ul>
+ * The snapshot inputs are wrapped in {@code StoreMetricsIndexInput}, as {@code Store} does in production.
  *
  * <p>It does not report throughput as its main output. While it runs, a sampler thread prints one {@code SAMPLE} line
  * every few seconds (RssAnon, the direct buffer pool, GC counts), and at the end of the trial it prints the glibc
@@ -94,7 +102,15 @@ public class ZstdScratchRetentionBenchmark {
     public enum InputType {
         NIO,
         NIO_STORE_METRICS,
-        MMAP
+        MMAP,
+        /** Fully mounted (cold, {@code full_copy}): {@code CachedBlobContainerIndexInput}, wrapped in {@code StoreMetricsIndexInput}. */
+        SNAP_FULL_COPY,
+        /** Partially mounted (frozen), mmap-backed cache that holds the whole file: {@code FrozenIndexInput}, zero-copy on a hit. */
+        SNAP_FROZEN_MMAP,
+        /** Partially mounted (frozen), non-mmap cache that holds the whole file: every read is copied into the scratch segment. */
+        SNAP_FROZEN_NOMMAP,
+        /** Partially mounted (frozen), non-mmap cache much smaller than the file: most reads miss and are filled by fetch threads. */
+        SNAP_FROZEN_NOMMAP_MISS
     }
 
     @Param({ "NIO_STORE_METRICS", "NIO" })
@@ -113,6 +129,14 @@ public class ZstdScratchRetentionBenchmark {
     @Param({ "1" })
     int threadsForPacing;
 
+    /** Size of the shared blob cache for {@code SNAP_FROZEN_NOMMAP_MISS}; the file is about 25 MiB, so most reads miss. */
+    @Param({ "4" })
+    int missCacheMiB;
+
+    /** Region (and range) size of the shared blob cache for {@code SNAP_FROZEN_NOMMAP_MISS}. */
+    @Param({ "256" })
+    int missRegionKiB;
+
     Directory dir;
     IndexInput input;
     long[] blockOffsets;
@@ -128,7 +152,7 @@ public class ZstdScratchRetentionBenchmark {
         mode = new ZstdCompressionMode(1);
         blockOffsets = new long[NUM_BLOCKS];
         Random rng = new Random(42);
-        dir = inputType == InputType.MMAP ? new MMapDirectory(tempDir) : new NIOFSDirectory(tempDir);
+        dir = newDirectory();
         try (IndexOutput out = dir.createOutput(FILE_NAME, IOContext.DEFAULT)) {
             for (int i = 0; i < NUM_BLOCKS; i++) {
                 byte[] original = new byte[blockSize];
@@ -140,15 +164,21 @@ public class ZstdScratchRetentionBenchmark {
             CodecUtil.writeFooter(out);
         }
         IndexInput in = dir.openInput(FILE_NAME, IOContext.DEFAULT);
-        input = inputType == InputType.NIO_STORE_METRICS
+        // Store wraps every shard directory in StoreMetricsDirectory, so the inputs a shard sees are wrapped too
+        input = inputType == InputType.NIO_STORE_METRICS || isSnapshot()
             ? StoreMetricsIndexInput.create(in.toString(), in, new ThreadLocalDirectoryMetricHolder<>(StoreMetrics::new).singleThreaded())
             : in;
+        if (isSnapshot() && inputType != InputType.SNAP_FROZEN_NOMMAP_MISS) {
+            warmCache(in);
+        }
         System.err.printf(
             Locale.ROOT,
-            "TIER1 setup inputType=%s inputClass=%s blockSize=%d%n",
+            "TIER1 setup inputType=%s inputClass=%s delegateClass=%s blockSize=%d fileLength=%d%n",
             inputType,
             input.getClass().getName(),
-            blockSize
+            in.getClass().getName(),
+            blockSize,
+            in.length()
         );
         startSampler();
     }
@@ -204,6 +234,55 @@ public class ZstdScratchRetentionBenchmark {
             } else {
                 ts.nextNanos = System.nanoTime();
             }
+        }
+    }
+
+    private boolean isSnapshot() {
+        return switch (inputType) {
+            case SNAP_FULL_COPY, SNAP_FROZEN_MMAP, SNAP_FROZEN_NOMMAP, SNAP_FROZEN_NOMMAP_MISS -> true;
+            default -> false;
+        };
+    }
+
+    private Directory newDirectory() throws IOException {
+        Path path = Files.createDirectories(tempDir.resolve("data"));
+        return switch (inputType) {
+            case NIO, NIO_STORE_METRICS -> new NIOFSDirectory(path);
+            case MMAP -> new MMapDirectory(path);
+            case SNAP_FULL_COPY -> SearchableSnapshotDirectoryFactory.newDirectory(
+                path,
+                new SearchableSnapshotDirectoryFactory.Options(false, false, null, null)
+            );
+            case SNAP_FROZEN_MMAP -> SearchableSnapshotDirectoryFactory.newDirectory(
+                path,
+                new SearchableSnapshotDirectoryFactory.Options(true, true, null, null)
+            );
+            case SNAP_FROZEN_NOMMAP -> SearchableSnapshotDirectoryFactory.newDirectory(
+                path,
+                new SearchableSnapshotDirectoryFactory.Options(true, false, null, null)
+            );
+            case SNAP_FROZEN_NOMMAP_MISS -> SearchableSnapshotDirectoryFactory.newDirectory(
+                path,
+                new SearchableSnapshotDirectoryFactory.Options(
+                    true,
+                    false,
+                    ByteSizeValue.ofMb(missCacheMiB),
+                    ByteSizeValue.ofKb(missRegionKiB)
+                )
+            );
+        };
+    }
+
+    /** Reads the whole file once, so that the cache holds it before measurement starts. */
+    private static void warmCache(IndexInput in) throws IOException {
+        IndexInput c = in.clone();
+        byte[] buf = new byte[1 << 16];
+        c.seek(0);
+        long remaining = c.length();
+        while (remaining > 0) {
+            int n = (int) Math.min(buf.length, remaining);
+            c.readBytes(buf, 0, n);
+            remaining -= n;
         }
     }
 

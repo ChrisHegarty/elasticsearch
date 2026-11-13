@@ -118,7 +118,27 @@ public class SearchableSnapshotDirectoryFactory {
      * {@link SearchableSnapshotDirectory} when the output is closed.
      */
     public static Directory newDirectory(Path path) {
-        return new WriteOnceSnapshotDirectory(path);
+        return new WriteOnceSnapshotDirectory(path, Options.DEFAULT);
+    }
+
+    /**
+     * Same as {@link #newDirectory(Path)}, with control over which kind of searchable snapshot input is opened and how its cache is set up.
+     */
+    public static Directory newDirectory(Path path, Options options) {
+        return new WriteOnceSnapshotDirectory(path, options);
+    }
+
+    /**
+     * @param partial        {@code true} for a partially mounted (frozen, {@code shared_cache}) snapshot, which opens
+     *                       {@code FrozenIndexInput}s; {@code false} for a fully mounted (cold, {@code full_copy}) one, which opens
+     *                       {@code CachedBlobContainerIndexInput}s
+     * @param mmap           whether the shared blob cache is mmap-backed (frozen only)
+     * @param cacheSize      size of the shared blob cache (frozen only), or {@code null} to hold the whole file
+     * @param regionSize     size of the shared blob cache regions, which is also used as its range size (frozen only), or {@code null}
+     *                       for the default
+     */
+    public record Options(boolean partial, boolean mmap, ByteSizeValue cacheSize, ByteSizeValue regionSize) {
+        public static final Options DEFAULT = new Options(true, true, null, null);
     }
 
     /**
@@ -327,8 +347,11 @@ public class SearchableSnapshotDirectoryFactory {
         private SharedBlobCacheService<CacheKey> sharedBlobCacheService;
         private NodeEnvironment nodeEnvironment;
 
-        WriteOnceSnapshotDirectory(Path path) {
+        private final Options options;
+
+        WriteOnceSnapshotDirectory(Path path, Options options) {
             this.path = path;
+            this.options = options;
         }
 
         @Override
@@ -452,13 +475,14 @@ public class SearchableSnapshotDirectoryFactory {
             ShardPath shardPath = new ShardPath(false, shardDir, shardDir, shardId);
             Path cacheDir = Files.createDirectories(CacheService.resolveSnapshotCache(shardDir).resolve(snapshotId.getUUID()));
             threadPool = new SimpleThreadPool("tp", SearchableSnapshots.executorBuilders(Settings.EMPTY));
-            nodeEnvironment = newNodeEnvironment(Settings.EMPTY, path, dataLength);
+            final Settings cacheOverrides = cacheOverrides(options);
+            nodeEnvironment = newNodeEnvironment(cacheOverrides, path, dataLength);
             clusterService = createClusterService(threadPool, clusterSettings());
 
             Settings.Builder cacheSettings = Settings.builder();
             cacheService = new CacheService(cacheSettings.build(), clusterService, threadPool, new PersistentCache(nodeEnvironment));
             cacheService.start();
-            sharedBlobCacheService = defaultFrozenCacheService(threadPool, nodeEnvironment, path, dataLength);
+            sharedBlobCacheService = defaultFrozenCacheService(threadPool, nodeEnvironment, cacheOverrides, path, dataLength);
 
             delegate = new SearchableSnapshotDirectory(
                 () -> blobContainer,
@@ -468,7 +492,7 @@ public class SearchableSnapshotDirectoryFactory {
                 snapshotId,
                 indexId,
                 shardId,
-                buildIndexSettings(),
+                buildIndexSettings(options.partial()),
                 () -> 0L,
                 cacheService,
                 cacheDir,
@@ -585,19 +609,36 @@ public class SearchableSnapshotDirectoryFactory {
 
     private static Settings buildEnvSettings(Settings settings, Path path, long dataLength) {
         long sizeInBytes = roundUpTo16MB(dataLength);
+        // the given settings come last so that they override the defaults
         return Settings.builder()
-            .put(settings)
             .put(NodeEnvironment.NODE_ID_SEED_SETTING.getKey(), 0L)
             .put(Environment.PATH_HOME_SETTING.getKey(), path)
             .putList(Environment.PATH_DATA_SETTING.getKey(), path.toAbsolutePath().toString())
             .put(SharedBlobCacheService.SHARED_CACHE_MMAP.getKey(), true)
             .put(SharedBlobCacheService.SHARED_CACHE_SIZE_SETTING.getKey(), ByteSizeValue.ofBytes(sizeInBytes).getStringRep())
+            .put(settings)
             .build();
+    }
+
+    private static Settings cacheOverrides(Options options) {
+        final Settings.Builder builder = Settings.builder().put(SharedBlobCacheService.SHARED_CACHE_MMAP.getKey(), options.mmap());
+        if (options.cacheSize() != null) {
+            builder.put(SharedBlobCacheService.SHARED_CACHE_SIZE_SETTING.getKey(), options.cacheSize());
+        }
+        if (options.regionSize() != null) {
+            builder.put(SharedBlobCacheService.SHARED_CACHE_REGION_SIZE_SETTING.getKey(), options.regionSize());
+            builder.put(SharedBlobCacheService.SHARED_CACHE_RANGE_SIZE_SETTING.getKey(), options.regionSize());
+        }
+        return builder.build();
     }
 
     // Specifically, enable SEARCHABLE_SNAPSHOT_PARTIAL_SETTING mimic stateless caching behavior
     private static Settings buildIndexSettings() {
-        return Settings.builder().put(SearchableSnapshotsSettings.SEARCHABLE_SNAPSHOT_PARTIAL_SETTING_KEY, true).build();
+        return buildIndexSettings(true);
+    }
+
+    private static Settings buildIndexSettings(boolean partial) {
+        return Settings.builder().put(SearchableSnapshotsSettings.SEARCHABLE_SNAPSHOT_PARTIAL_SETTING_KEY, partial).build();
     }
 
     public static long roundUpTo16MB(long value) {
@@ -617,9 +658,19 @@ public class SearchableSnapshotDirectoryFactory {
         Path path,
         long dataLength
     ) {
+        return defaultFrozenCacheService(threadPool, nodeEnvironment, Settings.EMPTY, path, dataLength);
+    }
+
+    private static SharedBlobCacheService<CacheKey> defaultFrozenCacheService(
+        ThreadPool threadPool,
+        NodeEnvironment nodeEnvironment,
+        Settings overrides,
+        Path path,
+        long dataLength
+    ) {
         return new SharedBlobCacheService<>(
             nodeEnvironment,
-            buildEnvSettings(Settings.EMPTY, path, dataLength),
+            buildEnvSettings(overrides, path, dataLength),
             threadPool,
             threadPool.executor(SearchableSnapshots.CACHE_FETCH_ASYNC_THREAD_POOL_NAME),
             BlobCacheMetrics.NOOP
